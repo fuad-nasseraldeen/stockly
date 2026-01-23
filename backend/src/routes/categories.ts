@@ -129,7 +129,7 @@ router.delete('/:id', async (req, res) => {
         console.error('Error creating general category:', created.error);
         return res.status(400).json({ error: 'לא ניתן למחוק קטגוריה' });
       }
-      general = created as typeof general;
+      general = created;
     }
 
     const generalId = general.data!.id as string;

@@ -1,0 +1,8 @@
+import { createApp } from '../src/app.js';
+
+const app = createApp();
+
+// Vercel Serverless Function handler
+export default async function handler(req: any, res: any) {
+  return app(req, res);
+}

@@ -279,7 +279,7 @@ router.post('/', async (req, res) => {
         if (created.error || !created.data) {
           return res.status(400).json({ error: 'לא ניתן ליצור מוצר (שגיאה ביצירת קטגוריה כללי)' });
         }
-        general = created as typeof general;
+        general = created;
       }
 
       effectiveCategoryId = general.data!.id as string;
