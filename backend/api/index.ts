@@ -3,6 +3,5 @@ import { createApp } from '../src/app.js';
 const app = createApp();
 
 // Vercel Serverless Function handler
-export default async function handler(req: any, res: any) {
-  return app(req, res);
-}
+// Export the Express app directly - Vercel will handle it as a serverless function
+export default app;

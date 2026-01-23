@@ -1,3 +1,4 @@
+// backend/api/index.ts
 import { createApp } from '../app.js';
 
 const app = createApp();
