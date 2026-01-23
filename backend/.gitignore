@@ -4,3 +4,8 @@ dist
 *.log
 frontend/.env*
 backend/.env*
+# Compiled files in api directory
+api/*.js
+api/*.js.map
+api/*.d.ts
+api/*.d.ts.map
