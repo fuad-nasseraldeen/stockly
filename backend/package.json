@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/_server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/_server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.91.0",
