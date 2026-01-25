@@ -22,15 +22,15 @@ export default function Categories() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const { data: categories, isLoading } = useCategories();
+  const { data: categories = [], isLoading } = useCategories();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
 
   const filteredCategories =
-    categories?.filter((c: any) =>
+    categories.filter((c) =>
       c.name.toLowerCase().includes(search.toLowerCase())
-    ) ?? [];
+    );
 
   const resetForm = () => {
     setForm({ id: undefined, name: '', default_margin_percent: '' });

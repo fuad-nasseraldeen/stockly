@@ -45,15 +45,15 @@ export default function NewProduct() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryMargin, setNewCategoryMargin] = useState('');
 
-  const { data: categories } = useCategories();
-  const { data: suppliers, refetch: refetchSuppliers } = useSuppliers();
+  const { data: categories = [] } = useCategories();
+  const { data: suppliers = [], refetch: refetchSuppliers } = useSuppliers();
   const { data: settings } = useSettings();
   const createProduct = useCreateProduct();
   // const addPrice = useAddProductPrice(); // reserved for future price flows
   const createSupplier = useCreateSupplier();
   const createCategory = useCreateCategory();
 
-  const selectedCategory = categories?.find((c: any) => c.id === categoryId);
+  const selectedCategory = categories.find((c) => c.id === categoryId);
   const defaultMargin = selectedCategory ? Number(selectedCategory.default_margin_percent) : 0;
   const marginToUse = marginPercent ? Number(marginPercent) : defaultMargin;
   const defaultVatPercent = settings?.vat_percent ? Number(settings.vat_percent) : 18;
@@ -186,7 +186,7 @@ export default function NewProduct() {
                     <option value="">
                       כללי (ברירת מחדל)
                     </option>
-                    {categories?.map((c: any) => (
+                    {categories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}{' '}
                         {c.default_margin_percent ? `(${c.default_margin_percent}% רווח ברירת מחדל)` : ''}
@@ -223,7 +223,7 @@ export default function NewProduct() {
             </>
           ) : (
             <>
-              {(!suppliers || suppliers.length === 0) && (
+              {suppliers.length === 0 && (
                 <div className="p-5 bg-linear-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200 shadow-sm">
                   <p className="text-sm font-medium mb-4 text-foreground">אין ספקים במערכת. הוסף ספק כדי להמשיך.</p>
                   <Button onClick={() => setShowAddSupplier(true)} size="lg" className="shadow-md">
@@ -245,7 +245,7 @@ export default function NewProduct() {
                         className="flex-1"
                       >
                         <option value="">בחר ספק</option>
-                        {suppliers.map((s: any) => (
+                        {suppliers.map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name}
                           </option>
@@ -357,7 +357,7 @@ export default function NewProduct() {
             ) : (
               <Button
                 onClick={handleSubmit}
-                disabled={!supplierId || !costPrice || createProduct.isPending || (suppliers && suppliers.length === 0)}
+                disabled={!supplierId || !costPrice || createProduct.isPending || suppliers.length === 0}
               >
                 {createProduct.isPending ? 'יוצר...' : 'צור מוצר'}
               </Button>

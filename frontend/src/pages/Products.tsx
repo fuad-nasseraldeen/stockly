@@ -26,16 +26,16 @@ export default function Products() {
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  const { data: products, isLoading } = useProducts({
+  const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
     supplier_id: supplierFilter || undefined,
     category_id: categoryFilter || undefined,
     sort,
   });
 
-  const { data: suppliers } = useSuppliers();
-  const { data: categories } = useCategories();
-  const { data: priceHistory, isLoading: historyLoading } = useProductPriceHistory(
+  const { data: suppliers = [] } = useSuppliers();
+  const { data: categories = [] } = useCategories();
+  const { data: priceHistory = [], isLoading: historyLoading } = useProductPriceHistory(
     historyProductId || '',
     historySupplierId || undefined
   );
@@ -237,7 +237,7 @@ export default function Products() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {product.prices.map((price, idx: number) => (
+                            {product.prices?.map((price, idx: number) => (
                               <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
                                 <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
                                 <TableCell>{formatPrice(Number(price.cost_price))}</TableCell>
@@ -303,7 +303,7 @@ export default function Products() {
             <div className="py-8 text-center text-sm text-muted-foreground">
               טוען היסטוריית מחירים...
             </div>
-          ) : !priceHistory || priceHistory.length === 0 ? (
+          ) : priceHistory.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               לא נמצאה היסטוריית מחירים עבור ספק זה.
             </div>

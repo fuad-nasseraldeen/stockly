@@ -2,6 +2,52 @@ import { supabase } from './supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// Type definitions
+export type Product = {
+  id: string;
+  name: string;
+  category_id: string | null;
+  unit: 'unit' | 'kg' | 'liter';
+  supplier_id: string;
+  cost_price: number;
+  margin_percent: number | null;
+  sell_price: number;
+  updated_at: string;
+  prices?: ProductPrice[];
+  category?: Category;
+  supplier?: Supplier;
+};
+
+export type ProductPrice = {
+  id: string;
+  product_id: string;
+  supplier_id: string;
+  cost_price: number;
+  margin_percent: number | null;
+  sell_price: number;
+  created_at: string;
+  supplier?: Supplier;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  default_margin_percent: number | null;
+  created_at: string;
+};
+
+export type Supplier = {
+  id: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Settings = {
+  vat_percent: number;
+};
+
 async function getAuthToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || null;
@@ -13,9 +59,9 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = await getAuthToken();
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options?.headers,
+    ...(options?.headers as Record<string, string>),
   };
   
   if (token) {
@@ -57,16 +103,16 @@ export const authApi = {
 
 // Products API
 export const productsApi = {
-  list: (params?: { search?: string; supplier_id?: string; category_id?: string; sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc' }) => {
+  list: (params?: { search?: string; supplier_id?: string; category_id?: string; sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc' }): Promise<Product[]> => {
     const queryParams = new URLSearchParams();
     if (params?.search) queryParams.append('search', params.search);
     if (params?.supplier_id) queryParams.append('supplier_id', params.supplier_id);
     if (params?.category_id) queryParams.append('category_id', params.category_id);
     if (params?.sort) queryParams.append('sort', params.sort);
-    return apiRequest(`/api/products?${queryParams.toString()}`);
+    return apiRequest<Product[]>(`/api/products?${queryParams.toString()}`);
   },
   
-  get: (id: string) => apiRequest(`/api/products/${id}`),
+  get: (id: string): Promise<Product> => apiRequest<Product>(`/api/products/${id}`),
   
   create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; supplier_id: string; cost_price: number; margin_percent?: number }) =>
     apiRequest('/api/products', {
@@ -91,16 +137,16 @@ export const productsApi = {
       body: JSON.stringify(data),
     }),
   
-  getPriceHistory: (id: string, supplier_id?: string) => {
+  getPriceHistory: (id: string, supplier_id?: string): Promise<ProductPrice[]> => {
     const params = new URLSearchParams();
     if (supplier_id) params.append('supplier_id', supplier_id);
-    return apiRequest(`/api/products/${id}/price-history?${params.toString()}`);
+    return apiRequest<ProductPrice[]>(`/api/products/${id}/price-history?${params.toString()}`);
   },
 };
 
 // Categories API
 export const categoriesApi = {
-  list: () => apiRequest('/api/categories'),
+  list: (): Promise<Category[]> => apiRequest<Category[]>('/api/categories'),
   
   create: (data: { name: string; default_margin_percent?: number }) =>
     apiRequest('/api/categories', {
@@ -122,7 +168,7 @@ export const categoriesApi = {
 
 // Suppliers API
 export const suppliersApi = {
-  list: () => apiRequest('/api/suppliers'),
+  list: (): Promise<Supplier[]> => apiRequest<Supplier[]>('/api/suppliers'),
   
   create: (data: { name: string; phone?: string; notes?: string }) =>
     apiRequest('/api/suppliers', {
@@ -144,7 +190,7 @@ export const suppliersApi = {
 
 // Settings API
 export const settingsApi = {
-  get: () => apiRequest('/api/settings'),
+  get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
   update: (data: { vat_percent: number }) =>
     apiRequest('/api/settings', {

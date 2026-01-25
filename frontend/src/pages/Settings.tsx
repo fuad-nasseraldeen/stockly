@@ -12,7 +12,7 @@ export default function Settings() {
   const updateSettings = useUpdateSettings();
 
   const [vat, setVat] = useState<string>(() =>
-    settings?.vat_percent != null ? String(settings.vat_percent) : ''
+    settings?.vat_percent != null ? String(settings.vat_percent) : '18'
   );
   const [margin, setMargin] = useState<string>('');
 

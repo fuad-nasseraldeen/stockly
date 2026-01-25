@@ -11,7 +11,7 @@ import { Select } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { ArrowRight, ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Plus } from 'lucide-react';
 
 // Helper function for calculating sell price
 function calcSellPrice(costPrice: number, marginPercent: number, vatPercent: number): number {
@@ -24,8 +24,8 @@ export default function EditProduct() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: product, isLoading } = useProduct(id || '');
-  const { data: categories } = useCategories();
-  const { data: suppliers } = useSuppliers();
+  const { data: categories = [] } = useCategories();
+  const { data: suppliers = [] } = useSuppliers();
   const { data: settings } = useSettings();
   const updateProduct = useUpdateProduct();
   const addProductPrice = useAddProductPrice();
@@ -83,7 +83,7 @@ export default function EditProduct() {
     navigate('/products');
   };
 
-  const selectedCategory = categories?.find((c) => c.id === categoryId);
+  const selectedCategory = categories.find((c) => c.id === categoryId);
   const defaultMargin = selectedCategory?.default_margin_percent ?? 0;
   const vatPercent = settings?.vat_percent ?? 18;
 
@@ -193,7 +193,7 @@ export default function EditProduct() {
               onChange={(e) => setCategoryId(e.target.value)}
             >
               <option value="">כללי (ברירת מחדל)</option>
-              {categories?.map((c) => (
+              {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}{' '}
                   {c.default_margin_percent ? `(${c.default_margin_percent}% רווח ברירת מחדל)` : ''}
@@ -302,7 +302,7 @@ export default function EditProduct() {
                   className="flex-1"
                 >
                   <option value="">בחר ספק</option>
-                  {suppliers?.map((s: any) => (
+                  {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
                     </option>

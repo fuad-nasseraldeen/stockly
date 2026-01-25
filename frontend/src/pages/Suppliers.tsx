@@ -23,15 +23,15 @@ export default function Suppliers() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const { data: suppliers, isLoading } = useSuppliers();
+  const { data: suppliers = [], isLoading } = useSuppliers();
   const createSupplier = useCreateSupplier();
   const updateSupplier = useUpdateSupplier();
   const deleteSupplier = useDeleteSupplier();
 
   const filteredSuppliers =
-    suppliers?.filter((s: any) =>
+    suppliers.filter((s) =>
       s.name.toLowerCase().includes(search.toLowerCase())
-    ) ?? [];
+    );
 
   const resetForm = () => {
     setForm({ id: undefined, name: '', phone: '', notes: '' });

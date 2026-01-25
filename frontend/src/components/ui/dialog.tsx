@@ -25,7 +25,6 @@ const DialogContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, children, ...props }, ref) => {
-  const context = React.useContext(DialogContext)
   return (
     <div
       ref={ref}
