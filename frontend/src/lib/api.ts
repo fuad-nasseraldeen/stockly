@@ -16,6 +16,10 @@ export type Product = {
   prices?: ProductPrice[];
   category?: Category;
   supplier?: Supplier;
+  summary?: {
+    min_current_cost_price: number;
+    last_price_update_at: string;
+  };
 };
 
 export type ProductPrice = {
@@ -27,6 +31,7 @@ export type ProductPrice = {
   sell_price: number;
   created_at: string;
   supplier?: Supplier;
+  supplier_name?: string;
 };
 
 export type Category = {
@@ -170,8 +175,8 @@ export const categoriesApi = {
 export const suppliersApi = {
   list: (): Promise<Supplier[]> => apiRequest<Supplier[]>('/api/suppliers'),
   
-  create: (data: { name: string; phone?: string; notes?: string }) =>
-    apiRequest('/api/suppliers', {
+  create: (data: { name: string; phone?: string; notes?: string }): Promise<Supplier> =>
+    apiRequest<Supplier>('/api/suppliers', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

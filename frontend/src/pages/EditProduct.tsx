@@ -4,6 +4,7 @@ import { useProduct, useUpdateProduct, useAddProductPrice } from '../hooks/usePr
 import { useCategories } from '../hooks/useCategories';
 import { useSuppliers, useCreateSupplier } from '../hooks/useSuppliers';
 import { useSettings } from '../hooks/useSettings';
+import type { Supplier } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -94,7 +95,7 @@ export default function EditProduct() {
     }
     try {
       setSupplierError(null);
-      const newSupplier = await createSupplier.mutateAsync({
+      const newSupplier: Supplier = await createSupplier.mutateAsync({
         name: newSupplierName.trim(),
         phone: newSupplierPhone.trim() || undefined,
         notes: newSupplierNotes.trim() || undefined,
