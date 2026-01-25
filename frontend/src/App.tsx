@@ -195,6 +195,7 @@ function App() {
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/" element={<Navigate to="/products" />} />
+                <Route path="*" element={<Navigate to="/products" replace />} />
               </>
             ) : (
               <Route path="*" element={<Navigate to="/login" />} />
