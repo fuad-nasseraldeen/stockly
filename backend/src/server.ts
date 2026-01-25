@@ -10,7 +10,7 @@ const envPath = join(__dirname, '../.env');
 const result = dotenv.config({ path: envPath });
 if (result.error && !existsSync(envPath)) dotenv.config();
 
-import { createApp } from './app.js';
+import { createApp } from './_app.js';
 
 const app = createApp();
 const PORT = process.env.PORT || 3001;

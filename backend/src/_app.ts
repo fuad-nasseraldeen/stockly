@@ -1,4 +1,4 @@
-// backend/src/app.ts
+// backend/src/_app.ts
 import express from 'express';
 import cors from 'cors';
 
