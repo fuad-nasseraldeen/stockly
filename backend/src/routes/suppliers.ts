@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
+import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -15,10 +16,12 @@ const updateSchema = createSchema.partial().refine((v) => Object.keys(v).length 
   message: 'לא נשלחו שדות לעדכון',
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
   const { data, error } = await supabase
     .from('suppliers')
     .select('id,name,phone,notes,is_active,created_at')
+    .eq('tenant_id', tenant.tenantId)
     .eq('is_active', true)
     .order('name');
 
@@ -26,7 +29,9 @@ router.get('/', async (_req, res) => {
   return res.json(data);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
@@ -38,6 +43,7 @@ router.post('/', async (req, res) => {
     const exists = await supabase
       .from('suppliers')
       .select('id')
+      .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true)
       .ilike('name', name.trim())
       .limit(1);
@@ -48,7 +54,14 @@ router.post('/', async (req, res) => {
 
     const { data, error } = await supabase
       .from('suppliers')
-      .insert({ name: name.trim(), phone: phone ?? null, notes: notes ?? null, is_active: true })
+      .insert({
+        tenant_id: tenant.tenantId,
+        name: name.trim(),
+        phone: phone ?? null,
+        notes: notes ?? null,
+        is_active: true,
+        created_by: user.id,
+      })
       .select('id,name,phone,notes,is_active,created_at')
       .single();
 
@@ -67,7 +80,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
   const id = req.params.id;
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -82,6 +96,7 @@ router.put('/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('suppliers')
     .update(patch)
+    .eq('tenant_id', tenant.tenantId)
     .eq('id', id)
     .select('id,name,phone,notes,is_active,created_at')
     .single();
@@ -93,15 +108,21 @@ router.put('/:id', async (req, res) => {
 });
 
 // Soft delete (keeps price history intact). Also returns a warning if supplier has price entries.
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
   const id = req.params.id;
 
   const countRes = await supabase
     .from('price_entries')
     .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenant.tenantId)
     .eq('supplier_id', id);
 
-  const { error } = await supabase.from('suppliers').update({ is_active: false }).eq('id', id);
+  const { error } = await supabase
+    .from('suppliers')
+    .update({ is_active: false })
+    .eq('tenant_id', tenant.tenantId)
+    .eq('id', id);
   if (error) return res.status(400).json({ error: 'לא ניתן למחוק ספק' });
 
   const linkedCount = countRes.count ?? 0;

@@ -1,10 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import productsRouter from '../src/routes/products.js';
-import { requireAuth } from '../src/middleware/auth.js';
 import categoriesRouter from '../src/routes/categories.js';
 import suppliersRouter from '../src/routes/suppliers.js';
 import settingsRouter from '../src/routes/settings.js';
+import tenantsRouter from '../src/routes/tenants.js';
+import invitesRouter from '../src/routes/invites.js';
+import importRouter from '../src/routes/import.js';
+import exportRouter from '../src/routes/export.js';
+import resetRouter from '../src/routes/reset.js';
 
 const app = express();
 
@@ -40,10 +44,15 @@ app.get('/', (req, res) => res.json({
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // API Routes
-app.use('/api/products', requireAuth, productsRouter);
-app.use('/api/categories', requireAuth, categoriesRouter);
-app.use('/api/suppliers', requireAuth, suppliersRouter);
-app.use('/api/settings', requireAuth, settingsRouter);
+app.use('/api/tenants', tenantsRouter);
+app.use('/api/invites', invitesRouter);
+app.use('/api/products', productsRouter);
+app.use('/api/categories', categoriesRouter);
+app.use('/api/suppliers', suppliersRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/import', importRouter);
+app.use('/api/export', exportRouter);
+app.use('/api/tenant/reset', resetRouter);
 
 // Vercel Serverless Function handler
 // Export the Express app directly - Vercel will handle it as a serverless function

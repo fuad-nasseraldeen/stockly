@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
+import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -18,10 +19,12 @@ const updateSchema = createSchema.partial().refine((v) => Object.keys(v).length 
   message: 'לא נשלחו שדות לעדכון',
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
   const { data, error } = await supabase
     .from('categories')
     .select('id,name,default_margin_percent,is_active,created_at')
+    .eq('tenant_id', tenant.tenantId)
     .eq('is_active', true)
     .order('name');
 
@@ -29,7 +32,9 @@ router.get('/', async (_req, res) => {
   return res.json(data);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
@@ -43,6 +48,7 @@ router.post('/', async (req, res) => {
     const exists = await supabase
       .from('categories')
       .select('id')
+      .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true)
       .ilike('name', name.trim())
       .limit(1);
@@ -53,7 +59,13 @@ router.post('/', async (req, res) => {
 
     const { data, error } = await supabase
       .from('categories')
-      .insert({ name: name.trim(), default_margin_percent, is_active: true })
+      .insert({
+        tenant_id: tenant.tenantId,
+        name: name.trim(),
+        default_margin_percent,
+        is_active: true,
+        created_by: user.id,
+      })
       .select('id,name,default_margin_percent,is_active,created_at')
       .single();
 
@@ -73,7 +85,8 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
   const id = req.params.id;
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -87,6 +100,7 @@ router.put('/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('categories')
     .update(patch)
+    .eq('tenant_id', tenant.tenantId)
     .eq('id', id)
     .select('id,name,default_margin_percent,is_active,created_at')
     .single();
@@ -98,7 +112,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // Soft delete for consistency (keeps history intact)
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
   const id = req.params.id;
 
   try {
@@ -108,6 +124,7 @@ router.delete('/:id', async (req, res) => {
     let general = await supabase
       .from('categories')
       .select('id')
+      .eq('tenant_id', tenant.tenantId)
       .eq('name', generalName)
       .eq('is_active', true)
       .single();
@@ -121,7 +138,13 @@ router.delete('/:id', async (req, res) => {
     if (!general.data) {
       const created = await supabase
         .from('categories')
-        .insert({ name: generalName, default_margin_percent: 0, is_active: true })
+        .insert({
+          tenant_id: tenant.tenantId,
+          name: generalName,
+          default_margin_percent: 0,
+          is_active: true,
+          created_by: user.id,
+        })
         .select('id')
         .single();
 
@@ -138,6 +161,7 @@ router.delete('/:id', async (req, res) => {
     const moveProducts = await supabase
       .from('products')
       .update({ category_id: generalId })
+      .eq('tenant_id', tenant.tenantId)
       .eq('category_id', id);
 
     if (moveProducts.error) {
@@ -146,7 +170,11 @@ router.delete('/:id', async (req, res) => {
     }
 
     // Soft delete the category
-    const { error } = await supabase.from('categories').update({ is_active: false }).eq('id', id);
+    const { error } = await supabase
+      .from('categories')
+      .update({ is_active: false })
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', id);
     if (error) {
       console.error('Error soft deleting category:', error);
       return res.status(400).json({ error: 'לא ניתן למחוק קטגוריה' });

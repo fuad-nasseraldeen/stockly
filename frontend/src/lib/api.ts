@@ -50,7 +50,16 @@ export type Supplier = {
 };
 
 export type Settings = {
+  tenant_id: string;
   vat_percent: number;
+  updated_at: string;
+};
+
+export type Tenant = {
+  id: string;
+  name: string;
+  role: 'owner' | 'worker';
+  created_at: string;
 };
 
 async function getAuthToken(): Promise<string | null> {
@@ -58,11 +67,16 @@ async function getAuthToken(): Promise<string | null> {
   return session?.access_token || null;
 }
 
+function getTenantId(): string | null {
+  return localStorage.getItem('currentTenantId');
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
   const token = await getAuthToken();
+  const tenantId = getTenantId();
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -72,6 +86,10 @@ export async function apiRequest<T>(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
@@ -79,8 +97,15 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
-    throw new Error(error.error || 'הבקשה נכשלה');
+    let errorMessage = 'הבקשה נכשלה';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.error || errorData.message || `שגיאה ${response.status}: ${response.statusText}`;
+    } catch {
+      // If response is not JSON, use status text
+      errorMessage = `שגיאה ${response.status}: ${response.statusText || 'לא ניתן להתחבר לשרת'}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
@@ -197,9 +222,139 @@ export const suppliersApi = {
 export const settingsApi = {
   get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
-  update: (data: { vat_percent: number }) =>
-    apiRequest('/api/settings', {
+  update: (data: { vat_percent: number }): Promise<Settings> =>
+    apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+};
+
+// Tenants API
+export const tenantsApi = {
+  list: (): Promise<Tenant[]> => apiRequest<Tenant[]>('/api/tenants'),
+  
+  create: (data: { name: string }): Promise<Tenant> =>
+    apiRequest<Tenant>('/api/tenants', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  invite: (tenantId: string, data: { email: string; role?: 'owner' | 'worker' }): Promise<any> =>
+    apiRequest(`/api/tenants/${tenantId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  
+  acceptInvite: (token: string): Promise<{ message: string }> =>
+    apiRequest('/api/tenants/accept-invite', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+};
+
+// Invites API
+export const invitesApi = {
+  accept: (): Promise<{ accepted: number; already_member: number; not_found: number; message: string; errors?: string[] }> =>
+    apiRequest('/api/invites/accept', {
+      method: 'POST',
+    }),
+};
+
+// Import/Export API
+export const importApi = {
+  preview: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const response = await fetch(`${API_URL}/api/import/preview`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
+      throw new Error(error.error || 'הבקשה נכשלה');
+    }
+    
+    return response.json();
+  },
+  
+  apply: async (file: File, mode: 'merge' | 'overwrite', confirmation?: string): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (confirmation) formData.append('confirmation', confirmation);
+    
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const response = await fetch(`${API_URL}/api/import/apply?mode=${mode}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
+      throw new Error(error.error || 'הבקשה נכשלה');
+    }
+    
+    return response.json();
+  },
+};
+
+export const exportApi = {
+  downloadCurrent: async (): Promise<void> => {
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const response = await fetch(`${API_URL}/api/export/current.csv`, { headers });
+    if (!response.ok) throw new Error('שגיאה בייצוא');
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'current_prices.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+  
+  downloadHistory: async (): Promise<void> => {
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const response = await fetch(`${API_URL}/api/export/history.csv`, { headers });
+    if (!response.ok) throw new Error('שגיאה בייצוא');
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'price_history.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };

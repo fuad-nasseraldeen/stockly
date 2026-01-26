@@ -5,6 +5,8 @@ import { supabase } from './lib/supabase';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
 import { Menu, X } from 'lucide-react';
+import { TenantProvider, useTenant } from './contexts/TenantContext';
+import { TenantSwitcher } from './components/TenantSwitcher';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -14,15 +16,21 @@ import Categories from './pages/Categories';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
+import ImportExport from './pages/ImportExport';
+import NoAccess from './pages/NoAccess';
+import CreateTenant from './pages/CreateTenant';
+import { OnboardingRouter } from './components/OnboardingRouter';
 
 function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   const location = useLocation();
+  const { currentTenant } = useTenant();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
     { path: '/products', label: 'מוצרים' },
     { path: '/suppliers', label: 'ספקים' },
     { path: '/categories', label: 'קטגוריות' },
+    { path: '/import-export', label: 'ייבוא/ייצוא' },
     { path: '/settings', label: 'הגדרות' },
   ];
 
@@ -63,6 +71,8 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
                   </Button>
                 ))}
               </nav>
+              <div className="hidden sm:block h-6 w-px bg-border mx-1" />
+              <TenantSwitcher />
               <div className="hidden sm:block h-6 w-px bg-border mx-1" />
               <div className="flex items-center gap-2">
                 <span className="hidden sm:inline text-xs text-muted-foreground truncate max-w-[120px]">
@@ -119,8 +129,16 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
                 </Link>
               ))}
               <div className="border-t-2 border-border my-2" />
-              <div className="px-4 py-2">
-                <p className="text-xs text-muted-foreground mb-2 break-all">{user.email}</p>
+              <div className="px-4 py-2 space-y-2">
+                {currentTenant && (
+                  <div className="p-2 bg-muted rounded-lg">
+                    <p className="text-xs font-medium">{currentTenant.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {currentTenant.role === 'owner' ? 'בעלים' : 'עובד'}
+                    </p>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground break-all">{user.email}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -178,33 +196,60 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen">
-        {user && <Navigation user={user} onLogout={handleLogout} />}
-
-        <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="w-full max-w-6xl">
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            {user ? (
-              <>
-                <Route path="/products" element={<Products />} />
-                <Route path="/products/new" element={<NewProduct />} />
-                <Route path="/products/:id/edit" element={<EditProduct />} />
-                <Route path="/categories" element={<Categories />} />
-                <Route path="/suppliers" element={<Suppliers />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/" element={<Navigate to="/products" />} />
-                <Route path="*" element={<Navigate to="/products" replace />} />
-              </>
-            ) : (
-              <Route path="*" element={<Navigate to="/login" />} />
-            )}
-          </Routes>
-          </div>
-        </main>
-      </div>
+      <TenantProvider>
+        <AppContent user={user} onLogout={handleLogout} />
+      </TenantProvider>
     </BrowserRouter>
+  );
+}
+
+function AppContent({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+  if (!user) {
+    return (
+      <div className="min-h-screen">
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="*" element={<Navigate to="/login" />} />
+        </Routes>
+      </div>
+    );
+  }
+
+  return (
+    <OnboardingRouter>
+      <AppWithNavigation user={user} onLogout={onLogout} />
+    </OnboardingRouter>
+  );
+}
+
+function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const { currentTenant } = useTenant();
+  
+  // Only show navigation if we have a tenant
+  if (!currentTenant) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen">
+      <Navigation user={user} onLogout={onLogout} />
+      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="w-full max-w-6xl">
+          <Routes>
+            <Route path="/products" element={<Products />} />
+            <Route path="/products/new" element={<NewProduct />} />
+            <Route path="/products/:id/edit" element={<EditProduct />} />
+            <Route path="/categories" element={<Categories />} />
+            <Route path="/suppliers" element={<Suppliers />} />
+            <Route path="/import-export" element={<ImportExport />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/" element={<Navigate to="/products" />} />
+            <Route path="*" element={<Navigate to="/products" replace />} />
+          </Routes>
+        </div>
+      </main>
+    </div>
   );
 }
 

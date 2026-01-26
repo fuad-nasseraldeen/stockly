@@ -1,9 +1,15 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase.js';
 
 type AuthedUser = {
   id: string;
   email?: string;
+};
+
+type TenantContext = {
+  tenantId: string;
+  role: 'owner' | 'worker';
 };
 
 declare global {
@@ -39,9 +45,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'נדרש להתחבר כדי לבצע פעולה זו' });
   }
 
-  const supabase = getAuthClient();
+  const authSupabase = getAuthClient();
 
-  supabase.auth
+  authSupabase.auth
     .getUser(token)
     .then(({ data, error }) => {
       if (error || !data?.user) {
@@ -49,8 +55,60 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
       }
 
       (req as any).user = { id: data.user.id, email: data.user.email } as AuthedUser;
+      (req as any).authToken = token; // Store token for service role operations
       next();
     })
     .catch(() => res.status(401).json({ error: 'שגיאת אימות, נסה שוב' }));
 }
 
+export async function requireTenant(req: Request, res: Response, next: NextFunction) {
+  const tenantId = req.headers['x-tenant-id'] as string | undefined;
+  const user = (req as any).user as AuthedUser | undefined;
+
+  if (!user) {
+    return res.status(401).json({ error: 'נדרש להתחבר' });
+  }
+
+  if (!tenantId) {
+    return res.status(400).json({ error: 'נדרש x-tenant-id header' });
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(tenantId)) {
+    return res.status(400).json({ error: 'x-tenant-id חייב להיות UUID תקין' });
+  }
+
+  // Check membership using service role (bypasses RLS)
+  const { data: membership, error } = await supabase
+    .from('memberships')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('tenant_id', tenantId)
+    .single();
+
+  if (error || !membership) {
+    return res.status(403).json({ error: 'אין לך גישה לטננט זה' });
+  }
+
+  (req as any).tenant = {
+    tenantId,
+    role: membership.role as 'owner' | 'worker',
+  } as TenantContext;
+
+  next();
+}
+
+export function ownerOnly(req: Request, res: Response, next: NextFunction) {
+  const tenant = (req as any).tenant as TenantContext | undefined;
+
+  if (!tenant) {
+    return res.status(500).json({ error: 'שגיאת שרת: tenant context חסר' });
+  }
+
+  if (tenant.role !== 'owner') {
+    return res.status(403).json({ error: 'פעולה זו זמינה לבעלים בלבד' });
+  }
+
+  next();
+}
