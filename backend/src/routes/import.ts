@@ -502,17 +502,17 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       const firstIssue = error.issues?.[0];
       return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
-    console.error('Import apply error:', error);
+
     const errorMessage = error instanceof Error ? error.message : 'שגיאת שרת לא ידועה';
-    console.error('Error details:', {
-      message: errorMessage,
+    console.error('Import apply error:', errorMessage, {
       stack: error instanceof Error ? error.stack : undefined,
       tenantId: (req as any).tenant?.tenantId,
       userId: (req as any).user?.id,
     });
+
+    // מחזירים הודעה מפורטת ל-frontend כדי שנוכל לראות מה נשבר
     res.status(500).json({ 
-      error: 'שגיאת שרת',
-      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      error: errorMessage,
     });
   }
 });
