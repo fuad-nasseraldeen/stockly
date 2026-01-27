@@ -111,7 +111,8 @@ router.post('/', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Create tenant error:', error);
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      const firstIssue = error.issues?.[0];
+      return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     const errorMessage = error instanceof Error ? error.message : 'שגיאת שרת';
     res.status(500).json({ error: errorMessage });
@@ -156,7 +157,8 @@ router.post('/:id/invite', requireAuth, requireTenant, ownerOnly, async (req, re
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      const firstIssue = error.issues?.[0];
+      return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     res.status(500).json({ error: 'שגיאת שרת' });
   }
