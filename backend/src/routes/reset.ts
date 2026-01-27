@@ -6,9 +6,9 @@ import { requireAuth, requireTenant, ownerOnly } from '../middleware/auth.js';
 const router = Router();
 
 const resetSchema = z.object({
-  confirmation: z.literal('DELETE', {
-    errorMap: () => ({ message: 'יש להקליד DELETE לאישור' }),
-  }),
+  confirmation: z
+    .string()
+    .refine((val) => val === 'DELETE', { message: 'יש להקליד DELETE לאישור' }),
 });
 
 // Reset tenant data (delete all data, recreate defaults)
@@ -58,7 +58,8 @@ router.post('/', requireAuth, requireTenant, ownerOnly, async (req, res) => {
     res.json({ message: 'נתוני הטננט אופסו בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      const firstIssue = error.issues?.[0];
+      return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     console.error('Reset error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
