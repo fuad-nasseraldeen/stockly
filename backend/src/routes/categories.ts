@@ -105,9 +105,67 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
     .select('id,name,default_margin_percent,is_active,created_at')
     .single();
 
-  if (error) {
+  if (error || !data) {
     return res.status(400).json({ error: 'לא ניתן לעדכן קטגוריה (ייתכן שיש כפילות בשם)' });
   }
+
+  // If margin was updated, recalculate prices for all products in this category
+  if (parsed.data.default_margin_percent != null) {
+    try {
+      const newMargin = Number(parsed.data.default_margin_percent);
+
+      // Fetch all products in this category
+      const { data: products } = await supabase
+        .from('products')
+        .select('id')
+        .eq('tenant_id', tenant.tenantId)
+        .eq('category_id', id)
+        .eq('is_active', true);
+
+      if (products && products.length > 0) {
+        const productIds = products.map((p: any) => p.id);
+
+        // Get current VAT
+        const { data: settings } = await supabase
+          .from('settings')
+          .select('vat_percent')
+          .eq('tenant_id', tenant.tenantId)
+          .single();
+        const vatPercent = Number(settings?.vat_percent ?? 18);
+
+        // Get current prices for these products
+        const { data: currentRows, error: currentErr } = await supabase
+          .from('product_supplier_current_price')
+          .select('product_id,supplier_id,cost_price')
+          .eq('tenant_id', tenant.tenantId)
+          .in('product_id', productIds);
+
+        if (!currentErr && currentRows && currentRows.length > 0) {
+          for (const row of currentRows as any[]) {
+            const cost = Number(row.cost_price);
+            if (!Number.isFinite(cost) || cost < 0) continue;
+
+            const base = cost + cost * (newMargin / 100);
+            const sell = base + base * (vatPercent / 100);
+            const sellPrice = Math.round((sell + Number.EPSILON) * 100) / 100;
+
+            await supabase.from('price_entries').insert({
+              tenant_id: tenant.tenantId,
+              product_id: row.product_id,
+              supplier_id: row.supplier_id,
+              cost_price: cost,
+              margin_percent: newMargin,
+              sell_price: sellPrice,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error recalculating prices after category margin update', err);
+      // לא מפילים את הבקשה – הקטגוריה עודכנה, הרה-חישוב הוא בונוס
+    }
+  }
+
   return res.json(data);
 });
 
@@ -141,7 +199,7 @@ router.delete('/:id', requireAuth, requireTenant, async (req, res) => {
         .insert({
           tenant_id: tenant.tenantId,
           name: generalName,
-          default_margin_percent: 0,
+          default_margin_percent: 30,
           is_active: true,
           created_by: user.id,
         })

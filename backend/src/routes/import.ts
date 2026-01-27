@@ -202,11 +202,12 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     // Get settings for VAT
     const { data: settings } = await supabase
       .from('settings')
-      .select('vat_percent')
+      .select('vat_percent,global_margin_percent')
       .eq('tenant_id', tenant.tenantId)
       .single();
 
     const vatPercent = settings?.vat_percent || 18;
+    const globalMarginPercent = settings?.global_margin_percent ?? 30;
 
     // OVERWRITE mode: delete all tenant data
     if (mode === 'overwrite') {
@@ -269,24 +270,29 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     if (defaultCategory) {
       defaultCategoryId = defaultCategory.id;
     } else {
-      const { data: newCategory } = await supabase
+      const { data: newCategory, error: defaultCategoryInsertError } = await supabase
         .from('categories')
         .insert({
           tenant_id: tenant.tenantId,
           name: 'כללי',
-          default_margin_percent: 0,
+          default_margin_percent: globalMarginPercent,
           is_active: true,
           created_by: user.id,
         })
         .select('id')
         .single();
-      defaultCategoryId = newCategory!.id;
+
+      if (!newCategory || defaultCategoryInsertError) {
+        console.error('Failed to create default category during import:', defaultCategoryInsertError);
+        throw new Error('שגיאה ביצירת קטגוריה כללית בעת ייבוא הנתונים');
+      }
+
+      defaultCategoryId = newCategory.id;
     }
 
     // Process each row
     for (const row of rows) {
       // Upsert supplier
-      const supplierNameNorm = row.supplier.toLowerCase();
       let supplierId: string;
 
       const { data: existingSupplier } = await supabase
@@ -300,7 +306,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       if (existingSupplier) {
         supplierId = existingSupplier.id;
       } else {
-        const { data: newSupplier } = await supabase
+        const { data: newSupplier, error: supplierInsertError } = await supabase
           .from('suppliers')
           .insert({
             tenant_id: tenant.tenantId,
@@ -310,7 +316,17 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           })
           .select('id')
           .single();
-        supplierId = newSupplier!.id;
+
+        if (!newSupplier || supplierInsertError) {
+          console.error('Failed to create supplier during import, skipping row:', {
+            row,
+            error: supplierInsertError,
+          });
+          stats.pricesSkipped++;
+          continue;
+        }
+
+        supplierId = newSupplier.id;
         stats.suppliersCreated++;
       }
 
@@ -330,7 +346,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         if (existingCategory) {
           categoryId = existingCategory.id;
         } else {
-          const { data: newCategory } = await supabase
+          const { data: newCategory, error: categoryInsertError } = await supabase
             .from('categories')
             .insert({
               tenant_id: tenant.tenantId,
@@ -341,8 +357,17 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
             })
             .select('id')
             .single();
-          categoryId = newCategory!.id;
-          stats.categoriesCreated++;
+
+          if (!newCategory || categoryInsertError) {
+            console.error('Failed to create category during import, falling back to default category:', {
+              row,
+              error: categoryInsertError,
+            });
+            categoryId = defaultCategoryId;
+          } else {
+            categoryId = newCategory.id;
+            stats.categoriesCreated++;
+          }
         }
       }
 
@@ -362,7 +387,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       if (existingProduct) {
         productId = existingProduct.id;
       } else {
-        const { data: newProduct } = await supabase
+        const { data: newProduct, error: productInsertError } = await supabase
           .from('products')
           .insert({
             tenant_id: tenant.tenantId,
@@ -375,7 +400,17 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           })
           .select('id')
           .single();
-        productId = newProduct!.id;
+
+        if (!newProduct || productInsertError) {
+          console.error('Failed to create product during import, skipping row:', {
+            row,
+            error: productInsertError,
+          });
+          stats.pricesSkipped++;
+          continue;
+        }
+
+        productId = newProduct.id;
         stats.productsCreated++;
       }
 
@@ -386,8 +421,12 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         .eq('id', categoryId)
         .single();
 
-      const marginPercent = category?.default_margin_percent || 0;
-      const sellPrice = calcSellPrice(row.price, marginPercent, vatPercent);
+      const marginPercent = category?.default_margin_percent ?? globalMarginPercent;
+      const sellPrice = calcSellPrice({
+        cost_price: row.price,
+        margin_percent: marginPercent,
+        vat_percent: vatPercent,
+      });
 
       // Check current price
       const { data: currentPrice } = await supabase

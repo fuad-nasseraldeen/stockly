@@ -37,6 +37,7 @@
 PORT=3001
 FRONTEND_URL=https://your-frontend.vercel.app
 SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_public_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 

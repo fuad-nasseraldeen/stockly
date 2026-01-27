@@ -26,15 +26,29 @@ async function getVatPercent(tenantId: string): Promise<number> {
 }
 
 async function getCategoryDefaultMargin(tenantId: string, categoryId: string | null | undefined): Promise<number> {
-  if (!categoryId) return 0;
+  if (!categoryId) {
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('global_margin_percent')
+      .eq('tenant_id', tenantId)
+      .single();
+    return Number(settings?.global_margin_percent ?? 30);
+  }
   const { data } = await supabase
     .from('categories')
     .select('default_margin_percent')
     .eq('tenant_id', tenantId)
     .eq('id', categoryId)
     .single();
-  if (!data) return 0;
-  return Number(data.default_margin_percent ?? 0);
+  if (!data) {
+    const { data: settings } = await supabase
+      .from('settings')
+      .select('global_margin_percent')
+      .eq('tenant_id', tenantId)
+      .single();
+    return Number(settings?.global_margin_percent ?? 30);
+  }
+  return Number(data.default_margin_percent ?? 30);
 }
 
 // Get all products
@@ -112,7 +126,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     // Shape response
-    const result = (products ?? []).map((p: any) => {
+    let result = (products ?? []).map((p: any) => {
       const summary = summaryByProductId.get(p.id) ?? null;
       return {
         id: p.id,
@@ -123,6 +137,11 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         summary,
       };
     });
+
+    // When filtering by supplier – hide products that don't have a price for that supplier
+    if (supplierId) {
+      result = result.filter((p: any) => p.prices && p.prices.length > 0);
+    }
 
     // Sort options based on summary
     const getMin = (r: any) => Number(r.summary?.min_current_cost_price ?? Number.POSITIVE_INFINITY);
