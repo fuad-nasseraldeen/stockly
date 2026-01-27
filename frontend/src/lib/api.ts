@@ -1,6 +1,25 @@
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+function resolveApiBaseUrl(): string {
+  const configured = (import.meta.env.VITE_API_URL ?? '').trim();
+
+  // In local dev it's easy to accidentally keep a Vercel URL in env; prefer localhost.
+  // This keeps dev/test predictable even if a global env var is set.
+  const isLocalHost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  if (isLocalHost && configured.includes('.vercel.app')) {
+    return 'http://localhost:3001';
+  }
+
+  if (configured) return configured.replace(/\/$/, '');
+
+  // Default: dev -> local backend, prod -> expect VITE_API_URL or rewrites on hosting.
+  return import.meta.env.DEV ? 'http://localhost:3001' : '';
+}
+
+export const API_URL = resolveApiBaseUrl();
 
 // Type definitions
 export type Product = {
@@ -91,7 +110,8 @@ export async function apiRequest<T>(
     headers['x-tenant-id'] = tenantId;
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const url = API_URL ? `${API_URL}${endpoint}` : endpoint;
+  const response = await fetch(url, {
     ...options,
     headers,
   });
@@ -226,6 +246,15 @@ export const settingsApi = {
     apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
+    }),
+};
+
+// Tenant maintenance API
+export const tenantApi = {
+  reset: (confirmation: 'DELETE'): Promise<{ message?: string }> =>
+    apiRequest('/api/tenant/reset', {
+      method: 'POST',
+      body: JSON.stringify({ confirmation }),
     }),
 };
 

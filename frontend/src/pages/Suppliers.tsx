@@ -32,6 +32,7 @@ export default function Suppliers() {
     suppliers.filter((s) =>
       s.name.toLowerCase().includes(search.toLowerCase())
     );
+  const totalSuppliers = suppliers.length;
 
   const resetForm = () => {
     setForm({ id: undefined, name: '', phone: '', notes: '' });
@@ -103,7 +104,9 @@ export default function Suppliers() {
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">ספקים</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">נהל את כל הספקים שאתה עובד איתם</p>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            נהל את כל הספקים שאתה עובד איתם • סה״כ {totalSuppliers} ספקים
+          </p>
         </div>
         <Button onClick={openCreate} size="lg" className="shadow-md hover:shadow-lg">
           <Plus className="w-4 h-4 ml-2" />

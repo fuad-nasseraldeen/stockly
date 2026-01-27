@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useTenant } from '../contexts/TenantContext';
 import { Button } from './ui/button';
-import { Select } from './ui/select';
 import { ChevronDown, Building2 } from 'lucide-react';
 
 export function TenantSwitcher() {

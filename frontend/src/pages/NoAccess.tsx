@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase';
 
 export default function NoAccess() {
   const navigate = useNavigate();
-  const { refetchTenants, setCurrentTenant } = useTenant();
+  const { refetchTenants } = useTenant();
   const [loading, setLoading] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 

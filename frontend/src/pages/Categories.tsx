@@ -31,6 +31,7 @@ export default function Categories() {
     categories.filter((c) =>
       c.name.toLowerCase().includes(search.toLowerCase())
     );
+  const totalCategories = categories.length;
 
   const resetForm = () => {
     setForm({ id: undefined, name: '', default_margin_percent: '' });
@@ -107,7 +108,9 @@ export default function Categories() {
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">קטגוריות</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">נהל קטגוריות ומסלולי רווח ברירת מחדל</p>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            נהל קטגוריות ומסלולי רווח ברירת מחדל • סה״כ {totalCategories} קטגוריות
+          </p>
         </div>
         <Button onClick={openCreate} size="lg" className="shadow-md hover:shadow-lg">
           <Plus className="w-4 h-4 ml-2" />

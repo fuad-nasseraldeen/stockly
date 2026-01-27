@@ -53,13 +53,13 @@ export default function Signup() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="fullName">שם מלא</Label>
+              <Label htmlFor="fullName">שם משתמש</Label>
               <Input
                 id="fullName"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                placeholder="שם מלא"
+                placeholder="לדוגמה: פואד מרקט"
               />
             </div>
             <div className="space-y-2">

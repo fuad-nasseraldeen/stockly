@@ -25,6 +25,8 @@ export default function Products() {
   const [historyProductId, setHistoryProductId] = useState<string | null>(null);
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10
 
   const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
@@ -67,12 +69,20 @@ export default function Products() {
     setHistorySupplierId(null);
   };
 
+  const totalProducts = products.length;
+  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedProducts = products.slice(startIndex, startIndex + pageSize);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">מוצרים</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">נהל את כל המוצרים והמחירים שלך</p>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            נהל את כל המוצרים והמחירים שלך • סה״כ {totalProducts} מוצרים
+          </p>
         </div>
         <Button onClick={() => navigate('/products/new')} size="lg" className="shadow-md hover:shadow-lg">
           <Plus className="w-4 h-4 ml-2" />
@@ -165,7 +175,7 @@ export default function Products() {
         </Card>
       ) : (
         <div className="space-y-5">
-          {products.map((product) => (
+          {paginatedProducts.map((product) => (
             <Card key={product.id} className="shadow-md hover:shadow-lg transition-all border-2">
               <CardHeader className="pb-4 border-b-2 border-border/50">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -272,6 +282,27 @@ export default function Products() {
               </CardContent>
             </Card>
           ))}
+          <div className="flex items-center justify-center gap-4 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              קודם
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              עמוד {currentPage} מתוך {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              הבא
+            </Button>
+          </div>
         </div>
       )}
 

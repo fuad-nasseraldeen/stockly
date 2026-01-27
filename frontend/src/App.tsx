@@ -17,8 +17,6 @@ import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
 import ImportExport from './pages/ImportExport';
-import NoAccess from './pages/NoAccess';
-import CreateTenant from './pages/CreateTenant';
 import { OnboardingRouter } from './components/OnboardingRouter';
 
 function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {

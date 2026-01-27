@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useTenant } from '../contexts/TenantContext';
 import { invitesApi } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import NoAccess from '../pages/NoAccess';
 import CreateTenant from '../pages/CreateTenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
@@ -13,7 +14,7 @@ type OnboardingStep = 'loading' | 'checking' | 'choice' | 'no-access' | 'create'
 export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentTenant, tenants, isLoading, refetchTenants } = useTenant();
+  const { tenants, isLoading, refetchTenants } = useTenant();
   const [step, setStep] = useState<OnboardingStep>('loading');
   const [checkingInvites, setCheckingInvites] = useState(false);
   const hasCheckedInvitesRef = useRef(false);
@@ -125,7 +126,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
               בחר את האפשרות המתאימה לך
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <Button
               onClick={() => navigate('/create-tenant')}
               className="w-full h-auto p-6 flex flex-col items-start gap-3"
@@ -154,6 +155,22 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
             </Button>
+
+            <div className="pt-2 border-t border-border flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground text-center">
+                התחברת עם אימייל לא נכון?
+              </p>
+              <Button
+                variant="ghost"
+                className="w-full text-sm"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate('/login', { replace: true });
+                }}
+              >
+                החלף משתמש (יציאה והתחברות מחדש)
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

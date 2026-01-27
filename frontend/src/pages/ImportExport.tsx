@@ -1,23 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTenant } from '../contexts/TenantContext';
-import { importApi, exportApi } from '../lib/api';
+import { importApi, exportApi, tenantApi } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Select } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Upload, Download, FileSpreadsheet, Trash2, AlertTriangle } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
 type ImportMode = 'merge' | 'overwrite';
 
 export default function ImportExport() {
   const { currentTenant } = useTenant();
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [mode, setMode] = useState<ImportMode>('merge');
   const [preview, setPreview] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [previewPage, setPreviewPage] = useState(1);
+  const previewPageSize = 10;
+
+  // Simulated progress while הייבוא רץ – כדי לתת תחושת התקדמות בקבצים גדולים
+  useEffect(() => {
+    if (!isImporting || !preview?.totalRows) {
+      return;
+    }
+
+    setImportProgress(1);
+
+    const interval = window.setInterval(() => {
+      setImportProgress((prev) => {
+        if (!isImporting) return prev;
+        if (prev >= 99) return prev;
+        return prev + 1.5;
+      });
+    }, 250);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [isImporting, preview?.totalRows]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -32,6 +58,7 @@ export default function ImportExport() {
     try {
       const result = await importApi.preview(selectedFile);
       setPreview(result);
+      setPreviewPage(1);
     } catch (error: any) {
       alert(error.message || 'שגיאה בתצוגה מקדימה');
     } finally {
@@ -50,9 +77,19 @@ export default function ImportExport() {
     }
 
     setLoading(true);
+    setIsImporting(true);
+    setImportProgress(1);
     try {
       const result = await importApi.apply(file, mode, mode === 'overwrite' ? deleteConfirm : undefined);
       alert(`ייבוא הושלם בהצלחה!\nספקים: ${result.stats?.suppliersCreated || 0}\nקטגוריות: ${result.stats?.categoriesCreated || 0}\nמוצרים: ${result.stats?.productsCreated || 0}\nמחירים: ${result.stats?.pricesInserted || 0}`);
+
+      // לרענן נתונים רלוונטיים אחרי ייבוא
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
+        queryClient.invalidateQueries({ queryKey: ['categories'] }),
+      ]);
+
       setFile(null);
       setPreview(null);
       setDeleteConfirm('');
@@ -61,6 +98,8 @@ export default function ImportExport() {
       alert(error.message || 'שגיאה בייבוא');
     } finally {
       setLoading(false);
+      setIsImporting(false);
+      setImportProgress(0);
     }
   };
 
@@ -72,26 +111,16 @@ export default function ImportExport() {
 
     setLoading(true);
     try {
-      const { supabase } = await import('../lib/supabase');
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/tenant/reset`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` }),
-          ...(currentTenant && { 'x-tenant-id': currentTenant.id }),
-        },
-        body: JSON.stringify({ confirmation: 'DELETE' }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
-        throw new Error(error.error || 'הבקשה נכשלה');
-      }
-
+      await tenantApi.reset('DELETE');
       alert('נתוני הטננט אופסו בהצלחה');
+
+      // לרענן נתונים אחרי איפוס
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
+        queryClient.invalidateQueries({ queryKey: ['categories'] }),
+      ]);
+
       setResetDeleteConfirm('');
       setResetConfirmOpen(false);
     } catch (error: any) {
@@ -116,7 +145,7 @@ export default function ImportExport() {
   };
 
   return (
-    <div className="space-y-6">
+  <div className="space-y-6 relative">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">ייבוא וייצוא</h1>
@@ -202,19 +231,59 @@ export default function ImportExport() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {preview.preview.slice(0, 10).map((row: any, idx: number) => (
-                        <TableRow key={idx}>
-                          <TableCell>{row.product_name}</TableCell>
-                          <TableCell>{row.supplier}</TableCell>
-                          <TableCell>{row.price}</TableCell>
-                          <TableCell>{row.category}</TableCell>
-                        </TableRow>
-                      ))}
+                      {preview.preview
+                        .slice(
+                          (previewPage - 1) * previewPageSize,
+                          (previewPage - 1) * previewPageSize + previewPageSize
+                        )
+                        .map((row: any, idx: number) => (
+                          <TableRow key={idx}>
+                            <TableCell>{row.product_name}</TableCell>
+                            <TableCell>{row.supplier}</TableCell>
+                            <TableCell>{row.price}</TableCell>
+                            <TableCell>{row.category}</TableCell>
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
-                  {preview.totalRows > 10 && (
-                    <div className="p-2 text-sm text-muted-foreground text-center">
-                      מציג 10 מתוך {preview.totalRows} שורות
+                  {preview.totalRows > previewPageSize && (
+                    <div className="p-3 flex items-center justify-between text-xs text-muted-foreground gap-4">
+                      <span>
+                        מציג{' '}
+                        {Math.min(preview.totalRows, previewPage * previewPageSize)} מתוך{' '}
+                        {preview.totalRows} שורות
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                          disabled={previewPage === 1}
+                        >
+                          קודם
+                        </Button>
+                        <span>
+                          עמוד {previewPage} מתוך{' '}
+                          {Math.max(1, Math.ceil(preview.totalRows / previewPageSize))}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setPreviewPage((p) =>
+                              Math.min(
+                                Math.max(1, Math.ceil(preview.totalRows / previewPageSize)),
+                                p + 1
+                              )
+                            )
+                          }
+                          disabled={
+                            previewPage >= Math.max(1, Math.ceil(preview.totalRows / previewPageSize))
+                          }
+                        >
+                          הבא
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -351,6 +420,27 @@ export default function ImportExport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Global loading overlay for long operations */}
+      {loading && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center pointer-events-none">
+          <div className="mb-6 px-4 py-3 rounded-full bg-background border-2 border-border shadow-lg flex items-center gap-2 text-sm pointer-events-auto">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            {isImporting && preview?.totalRows ? (
+              <span>
+                מייבא נתונים...{' '}
+                {Math.min(
+                  preview.totalRows,
+                  Math.max(1, Math.round((importProgress / 100) * preview.totalRows))
+                )}{' '}
+                מתוך {preview.totalRows} שורות ({Math.min(100, Math.max(1, Math.round(importProgress)))}%)
+              </span>
+            ) : (
+              <span>מייבא נתונים... זה יכול לקחת כמה רגעים לקובץ גדול</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

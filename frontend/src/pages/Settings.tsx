@@ -5,25 +5,42 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
+import { useTenant } from '../contexts/TenantContext';
+import { tenantsApi } from '../lib/api';
 
 export default function Settings() {
   const { data: settings, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
+  const { currentTenant } = useTenant();
 
   const [vat, setVat] = useState<string>(() =>
     settings?.vat_percent != null ? String(settings.vat_percent) : '18'
   );
-  const [margin, setMargin] = useState<string>('');
+  const [margin, setMargin] = useState<string>(() =>
+    settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '30'
+  );
 
   const [userEmail, setUserEmail] = useState<string>('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
 
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'owner' | 'worker'>('worker');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.email) {
-        setUserEmail(session.user.email);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        setUserEmail(user.email);
+      }
+      const metaFullName =
+        (user?.user_metadata as any)?.full_name ?? '';
+      if (metaFullName && typeof metaFullName === 'string') {
+        setFullName(metaFullName);
       }
     });
   }, []);
@@ -31,6 +48,8 @@ export default function Settings() {
   const [savingVat, setSavingVat] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  const isOwner = currentTenant?.role === 'owner';
 
   const handleSaveVat = async (): Promise<void> => {
     const vatValue = vat.trim() ? Number(vat) : NaN;
@@ -41,7 +60,14 @@ export default function Settings() {
     try {
       setSavingVat(true);
       setProfileMessage(null);
-      await updateSettings.mutateAsync({ vat_percent: vatValue });
+      const marginValue = margin.trim() ? Number(margin) : NaN;
+      const payload: { vat_percent: number; global_margin_percent?: number } = {
+        vat_percent: vatValue,
+      };
+      if (!Number.isNaN(marginValue)) {
+        payload.global_margin_percent = marginValue;
+      }
+      await updateSettings.mutateAsync(payload);
     } catch (error) {
       console.error('Error updating settings:', error);
       setProfileMessage('שגיאה בעדכון הגדרות מס/רווח');
@@ -79,6 +105,42 @@ export default function Settings() {
     } catch (error) {
       console.error('Error updating profile:', error);
       setProfileMessage('שגיאה בעדכון פרופיל');
+    }
+  };
+
+  const handleSendInvite = async (): Promise<void> => {
+    if (!currentTenant) {
+      setInviteError('אין טננט פעיל');
+      return;
+    }
+
+    const email = inviteEmail.trim();
+    if (!email) {
+      setInviteError('נא להזין כתובת אימייל');
+      return;
+    }
+
+    try {
+      setInviteLoading(true);
+      setInviteError(null);
+      setInviteMessage(null);
+      setInviteUrl(null);
+
+      const result = await tenantsApi.invite(currentTenant.id, {
+        email,
+        role: inviteRole,
+      });
+
+      setInviteMessage('ההזמנה נוצרה בהצלחה. שלח את הקישור או ודא שהמוזמן מתחבר עם האימייל הזה.');
+      if ((result as any)?.inviteUrl) {
+        setInviteUrl((result as any).inviteUrl);
+      }
+      setInviteEmail('');
+    } catch (error: any) {
+      console.error('Error sending invite:', error);
+      setInviteError(error?.message || 'שגיאה ביצירת הזמנה');
+    } finally {
+      setInviteLoading(false);
     }
   };
 
@@ -129,11 +191,91 @@ export default function Settings() {
               </p>
             </div>
           </div>
-          <Button onClick={handleSaveVat} disabled={savingVat || isLoading}>
-            {savingVat ? 'שומר...' : 'שמור הגדרות מחירים'}
-          </Button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <Button onClick={handleSaveVat} disabled={savingVat || isLoading}>
+              {savingVat ? 'מחשב ומעדכן מחירים...' : 'שמור הגדרות מחירים'}
+            </Button>
+            {savingVat && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                <span>מחשב מחירי מכירה לכל המוצרים והספקים. זה יכול לקחת כמה רגעים.</span>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
+
+      {/* Invite team members (owners only) */}
+      {isOwner && (
+        <Card className="shadow-md border-2">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              הזמנת משתמשים לחנות
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              הזמן עובדים או שותפים לחנות הנוכחית באמצעות כתובת אימייל. המוזמן יצטרך להתחבר עם אותו אימייל כדי לקבל גישה.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="inviteEmail">אימייל של המוזמן</Label>
+                <Input
+                  id="inviteEmail"
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="name@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="inviteRole">תפקיד</Label>
+                <select
+                  id="inviteRole"
+                  className="border-input bg-background px-3 py-2 rounded-md text-sm"
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as 'owner' | 'worker')}
+                >
+                  <option value="worker">עובד</option>
+                  <option value="owner">בעלים נוסף</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={handleSendInvite}
+                disabled={inviteLoading}
+                className="w-full sm:w-auto gap-2"
+              >
+                {inviteLoading ? (
+                  'שולח הזמנה...'
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    שלח הזמנה
+                  </>
+                )}
+              </Button>
+              {inviteMessage && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">{inviteMessage}</p>
+              )}
+              {inviteError && (
+                <p className="text-xs text-destructive">{inviteError}</p>
+              )}
+              {inviteUrl && (
+                <div className="mt-2 p-3 bg-muted rounded-lg border-2 border-border text-xs break-all">
+                  <p className="font-medium mb-1">קישור הזמנה:</p>
+                  <p>{inviteUrl}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    שלח קישור זה למוזמן, או שהוא יכול פשוט להתחבר עם האימייל שהזנת – המערכת תזהה את ההזמנה אוטומטית.
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Profile settings */}
       <Card className="shadow-md border-2">
@@ -159,7 +301,7 @@ export default function Settings() {
                 id="fullName"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="שם מלא חדש (אופציונלי)"
+                placeholder={fullName ? fullName : 'שם משתמש (אופציונלי)'}
               />
             </div>
           </div>
