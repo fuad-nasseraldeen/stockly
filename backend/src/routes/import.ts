@@ -469,7 +469,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      const firstIssue = error.issues?.[0];
+      return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     console.error('Import apply error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
