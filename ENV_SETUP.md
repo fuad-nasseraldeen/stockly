@@ -23,6 +23,7 @@
 PORT=3001
 FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=your_anon_public_key_here
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -33,6 +34,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | `PORT` | פורט השרת (ברירת מחדל: 3001) | `3001` |
 | `FRONTEND_URL` | URL של ה-Frontend (ל-CORS) | `http://localhost:5173` |
 | `SUPABASE_URL` | Project URL מ-Supabase | `https://abc123.supabase.co` |
+| `SUPABASE_ANON_KEY` | Anon Public Key מ-Supabase (נדרש לאימות טוקנים) | `eyJhbGci...` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service Role Secret Key (סודי!) | `eyJhbGci...` |
 
 ---
@@ -56,6 +58,12 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | `VITE_SUPABASE_ANON_KEY` | Anon Public Key מ-Supabase | `eyJhbGci...` |
 
 > ⚠️ **חשוב:** ב-Vite, כל משתנה חייב להתחיל ב-`VITE_` כדי להיות נגיש ב-frontend!
+
+### עבודה בלוקאל מול Vercel (Production/Preview)
+
+- **לוקאל/פיתוח**: שים ב־`frontend/.env` את `VITE_API_URL=http://localhost:3001` והרץ `npm run dev`.
+- **Vercel**: הוסף `VITE_API_URL` ב־Project Settings → Environment Variables לכתובת ה־backend שלך (למשל `https://your-backend.vercel.app`), והגדר אותו גם ל־**Production** וגם ל־**Preview**.
+- **טיפ חשוב**: אם בטעות נשאר לך `VITE_API_URL` שמצביע ל־Vercel בזמן שאתה עובד על `localhost`, הפרונט ינסה להעדיף אוטומטית `http://localhost:3001` כדי שלא “תיתקע” על פרודקשן בזמן פיתוח.
 
 ---
 
@@ -104,6 +112,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiY2RlZmd
 PORT=3001
 FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://abcdefghijklmnop.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiY2RlZmdoaWprbG1ub3AiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYxNjIzOTAyMn0.xxxxx
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiY2RlZmdoaWprbG1ub3AiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjE2MjM5MDIyfQ.yyyyy
 ```
 

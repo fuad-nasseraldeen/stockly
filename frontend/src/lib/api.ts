@@ -71,6 +71,7 @@ export type Supplier = {
 export type Settings = {
   tenant_id: string;
   vat_percent: number;
+  global_margin_percent?: number | null;
   updated_at: string;
 };
 
@@ -242,7 +243,7 @@ export const suppliersApi = {
 export const settingsApi = {
   get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
-  update: (data: { vat_percent: number }): Promise<Settings> =>
+  update: (data: { vat_percent: number; global_margin_percent?: number }): Promise<Settings> =>
     apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
