@@ -200,11 +200,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     }
 
     // Get settings for VAT
-    const { data: settings } = await supabase
+    const { data: settings, error: settingsError } = await supabase
       .from('settings')
       .select('vat_percent,global_margin_percent')
       .eq('tenant_id', tenant.tenantId)
-      .single();
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error('Error fetching settings:', settingsError);
+    }
 
     const vatPercent = settings?.vat_percent || 18;
     const globalMarginPercent = settings?.global_margin_percent ?? 30;
@@ -227,24 +231,32 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         tenant_id: tenant.tenantId,
         vat_percent: 18,
       });
-      
-      // Ensure default category exists
-      const { data: defaultCategory } = await supabase
+
+      // Ensure default category exists (handle duplicates safely)
+      const { data: defaultCategories, error: defaultCategoryCheckError } = await supabase
         .from('categories')
         .select('id')
         .eq('tenant_id', tenant.tenantId)
         .eq('name', 'כללי')
-        .eq('is_active', true)
-        .single();
-      
+        .eq('is_active', true);
+
+      if (defaultCategoryCheckError) {
+        console.error('Error checking default category in overwrite mode:', defaultCategoryCheckError);
+      }
+
+      const defaultCategory = Array.isArray(defaultCategories) ? defaultCategories[0] : null;
+
       if (!defaultCategory) {
-        await supabase.from('categories').insert({
+        const { error: insertError } = await supabase.from('categories').insert({
           tenant_id: tenant.tenantId,
           name: 'כללי',
           default_margin_percent: 0,
           is_active: true,
           created_by: user.id,
         });
+        if (insertError) {
+          console.error('Error creating default category in overwrite mode:', insertError);
+        }
       }
     }
 
@@ -257,15 +269,20 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       pricesSkipped: 0,
     };
 
-    // Get or create default category
+    // Get or create default category (handle duplicates safely)
     let defaultCategoryId: string;
-    const { data: defaultCategory } = await supabase
+    const { data: defaultCategories, error: defaultCategoryError } = await supabase
       .from('categories')
       .select('id')
       .eq('tenant_id', tenant.tenantId)
       .eq('name', 'כללי')
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
+
+    if (defaultCategoryError) {
+      console.error('Error fetching default category:', defaultCategoryError);
+    }
+
+    const defaultCategory = Array.isArray(defaultCategories) ? defaultCategories[0] : null;
 
     if (defaultCategory) {
       defaultCategoryId = defaultCategory.id;
@@ -295,15 +312,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       // Upsert supplier
       let supplierId: string;
 
-      const { data: existingSupplier } = await supabase
+      const { data: existingSupplier, error: supplierCheckError } = await supabase
         .from('suppliers')
         .select('id')
         .eq('tenant_id', tenant.tenantId)
         .eq('is_active', true)
         .ilike('name', row.supplier)
-        .single();
+        .maybeSingle();
 
-      if (existingSupplier) {
+      if (existingSupplier && !supplierCheckError) {
         supplierId = existingSupplier.id;
       } else {
         const { data: newSupplier, error: supplierInsertError } = await supabase
@@ -335,15 +352,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       let categoryId: string = defaultCategoryId;
 
       if (categoryName !== 'כללי') {
-        const { data: existingCategory } = await supabase
+        const { data: existingCategory, error: categoryCheckError } = await supabase
           .from('categories')
           .select('id')
           .eq('tenant_id', tenant.tenantId)
           .eq('is_active', true)
           .ilike('name', categoryName)
-          .single();
+          .maybeSingle();
 
-        if (existingCategory) {
+        if (existingCategory && !categoryCheckError) {
           categoryId = existingCategory.id;
         } else {
           const { data: newCategory, error: categoryInsertError } = await supabase
@@ -375,16 +392,16 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       const productNameNorm = normalizeName(row.product_name);
       let productId: string;
 
-      const { data: existingProduct } = await supabase
+      const { data: existingProduct, error: productCheckError } = await supabase
         .from('products')
         .select('id')
         .eq('tenant_id', tenant.tenantId)
         .eq('is_active', true)
         .eq('name_norm', productNameNorm)
         .eq('category_id', categoryId)
-        .single();
+        .maybeSingle();
 
-      if (existingProduct) {
+      if (existingProduct && !productCheckError) {
         productId = existingProduct.id;
       } else {
         const { data: newProduct, error: productInsertError } = await supabase
@@ -415,11 +432,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       }
 
       // Get category default margin
-      const { data: category } = await supabase
+      const { data: category, error: categoryMarginError } = await supabase
         .from('categories')
         .select('default_margin_percent')
         .eq('id', categoryId)
-        .single();
+        .maybeSingle();
+
+      if (categoryMarginError) {
+        console.error('Error fetching category margin:', categoryMarginError);
+      }
 
       const marginPercent = category?.default_margin_percent ?? globalMarginPercent;
       const sellPrice = calcSellPrice({
@@ -429,7 +450,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       });
 
       // Check current price
-      const { data: currentPrice } = await supabase
+      const { data: currentPrice, error: priceCheckError } = await supabase
         .from('price_entries')
         .select('cost_price, sell_price')
         .eq('tenant_id', tenant.tenantId)
@@ -437,10 +458,10 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         .eq('supplier_id', supplierId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      // Skip if price is the same
-      if (currentPrice && 
+      // Skip if price is the same (only if we successfully fetched a price)
+      if (!priceCheckError && currentPrice && 
           Number(currentPrice.cost_price) === row.price &&
           Number(currentPrice.sell_price) === sellPrice) {
         stats.pricesSkipped++;
@@ -448,7 +469,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       }
 
       // Insert new price entry
-      await supabase
+      const { error: priceInsertError } = await supabase
         .from('price_entries')
         .insert({
           tenant_id: tenant.tenantId,
@@ -459,6 +480,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           sell_price: sellPrice,
           created_by: user.id,
         });
+
+      if (priceInsertError) {
+        console.error('Failed to insert price entry during import, skipping row:', {
+          row,
+          error: priceInsertError,
+        });
+        stats.pricesSkipped++;
+        continue;
+      }
 
       stats.pricesInserted++;
     }
@@ -473,7 +503,17 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     console.error('Import apply error:', error);
-    res.status(500).json({ error: 'שגיאת שרת' });
+    const errorMessage = error instanceof Error ? error.message : 'שגיאת שרת לא ידועה';
+    console.error('Error details:', {
+      message: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      tenantId: (req as any).tenant?.tenantId,
+      userId: (req as any).user?.id,
+    });
+    res.status(500).json({ 
+      error: 'שגיאת שרת',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+    });
   }
 });
 

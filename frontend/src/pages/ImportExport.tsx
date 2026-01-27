@@ -112,7 +112,7 @@ export default function ImportExport() {
     setLoading(true);
     try {
       await tenantApi.reset('DELETE');
-      alert('נתוני הטננט אופסו בהצלחה');
+      alert('נתוני החנות אופסו בהצלחה');
 
       // לרענן נתונים אחרי איפוס
       await Promise.all([
@@ -336,7 +336,7 @@ export default function ImportExport() {
         <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle className="text-destructive">איפוס נתונים</CardTitle>
-            <CardDescription>מחק את כל נתוני הטננט (לא ניתן לשחזר)</CardDescription>
+            <CardDescription>מחק את כל נתוני החנות (לא ניתן לשחזר)</CardDescription>
           </CardHeader>
           <CardContent>
             <Button
@@ -359,7 +359,7 @@ export default function ImportExport() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-destructive font-medium">
-              זה ימחק את כל נתוני הטננט וייבא מחדש מהקובץ. פעולה זו לא ניתנת לביטול!
+              זה ימחק את כל נתוני החנות וייבא מחדש מהקובץ. פעולה זו לא ניתנת לביטול!
             </p>
             <div className="space-y-2">
               <Label htmlFor="delete-confirm">הקלד DELETE לאישור:</Label>
@@ -394,7 +394,7 @@ export default function ImportExport() {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-destructive font-medium">
-              זה ימחק את כל נתוני הטננט. פעולה זו לא ניתנת לביטול!
+              זה ימחק את כל נתוני החנות. פעולה זו לא ניתנת לביטול!
             </p>
             <div className="space-y-2">
               <Label htmlFor="reset-delete-confirm">הקלד DELETE לאישור:</Label>

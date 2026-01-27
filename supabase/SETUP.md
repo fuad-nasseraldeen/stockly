@@ -121,7 +121,7 @@ SELECT get_tenant_role('some-tenant-uuid');
    ```bash
    POST /api/tenants
    {
-     "name": "הטננט הראשון שלי"
+     "name": "החנות הראשון שלי"
    }
    ```
    זה ייצור:

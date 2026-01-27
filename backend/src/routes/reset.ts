@@ -55,7 +55,7 @@ router.post('/', requireAuth, requireTenant, ownerOnly, async (req, res) => {
       });
     }
 
-    res.json({ message: 'נתוני הטננט אופסו בהצלחה' });
+    res.json({ message: 'נתוני החנות אופסו בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
       const firstIssue = error.issues?.[0];
