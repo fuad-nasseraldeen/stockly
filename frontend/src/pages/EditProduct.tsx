@@ -83,8 +83,6 @@ export default function EditProduct() {
     navigate('/products');
   };
 
-  const selectedCategory = categories.find((c) => c.id === categoryId);
-  const defaultMargin = selectedCategory?.default_margin_percent ?? 0;
   const vatPercent = settings?.vat_percent ?? 18;
   const globalMarginPercent = settings?.global_margin_percent ?? 30;
 
