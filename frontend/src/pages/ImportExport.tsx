@@ -160,7 +160,7 @@ export default function ImportExport() {
           <CardDescription>הורד קבצי CSV עם נתוני המחירים</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <Button onClick={exportApi.downloadCurrent} variant="outline" className="gap-2">
               <Download className="w-4 h-4" />
               ייצא מחירים נוכחיים

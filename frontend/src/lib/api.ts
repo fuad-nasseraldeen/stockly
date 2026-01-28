@@ -82,6 +82,23 @@ export type Tenant = {
   created_at: string;
 };
 
+export type TenantMember = {
+  user_id: string;
+  role: 'owner' | 'worker';
+  full_name: string | null;
+  created_at: string;
+  is_primary_owner: boolean;
+};
+
+export type TenantInvite = {
+  id: string;
+  email: string;
+  role: 'owner' | 'worker';
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+};
+
 async function getAuthToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || null;
@@ -256,6 +273,16 @@ export const tenantApi = {
     apiRequest('/api/tenant/reset', {
       method: 'POST',
       body: JSON.stringify({ confirmation }),
+    }),
+  members: (): Promise<TenantMember[]> => apiRequest<TenantMember[]>('/api/tenants/members'),
+  invites: (): Promise<TenantInvite[]> => apiRequest<TenantInvite[]>('/api/tenants/invites'),
+  removeMember: (userId: string): Promise<{ success: boolean }> =>
+    apiRequest('/api/tenants/members/' + userId, {
+      method: 'DELETE',
+    }),
+  deleteInvite: (id: string): Promise<{ success: boolean }> =>
+    apiRequest('/api/tenants/invites/' + id, {
+      method: 'DELETE',
     }),
 };
 

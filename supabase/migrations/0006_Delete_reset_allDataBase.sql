@@ -6,6 +6,5 @@ TRUNCATE TABLE
   settings,
   invites,
   memberships,
-  tenants,
-  profiles
+  tenants
 RESTART IDENTITY CASCADE;

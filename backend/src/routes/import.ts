@@ -442,7 +442,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         console.error('Error fetching category margin:', categoryMarginError);
       }
 
-      const marginPercent = category?.default_margin_percent ?? globalMarginPercent;
+      // Always use global margin percent from settings for imports
+      const marginPercent = globalMarginPercent;
       const sellPrice = calcSellPrice({
         cost_price: row.price,
         margin_percent: marginPercent,

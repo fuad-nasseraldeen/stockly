@@ -16,13 +16,28 @@ const productSchema = z.object({
 const priceSchema = z.object({
   supplier_id: z.string().uuid('חובה לבחור ספק'),
   cost_price: z.coerce.number().min(0, 'חובה להזין מחיר (0 ומעלה)'),
-  margin_percent: z.coerce.number().min(0, 'אחוז רווח חייב להיות 0 או יותר').max(500, 'אחוז רווח לא יכול להיות מעל 500').optional(),
+  // margin_percent נשמר בסכמה רק כדי לתמוך בקריאות ישנות, אבל מתעלמים ממנו בחישוב בפועל
+  margin_percent: z.coerce
+    .number()
+    .min(0)
+    .max(500)
+    .optional()
+    .optional(),
 });
 
 async function getVatPercent(tenantId: string): Promise<number> {
   const { data, error } = await supabase.from('settings').select('vat_percent').eq('tenant_id', tenantId).single();
   if (error || !data) return 18;
   return Number(data.vat_percent);
+}
+
+async function getGlobalMarginPercent(tenantId: string): Promise<number> {
+  const { data } = await supabase
+    .from('settings')
+    .select('global_margin_percent')
+    .eq('tenant_id', tenantId)
+    .single();
+  return Number(data?.global_margin_percent ?? 30);
 }
 
 async function getCategoryDefaultMargin(tenantId: string, categoryId: string | null | undefined): Promise<number> {
@@ -55,25 +70,64 @@ async function getCategoryDefaultMargin(tenantId: string, categoryId: string | n
 router.get('/', requireAuth, requireTenant, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
-    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
     const supplierId = typeof req.query.supplier_id === 'string' ? req.query.supplier_id : undefined;
     const categoryId = typeof req.query.category_id === 'string' ? req.query.category_id : undefined;
     const sort = typeof req.query.sort === 'string' ? req.query.sort : 'updated_desc';
 
-    // Base products
+    // Step 1: determine which product IDs match (fuzzy search when search term exists)
+    let productIds: string[] = [];
+
+    if (search && search.length > 0) {
+      const searchNormalized = normalizeName(search);
+
+      // Use fuzzy search function (pg_trgm similarity) to get matching product IDs
+      const { data: fuzzyMatches, error: fuzzyError } = await supabase.rpc('search_products_fuzzy', {
+        tenant_uuid: tenant.tenantId,
+        search_text: searchNormalized,
+        limit_results: 200,
+      });
+
+      if (fuzzyError) {
+        console.error('Fuzzy search error, falling back to simple search:', fuzzyError);
+        // Fallback to simple ILIKE on name_norm if fuzzy fails
+        const { data: fallbackProducts, error: fallbackErr } = await supabase
+          .from('products')
+          .select('id')
+          .eq('tenant_id', tenant.tenantId)
+          .eq('is_active', true)
+          .ilike('name_norm', `%${searchNormalized}%`);
+
+        if (fallbackErr) {
+          console.error('Fallback search error:', fallbackErr);
+          return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+        }
+        productIds = (fallbackProducts ?? []).map((p: any) => p.id);
+      } else {
+        productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
+      }
+
+      if (productIds.length === 0) {
+        return res.json([]);
+      }
+    }
+
+    // Step 2: load base products (optionally filtered by fuzzy IDs / category)
     let productsQ = supabase
       .from('products')
       .select('id,name,category_id,unit,created_at,categories(id,name,default_margin_percent)')
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true);
 
-    if (search) productsQ = productsQ.ilike('name', `%${search}%`);
+    if (productIds.length > 0) {
+      productsQ = productsQ.in('id', productIds);
+    }
     if (categoryId) productsQ = productsQ.eq('category_id', categoryId);
 
     const { data: products, error: productsErr } = await productsQ.order('name');
     if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
 
-    const productIds = (products ?? []).map((p: any) => p.id);
+    productIds = (products ?? []).map((p: any) => p.id);
     if (productIds.length === 0) return res.json([]);
 
     // Current prices per product+supplier (view)
@@ -162,12 +216,13 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const { id } = req.params;
+    // לא משתמשים יותר ב-relationship ל-product_current_price כי אין קשר מוגדר בסכימה
+    // טוענים רק את המוצר והקטגוריה, ואת המחירים הנוכחיים נטען בשאילה נפרדת למטה.
     const { data, error } = await supabase
       .from('products')
       .select(`
         *,
-        categories(id, name, default_margin_percent),
-        product_current_price(supplier_id, cost_price, margin_percent, sell_price, created_at)
+        categories(id, name, default_margin_percent)
       `)
       .eq('tenant_id', tenant.tenantId)
       .eq('id', id)
@@ -232,7 +287,7 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
       .single();
     if (prodCheck.error || !prodCheck.data) return res.status(404).json({ error: 'המוצר לא נמצא' });
 
-    const { supplier_id, cost_price, margin_percent } = parsed.data;
+    const { supplier_id, cost_price } = parsed.data;
 
     // Validate supplier exists and active
     const supplierCheck = await supabase
@@ -245,8 +300,7 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
     if (supplierCheck.error) return res.status(400).json({ error: 'הספק שנבחר לא קיים או לא פעיל' });
 
     const vat_percent = await getVatPercent(tenant.tenantId);
-    const defaultMargin = await getCategoryDefaultMargin(tenant.tenantId, prodCheck.data.category_id);
-    const finalMargin = margin_percent ?? defaultMargin;
+    const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const sell_price = calcSellPrice({ cost_price, margin_percent: finalMargin, vat_percent });
 
     const { data, error } = await supabase
@@ -309,7 +363,7 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     const { name, category_id, unit } = parsedProduct.data;
-    const { supplier_id, cost_price, margin_percent } = parsedPrice.data;
+    const { supplier_id, cost_price } = parsedPrice.data;
 
     // Validate supplier exists and active
     const supplierCheck = await supabase
@@ -361,8 +415,7 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
       effectiveCategoryId = general.data!.id as string;
     }
 
-    const defaultMargin = await getCategoryDefaultMargin(tenant.tenantId, effectiveCategoryId);
-    const finalMargin = margin_percent ?? defaultMargin;
+    const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const sell_price = calcSellPrice({ cost_price, margin_percent: finalMargin, vat_percent });
 
     // Create product first

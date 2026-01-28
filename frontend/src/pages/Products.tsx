@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useProducts, useDeleteProduct, useProductPriceHistory } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useCategories } from '../hooks/useCategories';
+import { useSettings } from '../hooks/useSettings';
+import { useDebounce } from '../hooks/useDebounce';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
@@ -17,6 +19,7 @@ type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 export default function Products() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 350); // Debounce search input by 350ms
   const [supplierFilter, setSupplierFilter] = useState<string>('');
   const [sort, setSort] = useState<SortOption>('updated_desc');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -29,7 +32,7 @@ export default function Products() {
   const pageSize = 10
 
   const { data: products = [], isLoading } = useProducts({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     supplier_id: supplierFilter || undefined,
     category_id: categoryFilter || undefined,
     sort,
@@ -37,6 +40,7 @@ export default function Products() {
 
   const { data: suppliers = [] } = useSuppliers();
   const { data: categories = [] } = useCategories();
+  const { data: settings } = useSettings();
   const { data: priceHistory = [], isLoading: historyLoading } = useProductPriceHistory(
     historyProductId || '',
     historySupplierId || undefined
@@ -61,6 +65,14 @@ export default function Products() {
   const formatDate = (date: string | null) => {
     if (!date) return 'לא עודכן';
     return new Date(date).toLocaleDateString('he-IL');
+  };
+
+  const calcCostBeforeVat = (costPriceWithVat: number | string | null | undefined) => {
+    const numericPrice = Number(costPriceWithVat ?? 0);
+    if (!numericPrice || !settings?.vat_percent) return numericPrice;
+    const vatFactor = 1 + settings.vat_percent / 100;
+    // מחיר לפני מע״מ = מחיר כולל מע״מ / (1 + מע״מ/100)
+    return numericPrice / vatFactor;
   };
 
   const closeHistory = () => {
@@ -239,9 +251,17 @@ export default function Products() {
                           <TableHeader>
                               <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
                               <TableHead className="font-semibold">ספק</TableHead>
-                              <TableHead className="font-semibold">מחיר עלות</TableHead>
-                              <TableHead className="font-semibold">אחוז רווח</TableHead>
-                              <TableHead className="font-semibold">מחיר מכירה</TableHead>
+                      <TableHead className="font-semibold">מחיר עלות</TableHead>
+                              <TableHead className="font-semibold">
+                                מחיר עלות לפני מע&quot;מ
+                              </TableHead>
+                              <TableHead className="font-semibold">
+                                מחיר מכירה
+                                <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                  כולל מע&quot;מ {settings?.vat_percent ?? 18}% + רווח{' '}
+                                  {settings?.global_margin_percent ?? 30}%
+                                </div>
+                              </TableHead>
                               <TableHead className="font-semibold">תאריך</TableHead>
                               <TableHead className="font-semibold">פעולות</TableHead>
                             </TableRow>
@@ -251,7 +271,7 @@ export default function Products() {
                               <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
                                 <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
                                 <TableCell>{formatPrice(Number(price.cost_price))}</TableCell>
-                                <TableCell>{Number(price.margin_percent).toFixed(1)}%</TableCell>
+                                <TableCell>{formatPrice(Number(calcCostBeforeVat(price.cost_price).toFixed(2)))}</TableCell>
                                 <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
                                 <TableCell>{formatDate(price.created_at)}</TableCell>
                                 <TableCell>

@@ -45,7 +45,6 @@ export default function EditProduct() {
   const [newSupplierNotes, setNewSupplierNotes] = useState('');
   const [newPriceSupplierId, setNewPriceSupplierId] = useState('');
   const [newPriceCost, setNewPriceCost] = useState('');
-  const [newPriceMargin, setNewPriceMargin] = useState('');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
 
@@ -87,6 +86,7 @@ export default function EditProduct() {
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const defaultMargin = selectedCategory?.default_margin_percent ?? 0;
   const vatPercent = settings?.vat_percent ?? 18;
+  const globalMarginPercent = settings?.global_margin_percent ?? 30;
 
   const handleAddSupplier = async () => {
     if (!newSupplierName.trim()) {
@@ -123,18 +123,15 @@ export default function EditProduct() {
     }
     try {
       setPriceError(null);
-      const margin = newPriceMargin ? Number(newPriceMargin) : defaultMargin;
       await addProductPrice.mutateAsync({
         id,
         data: {
           supplier_id: newPriceSupplierId,
           cost_price: Number(newPriceCost),
-          margin_percent: margin,
         },
       });
       setNewPriceSupplierId('');
       setNewPriceCost('');
-      setNewPriceMargin('');
       setShowAddPrice(false);
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
@@ -143,10 +140,8 @@ export default function EditProduct() {
   };
 
   const currentPrices = product?.prices || [];
-  const calculatedSellPrice = newPriceCost && newPriceMargin
-    ? calcSellPrice(Number(newPriceCost), Number(newPriceMargin), vatPercent)
-    : newPriceCost
-    ? calcSellPrice(Number(newPriceCost), defaultMargin, vatPercent)
+  const calculatedSellPrice = newPriceCost
+    ? calcSellPrice(Number(newPriceCost), globalMarginPercent, vatPercent)
     : null;
 
   if (!id) {
@@ -259,7 +254,6 @@ export default function EditProduct() {
                   <TableRow>
                     <TableHead>ספק</TableHead>
                     <TableHead>מחיר עלות</TableHead>
-                    <TableHead>אחוז רווח</TableHead>
                     <TableHead>מחיר מכירה</TableHead>
                     <TableHead>תאריך עדכון</TableHead>
                   </TableRow>
@@ -269,7 +263,6 @@ export default function EditProduct() {
                     <TableRow key={`${price.supplier_id}-${idx}`}>
                       <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
                       <TableCell>₪{Number(price.cost_price)?.toFixed(2)}</TableCell>
-                      <TableCell>{Number(price.margin_percent)?.toFixed(1)}%</TableCell>
                       <TableCell className="font-semibold">₪{Number(price.sell_price)?.toFixed(2)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {price.created_at
@@ -332,28 +325,12 @@ export default function EditProduct() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="newPriceMargin">
-                אחוז רווח {selectedCategory && `(ברירת מחדל: ${defaultMargin}%)`}
-              </Label>
-              <Input
-                id="newPriceMargin"
-                type="number"
-                step="0.1"
-                min="0"
-                max="500"
-                value={newPriceMargin}
-                onChange={(e) => setNewPriceMargin(e.target.value)}
-                placeholder={defaultMargin.toString()}
-              />
-            </div>
-
             {calculatedSellPrice && (
               <div className="p-3 bg-muted rounded-lg">
                 <p className="text-sm font-medium">מחיר מכירה משוער:</p>
                 <p className="text-lg font-bold text-primary">₪{calculatedSellPrice.toFixed(2)}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  נוסחה: (עלות + רווח {newPriceMargin || defaultMargin}%) + מע״מ {vatPercent}%
+                  נוסחה: עלות + רווח {globalMarginPercent}% + מע&quot;מ {vatPercent}%
                 </p>
               </div>
             )}

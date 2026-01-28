@@ -14,6 +14,19 @@ const inviteSchema = z.object({
   role: z.enum(['owner', 'worker']).default('worker'),
 });
 
+async function getPrimaryOwner(tenantId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('memberships')
+    .select('user_id, role, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('role', 'owner')
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (error || !data || data.length === 0) return null;
+  return data[0].user_id as string;
+}
+
 // Get user's tenants
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -227,6 +240,135 @@ router.post('/accept-invite', requireAuth, async (req, res) => {
 
     res.json({ message: 'הזמנה התקבלה בהצלחה' });
   } catch (error) {
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// List members of current tenant (owners + workers)
+router.get('/members', requireAuth, requireTenant, ownerOnly, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+
+    const primaryOwnerId = await getPrimaryOwner(tenant.tenantId);
+
+    const { data: membershipRows, error: membershipError } = await supabase
+      .from('memberships')
+      .select('user_id, role, created_at')
+      .eq('tenant_id', tenant.tenantId)
+      .order('created_at', { ascending: true });
+
+    if (membershipError) {
+      console.error('Error loading tenant members:', membershipError);
+      return res.status(500).json({ error: 'שגיאה בטעינת משתמשי החנות' });
+    }
+
+    const memberRows = membershipRows || [];
+    const userIds = memberRows.map((m: any) => m.user_id);
+
+    let nameByUserId = new Map<string, string | null>();
+    if (userIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+
+      if (profilesError) {
+        console.error('Error loading member profiles:', profilesError);
+      } else {
+        nameByUserId = new Map(
+          (profiles || []).map((p: any) => [p.user_id as string, (p.full_name as string) ?? null])
+        );
+      }
+    }
+
+    const members = memberRows.map((m: any) => ({
+      user_id: m.user_id,
+      role: m.role,
+      full_name: nameByUserId.get(m.user_id) ?? null,
+      created_at: m.created_at,
+      is_primary_owner: primaryOwnerId != null && m.user_id === primaryOwnerId,
+    }));
+
+    return res.json(members);
+  } catch (error) {
+    console.error('Members list error:', error);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// List pending invites of current tenant
+router.get('/invites', requireAuth, requireTenant, ownerOnly, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+
+    const { data, error } = await supabase
+      .from('invites')
+      .select('id,email,role,expires_at,accepted_at,created_at')
+      .eq('tenant_id', tenant.tenantId)
+      .is('accepted_at', null)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading tenant invites:', error);
+      return res.status(500).json({ error: 'שגיאה בטעינת הזמנות' });
+    }
+
+    return res.json(data || []);
+  } catch (error) {
+    console.error('Invites list error:', error);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// Remove a member from current tenant (cannot remove primary owner)
+router.delete('/members/:userId', requireAuth, requireTenant, ownerOnly, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+    const { userId } = req.params;
+
+    const primaryOwnerId = await getPrimaryOwner(tenant.tenantId);
+    if (primaryOwnerId && userId === primaryOwnerId) {
+      return res.status(400).json({ error: 'לא ניתן להסיר את בעל החנות הראשי' });
+    }
+
+    const { error } = await supabase
+      .from('memberships')
+      .delete()
+      .eq('tenant_id', tenant.tenantId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error removing member:', error);
+      return res.status(500).json({ error: 'לא ניתן להסיר משתמש מהחנות' });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Remove member error:', error);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// Cancel a pending invite
+router.delete('/invites/:id', requireAuth, requireTenant, ownerOnly, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from('invites')
+      .delete()
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting invite:', error);
+      return res.status(500).json({ error: 'לא ניתן לבטל הזמנה' });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Delete invite error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
   }
 });

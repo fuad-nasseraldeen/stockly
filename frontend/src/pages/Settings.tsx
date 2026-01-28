@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
@@ -7,12 +8,13 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../contexts/TenantContext';
-import { tenantsApi } from '../lib/api';
+import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 
 export default function Settings() {
   const { data: settings, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
   const { currentTenant } = useTenant();
+  const queryClient = useQueryClient();
 
   const [vat, setVat] = useState<string>(() =>
     settings?.vat_percent != null ? String(settings.vat_percent) : '18'
@@ -32,6 +34,20 @@ export default function Settings() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => tenantApi.removeMember(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenantMembers'] });
+    },
+  });
+
+  const deleteInvite = useMutation({
+    mutationFn: (id: string) => tenantApi.deleteInvite(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenantInvites'] });
+    },
+  });
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) {
@@ -50,6 +66,25 @@ export default function Settings() {
   const [showPassword, setShowPassword] = useState(false);
 
   const isOwner = currentTenant?.role === 'owner';
+
+  // Team management (members + invites)
+  const {
+    data: members = [],
+    isLoading: membersLoading,
+  } = useQuery<TenantMember[]>({
+    queryKey: ['tenantMembers', currentTenant?.id],
+    queryFn: () => tenantApi.members(),
+    enabled: !!currentTenant && currentTenant.role === 'owner',
+  });
+
+  const {
+    data: invites = [],
+    isLoading: invitesLoading,
+  } = useQuery<TenantInvite[]>({
+    queryKey: ['tenantInvites', currentTenant?.id],
+    queryFn: () => tenantApi.invites(),
+    enabled: !!currentTenant && currentTenant.role === 'owner',
+  });
 
   const handleSaveVat = async (): Promise<void> => {
     const vatValue = vat.trim() ? Number(vat) : NaN;
@@ -207,74 +242,157 @@ export default function Settings() {
 
       {/* Invite team members (owners only) */}
       {isOwner && (
-        <Card className="shadow-md border-2">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              הזמנת משתמשים לחנות
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              הזמן עובדים או שותפים לחנות הנוכחית באמצעות כתובת אימייל. המוזמן יצטרך להתחבר עם אותו אימייל כדי לקבל גישה.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="inviteEmail">אימייל של המוזמן</Label>
-                <Input
-                  id="inviteEmail"
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="name@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="inviteRole">תפקיד</Label>
-                <select
-                  id="inviteRole"
-                  className="border-input bg-background px-3 py-2 rounded-md text-sm"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as 'owner' | 'worker')}
-                >
-                  <option value="worker">עובד</option>
-                  <option value="owner">בעלים נוסף</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                onClick={handleSendInvite}
-                disabled={inviteLoading}
-                className="w-full sm:w-auto gap-2"
-              >
-                {inviteLoading ? (
-                  'שולח הזמנה...'
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    שלח הזמנה
-                  </>
-                )}
-              </Button>
-              {inviteMessage && (
-                <p className="text-xs text-emerald-700 dark:text-emerald-400">{inviteMessage}</p>
-              )}
-              {inviteError && (
-                <p className="text-xs text-destructive">{inviteError}</p>
-              )}
-              {inviteUrl && (
-                <div className="mt-2 p-3 bg-muted rounded-lg border-2 border-border text-xs break-all">
-                  <p className="font-medium mb-1">קישור הזמנה:</p>
-                  <p>{inviteUrl}</p>
-                  <p className="mt-1 text-muted-foreground">
-                    שלח קישור זה למוזמן, או שהוא יכול פשוט להתחבר עם האימייל שהזנת – המערכת תזהה את ההזמנה אוטומטית.
-                  </p>
+        <>
+          <Card className="shadow-md border-2">
+            <CardHeader>
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                הזמנת משתמשים לחנות
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                הזמן עובדים או שותפים לחנות הנוכחית באמצעות כתובת אימייל. המוזמן יצטרך להתחבר עם אותו אימייל כדי לקבל גישה.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="inviteEmail">אימייל של המוזמן</Label>
+                  <Input
+                    id="inviteEmail"
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="name@example.com"
+                  />
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="inviteRole">תפקיד</Label>
+                  <select
+                    id="inviteRole"
+                    className="border-input bg-background px-3 py-2 rounded-md text-sm"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'owner' | 'worker')}
+                  >
+                    <option value="worker">עובד</option>
+                    <option value="owner">בעלים נוסף</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={handleSendInvite}
+                  disabled={inviteLoading}
+                  className="w-full sm:w-auto gap-2"
+                >
+                  {inviteLoading ? (
+                    'שולח הזמנה...'
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      שלח הזמנה
+                    </>
+                  )}
+                </Button>
+                {inviteMessage && (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400">{inviteMessage}</p>
+                )}
+                {inviteError && (
+                  <p className="text-xs text-destructive">{inviteError}</p>
+                )}
+                {inviteUrl && (
+                  <div className="mt-2 p-3 bg-muted rounded-lg border-2 border-border text-xs break-all">
+                    <p className="font-medium mb-1">קישור הזמנה:</p>
+                    <p>{inviteUrl}</p>
+                    <p className="mt-1 text-muted-foreground">
+                      שלח קישור זה למוזמן, או שהוא יכול פשוט להתחבר עם האימייל שהזנת – המערכת תזהה את ההזמנה אוטומטית.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Members & invites list */}
+          <Card className="shadow-md border-2">
+            <CardHeader>
+              <CardTitle className="text-lg font-bold">צוות החנות</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Members */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">משתמשים קיימים</h3>
+                {membersLoading ? (
+                  <p className="text-xs text-muted-foreground">טוען משתמשים...</p>
+                ) : members.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">אין עדיין משתמשים נוספים בחנות.</p>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    {members.map((m) => (
+                      <div
+                        key={m.user_id}
+                        className="flex items-center justify-between border rounded-md px-3 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">{m.full_name || 'משתמש'}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {m.role === 'owner' ? 'בעלים' : 'עובד'}
+                            {m.is_primary_owner ? ' • בעל חנות ראשי' : ''}
+                          </span>
+                        </div>
+                        {!m.is_primary_owner && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            disabled={removeMember.isPending}
+                            onClick={() => removeMember.mutate(m.user_id)}
+                          >
+                            הסר גישה
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pending invites */}
+              <div>
+                <h3 className="text-sm font-semibold mb-2">הזמנות ממתינות</h3>
+                {invitesLoading ? (
+                  <p className="text-xs text-muted-foreground">טוען הזמנות...</p>
+                ) : invites.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">אין הזמנות ממתינות.</p>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    {invites.map((inv) => (
+                      <div
+                        key={inv.id}
+                        className="flex items-center justify-between border rounded-md px-3 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium break-all">{inv.email}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {inv.role === 'owner' ? 'בעלים (הזמנה)' : 'עובד (הזמנה)'}
+                          </span>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          disabled={deleteInvite.isPending}
+                          onClick={() => deleteInvite.mutate(inv.id)}
+                        >
+                          בטל הזמנה
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {/* Profile settings */}
