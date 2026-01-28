@@ -4,12 +4,17 @@
 
 ## 🎯 תכונות עיקריות
 
-- ✅ **ניהול מוצרים** - יצירה, עריכה, מחיקה רכה, חיפוש וסינון
-- ✅ **ניהול ספקים** - CRUD מלא עם היסטוריית מחירים
-- ✅ **ניהול קטגוריות** - עם אחוז רווח ברירת מחדל
-- ✅ **היסטוריית מחירים** - מעקב מלא אחר שינויי מחירים לכל מוצר וספק
-- ✅ **חישוב מחיר מכירה אוטומטי** - עלות + רווח + מע״מ
-- ✅ **מניעת כפילויות** - בדיקה אוטומטית של מוצרים/ספקים/קטגוריות זהים
+- ✅ **ניהול מוצרים** - יצירה, עריכה, מחיקה רכה, חיפוש וסינון מתקדם
+- ✅ **ניהול ספקים** - CRUD מלא עם היסטוריית מחירים לכל ספק ומוצר
+- ✅ **ניהול קטגוריות** - עם אחוז רווח ברירת מחדל (כולל מרווח גלובלי)
+- ✅ **היסטוריית מחירים** - מעקב מלא אחר שינויי מחירים + דיאלוג היסטוריה ייעודי
+- ✅ **חישוב מחיר מכירה אוטומטי** - עלות + רווח + מע״מ (כולל הצגת *מחיר לפני מע״מ*)
+- ✅ **ייבוא/ייצוא מאקסל/CSV** - מסך `ייבוא/ייצוא` לטעינת מוצרים ומחירים + איפוס נתוני חנות
+- ✅ **מניעת כפילויות** - בדיקה אוטומטית של מוצרים/ספקים/קטגוריות זהים (normalized)
+- ✅ **חיפוש מהיר עם Debounce** - קריאת API רק אחרי עצירה קצרה בהקלדה
+- ✅ **חיפוש סלחני (Fuzzy Search)** - מבוסס `pg_trgm` ב-Postgres, תופס טעויות כתיב קטנות
+- ✅ **ריבוי חנויות (Multi‑Tenant)** - תמיכה במספר חנויות לכל משתמש, עם תפקידים `owner` / `worker`
+- ✅ **הזמנות (Invites)** - מנגנון הזמנה לפי אימייל, כולל קבלה אוטומטית של הזמנות ממתינות
 - ✅ **עברית RTL** - ממשק משתמש מלא בעברית עם תמיכה מלאה ב-RTL
 - ✅ **עיצוב Mobile-First** - מותאם מושלם למובייל עם תפריט hamburger
 - ✅ **PWA Ready** - מוכן להתקנה כאפליקציה
@@ -140,24 +145,28 @@ stockly/
 │
 ├── frontend/                   # React Frontend
 │   ├── src/
-│   │   ├── App.tsx            # רכיב ראשי + routing
+│   │   ├── App.tsx            # רכיב ראשי + routing + OnboardingRouter
 │   │   ├── main.tsx           # נקודת כניסה
 │   │   ├── pages/
-│   │   │   ├── Login.tsx      # דף התחברות
-│   │   │   ├── Signup.tsx     # דף הרשמה
-│   │   │   ├── Products.tsx   # רשימת מוצרים
-│   │   │   ├── NewProduct.tsx # הוספת מוצר חדש
-│   │   │   ├── EditProduct.tsx# עריכת מוצר
-│   │   │   ├── Categories.tsx # ניהול קטגוריות
-│   │   │   ├── Suppliers.tsx # ניהול ספקים
-│   │   │   └── Settings.tsx  # הגדרות מערכת
+│   │   │   ├── Login.tsx        # דף התחברות
+│   │   │   ├── Signup.tsx       # דף הרשמה
+│   │   │   ├── Products.tsx     # רשימת מוצרים + מחירים + חיפוש מתקדם
+│   │   │   ├── NewProduct.tsx   # הוספת מוצר חדש
+│   │   │   ├── EditProduct.tsx  # עריכת מוצר + הוספת מחירים
+│   │   │   ├── Categories.tsx   # ניהול קטגוריות
+│   │   │   ├── Suppliers.tsx    # ניהול ספקים
+│   │   │   ├── ImportExport.tsx # ייבוא/ייצוא + איפוס נתונים
+│   │   │   ├── Settings.tsx     # הגדרות מערכת (מע״מ, פרופיל משתמש)
+│   │   │   ├── CreateTenant.tsx # יצירת חנות חדשה (tenant)
+│   │   │   └── NoAccess.tsx     # אין גישה לחנות קיימת / המתנה להזמנה
 │   │   ├── components/
 │   │   │   └── ui/            # רכיבי UI (Button, Card, Dialog, וכו')
-│   │   ├── hooks/             # React Query hooks
+│   │   ├── hooks/               # React Query hooks + עזר
 │   │   │   ├── useProducts.ts
 │   │   │   ├── useCategories.ts
 │   │   │   ├── useSuppliers.ts
-│   │   │   └── useSettings.ts
+│   │   │   ├── useSettings.ts
+│   │   │   └── useDebounce.ts   # דיבאונס לחיפושים
 │   │   └── lib/
 │   │       ├── api.ts         # API client
 │   │       ├── supabase.ts    # Supabase client
@@ -216,39 +225,46 @@ npm run lint
 
 ### טבלאות עיקריות
 
-- **`profiles`** - פרופילי משתמשים (נוצר אוטומטית)
+- **`profiles`** - פרופילי משתמשים (נוצר אוטומטית מ־auth.users)
+- **`tenants`** - חנויות (סטוק) נפרדות לכל עסק
+- **`memberships`** - שיוך משתמשים לחנויות + תפקיד (`owner` / `worker`)
+- **`invites`** - הזמנות ממתינות לפי אימייל
 - **`categories`** - קטגוריות מוצרים (עם אחוז רווח ברירת מחדל)
 - **`suppliers`** - ספקים
-- **`products`** - מוצרים
+- **`products`** - מוצרים (כולל `name_norm` לחיפוש)
 - **`price_entries`** - היסטוריית מחירים (כל שינוי מחיר יוצר רשומה חדשה)
-- **`settings`** - הגדרות מערכת (מע״מ גלובלי)
+- **`settings`** - הגדרות מערכת פר חנות (מע״מ גלובלי, מרווח גלובלי)
 
-### Views
+### Views ופונקציות עזר
 
 - **`product_supplier_current_price`** - מחיר נוכחי לכל מוצר-ספק
 - **`product_price_summary`** - סיכום מחירים לכל מוצר (מינימום, תאריך עדכון אחרון)
+- **`search_products_fuzzy(tenant_uuid, search_text, limit)`** - פונקציית חיפוש סלחני (fuzzy) על שמות מוצרים בעזרת `pg_trgm`
 
 ### RLS (Row Level Security)
 
-כל המשתמשים המאומתים יכולים:
-- ✅ קריאה מכל הטבלאות
-- ✅ יצירה/עדכון/מחיקה (soft delete) של כל הרשומות
+- כל הנתונים *מופרדים פר‑חנות* ע״י `tenant_id`.
+- גישה מתבצעת רק אם למשתמש יש חברות (`memberships`) מתאימה בחנות.
+- פעולות רגישות (הזמנות, איפוס טננט) מוגבלות ל‑`owner` בלבד.
+
+ראה פירוט נוסף בקובץ `ONBOARDING_IMPLEMENTATION.md`.
 
 ---
 
 ## 🔐 אימות ואבטחה
 
-### Authentication Flow
+### Authentication & Onboarding Flow
 
 1. המשתמש נרשם/מתחבר דרך Supabase Auth (frontend)
 2. Supabase מחזיר JWT token
 3. Frontend שולח את ה-token ב-header `Authorization: Bearer <token>`
 4. Backend מאמת את ה-token באמצעות `requireAuth` middleware
 5. אם ה-token תקין, הבקשה ממשיכה
+6. `OnboardingRouter` ב-frontend מקבל הזמנות ממתינות (`/api/invites/accept`) ומטען את החנויות של המשתמש
 
-### API Endpoints
+### API Endpoints (עיקריים)
 
-כל ה-endpoints דורשים אימות (חוץ מ-`/health`):
+כל ה-endpoints דורשים אימות (חוץ מ-`/health`), ורובם גם `x-tenant-id`:
 
 ```
 GET    /api/products              # רשימת מוצרים (עם חיפוש/סינון/מיון)
@@ -273,6 +289,15 @@ GET    /api/settings              # הגדרות מערכת
 PUT    /api/settings              # עדכון הגדרות
 PUT    /api/settings/recalculate-prices  # חישוב מחדש של כל המחירים
 PUT    /api/settings/recalculate-prices-by-category/:id  # חישוב מחדש לפי קטגוריה
+
+GET    /api/tenants               # רשימת חנויות של המשתמש
+POST   /api/tenants               # יצירת חנות חדשה (owner)
+POST   /api/tenants/:id/invite    # הזמנת משתמש לפי אימייל (owner-only)
+POST   /api/invites/accept        # קבלת כל ההזמנות הממתינות למשתמש
+
+POST   /api/import/preview        # תצוגה מקדימה לייבוא אקסל/CSV
+POST   /api/import/apply?mode=…   # ביצוע ייבוא (merge/overwrite)
+POST   /api/tenant/reset          # איפוס כל נתוני החנות (owner-only)
 ```
 
 ---
