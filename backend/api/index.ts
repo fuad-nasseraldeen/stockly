@@ -9,6 +9,7 @@ import invitesRouter from '../src/routes/invites.js';
 import importRouter from '../src/routes/import.js';
 import exportRouter from '../src/routes/export.js';
 import resetRouter from '../src/routes/reset.js';
+import adminRouter from '../src/routes/admin.js';
 
 const app = express();
 
@@ -53,6 +54,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/tenant/reset', resetRouter);
+app.use('/api/admin', adminRouter);
 
 // Vercel Serverless Function handler
 // Export the Express app directly - Vercel will handle it as a serverless function
