@@ -82,13 +82,18 @@ export async function requireTenant(req: Request, res: Response, next: NextFunct
   // Check membership using service role (bypasses RLS)
   const { data: membership, error } = await supabase
     .from('memberships')
-    .select('role')
+    .select('role, is_blocked')
     .eq('user_id', user.id)
     .eq('tenant_id', tenantId)
     .single();
 
   if (error || !membership) {
     return res.status(403).json({ error: 'אין לך גישה לטננט זה' });
+  }
+
+  // Check if user is blocked
+  if (membership.is_blocked) {
+    return res.status(403).json({ error: 'חשבונך נחסם בטננט זה. נא ליצור קשר עם בעל החנות.' });
   }
 
   (req as any).tenant = {
@@ -108,6 +113,27 @@ export function ownerOnly(req: Request, res: Response, next: NextFunction) {
 
   if (tenant.role !== 'owner') {
     return res.status(403).json({ error: 'פעולה זו זמינה לבעלים בלבד' });
+  }
+
+  next();
+}
+
+export async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = (req as any).user as AuthedUser | undefined;
+
+  if (!user) {
+    return res.status(401).json({ error: 'נדרש להתחבר' });
+  }
+
+  // Check if user is super admin
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('is_super_admin')
+    .eq('user_id', user.id)
+    .single();
+
+  if (error || !profile || !profile.is_super_admin) {
+    return res.status(403).json({ error: 'פעולה זו זמינה למנהל המערכת בלבד' });
   }
 
   next();

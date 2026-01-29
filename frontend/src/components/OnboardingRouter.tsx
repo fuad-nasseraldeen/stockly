@@ -3,11 +3,12 @@ import { Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useTenant } from '../contexts/TenantContext';
 import { invitesApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useSuperAdmin } from '../hooks/useSuperAdmin';
 import NoAccess from '../pages/NoAccess';
 import CreateTenant from '../pages/CreateTenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
-import { Building2, Store, Loader2 } from 'lucide-react';
+import { Building2, Store, Loader2, Shield } from 'lucide-react';
 
 type OnboardingStep = 'loading' | 'checking' | 'choice' | 'no-access' | 'create' | 'ready';
 
@@ -15,6 +16,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
+  const { data: isSuperAdmin, isLoading: checkingSuperAdmin } = useSuperAdmin();
   const [step, setStep] = useState<OnboardingStep>('loading');
   const [checkingInvites, setCheckingInvites] = useState(false);
   const hasCheckedInvitesRef = useRef(false);
@@ -62,8 +64,14 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
 
   // Step 2: Determine next step based on tenants
   useEffect(() => {
-    if (isLoading || checkingInvites) {
+    if (isLoading || checkingInvites || checkingSuperAdmin) {
       setStep('loading');
+      return;
+    }
+
+    // Super admin can access admin page even without tenants
+    if (isSuperAdmin === true && location.pathname === '/admin') {
+      setStep('ready');
       return;
     }
 
@@ -77,10 +85,10 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
       // No tenants - show choice screen
       setStep('choice');
     }
-  }, [tenants, isLoading, checkingInvites, step]);
+  }, [tenants, isLoading, checkingInvites, checkingSuperAdmin, isSuperAdmin, location.pathname, step]);
 
   // Show loading state
-  if (step === 'loading' || checkingInvites) {
+  if (step === 'loading' || checkingInvites || checkingSuperAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -97,6 +105,11 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   }
   if (location.pathname === '/no-access') {
     return <NoAccess />;
+  }
+
+  // Super admin can access /admin even without tenants
+  if (isSuperAdmin === true && location.pathname === '/admin') {
+    return <>{children}</>;
   }
 
   // User has tenants - show main app
@@ -127,10 +140,29 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Super Admin Option - Only visible to super admin (fuad@owner.com) */}
+            {isSuperAdmin === true && (
+              <Button
+                onClick={() => navigate('/admin')}
+                className="w-full h-auto p-6 flex flex-col items-start gap-3 bg-primary border-2 border-primary"
+                size="lg"
+                variant="default"
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <Shield className="w-6 h-6" />
+                  <div className="flex-1 text-right">
+                    <div className="font-semibold text-lg">ניהול מערכת</div>
+                    <div className="text-sm opacity-90">גש לדף הניהול - צפה בכל החנויות והמשתמשים</div>
+                  </div>
+                </div>
+              </Button>
+            )}
+
             <Button
               onClick={() => navigate('/create-tenant')}
               className="w-full h-auto p-6 flex flex-col items-start gap-3"
               size="lg"
+              variant={isSuperAdmin ? "outline" : "default"}
             >
               <div className="flex items-center gap-3 w-full">
                 <Building2 className="w-6 h-6" />

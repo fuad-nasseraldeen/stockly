@@ -17,6 +17,7 @@ import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
 import ImportExport from './pages/ImportExport';
+import Admin from './pages/Admin';
 import { OnboardingRouter } from './components/OnboardingRouter';
 
 function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -24,7 +25,7 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   const { currentTenant } = useTenant();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navItems = [
+  const navItems: Array<{ path: string; label: string }> = [
     { path: '/products', label: 'מוצרים' },
     { path: '/suppliers', label: 'ספקים' },
     { path: '/categories', label: 'קטגוריות' },
@@ -241,6 +242,7 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
             <Route path="/categories" element={<Categories />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/import-export" element={<ImportExport />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/" element={<Navigate to="/products" />} />
             <Route path="*" element={<Navigate to="/products" replace />} />

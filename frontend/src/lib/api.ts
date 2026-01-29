@@ -110,10 +110,10 @@ function getTenantId(): string | null {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { skipTenantHeader?: boolean }
 ): Promise<T> {
   const token = await getAuthToken();
-  const tenantId = getTenantId();
+  const tenantId = options?.skipTenantHeader ? undefined : getTenantId();
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -124,13 +124,14 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  if (tenantId) {
+  if (tenantId && !options?.skipTenantHeader) {
     headers['x-tenant-id'] = tenantId;
   }
 
+  const { skipTenantHeader, ...fetchOptions } = options || {};
   const url = API_URL ? `${API_URL}${endpoint}` : endpoint;
   const response = await fetch(url, {
-    ...options,
+    ...fetchOptions,
     headers,
   });
 
@@ -314,6 +315,104 @@ export const invitesApi = {
   accept: (): Promise<{ accepted: number; already_member: number; not_found: number; message: string; errors?: string[] }> =>
     apiRequest('/api/invites/accept', {
       method: 'POST',
+    }),
+};
+
+// Admin API
+export type TenantWithUsers = {
+  id: string;
+  name: string;
+  created_at: string;
+  owners: Array<{
+    membership_id: string;
+    user_id: string;
+    full_name: string;
+    email: string;
+    role: 'owner';
+    is_blocked: boolean;
+    blocked_at: string | null;
+    joined_at: string;
+  }>;
+  workers: Array<{
+    membership_id: string;
+    user_id: string;
+    full_name: string;
+    email: string;
+    role: 'worker';
+    is_blocked: boolean;
+    blocked_at: string | null;
+    joined_at: string;
+  }>;
+  total_users: number;
+  blocked_users: number;
+  statistics?: {
+    products: number;
+    suppliers: number;
+    categories: number;
+    price_entries: number;
+    estimated_size_kb: number;
+  };
+};
+
+export type AuditLog = {
+  id: string;
+  action: string;
+  details: any;
+  created_at: string;
+  profiles: {
+    user_id: string;
+    full_name: string;
+  } | null;
+};
+
+export const adminApi = {
+  getTenants: (): Promise<TenantWithUsers[]> =>
+    apiRequest<TenantWithUsers[]>('/api/admin/tenants', { skipTenantHeader: true }),
+
+  getAuditLogs: (params?: { limit?: number; offset?: number; tenant_id?: string }): Promise<AuditLog[]> => {
+    const queryParams = new URLSearchParams();
+    if (params?.limit) queryParams.append('limit', String(params.limit));
+    if (params?.offset) queryParams.append('offset', String(params.offset));
+    if (params?.tenant_id) queryParams.append('tenant_id', params.tenant_id);
+    return apiRequest<AuditLog[]>(`/api/admin/audit-logs?${queryParams.toString()}`, { skipTenantHeader: true });
+  },
+
+  blockUser: (membershipId: string): Promise<{ message: string }> =>
+    apiRequest('/api/admin/block-user', {
+      method: 'POST',
+      body: JSON.stringify({ membership_id: membershipId }),
+      skipTenantHeader: true,
+    }),
+
+  unblockUser: (membershipId: string): Promise<{ message: string }> =>
+    apiRequest('/api/admin/unblock-user', {
+      method: 'POST',
+      body: JSON.stringify({ membership_id: membershipId }),
+      skipTenantHeader: true,
+    }),
+
+  checkSuperAdmin: (): Promise<{ is_super_admin: boolean }> =>
+    apiRequest<{ is_super_admin: boolean }>('/api/admin/check', { skipTenantHeader: true }),
+
+  removeUser: (membershipId: string): Promise<{ message: string }> =>
+    apiRequest('/api/admin/remove-user', {
+      method: 'DELETE',
+      body: JSON.stringify({ membership_id: membershipId }),
+      skipTenantHeader: true,
+    }),
+
+  resetTenantData: (tenantId: string): Promise<{ message: string }> =>
+    apiRequest('/api/admin/reset-tenant-data', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenantId }),
+      skipTenantHeader: true,
+    }),
+
+  deleteTenant: (tenantId: string): Promise<{ message: string }> =>
+    apiRequest('/api/admin/delete-tenant', {
+      method: 'DELETE',
+      body: JSON.stringify({ tenant_id: tenantId }),
+      skipTenantHeader: true,
     }),
 };
 
