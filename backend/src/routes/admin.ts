@@ -255,7 +255,7 @@ router.post('/block-user', requireAuth, requireSuperAdmin, async (req, res) => {
     res.json({ message: 'משתמש נחסם בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Block user error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
@@ -309,7 +309,7 @@ router.post('/unblock-user', requireAuth, requireSuperAdmin, async (req, res) =>
     res.json({ message: 'חסימת משתמש בוטלה בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Unblock user error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
@@ -360,7 +360,7 @@ router.delete('/remove-user', requireAuth, requireSuperAdmin, async (req, res) =
     res.json({ message: 'משתמש הוסר בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Remove user error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
@@ -433,7 +433,7 @@ router.post('/reset-tenant-data', requireAuth, requireSuperAdmin, async (req, re
     res.json({ message: 'נתוני החנות נמחקו בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Reset tenant data error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
@@ -486,7 +486,7 @@ router.delete('/delete-tenant', requireAuth, requireSuperAdmin, async (req, res)
     res.json({ message: 'חנות נמחקה בהצלחה' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues[0].message });
     }
     console.error('Delete tenant error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
