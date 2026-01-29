@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminApi, TenantWithUsers, AuditLog } from '../lib/api';
+import { adminApi } from '../lib/api';
 
 export function useAdminTenants() {
   return useQuery({
