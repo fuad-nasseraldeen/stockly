@@ -8,6 +8,7 @@ import { Menu, X } from 'lucide-react';
 import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
 import { TenantSwitcher } from './components/TenantSwitcher';
+import { useSuperAdmin } from './hooks/useSuperAdmin';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -225,9 +226,15 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
 
 function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   const { currentTenant } = useTenant();
+  const { data: isSuperAdmin } = useSuperAdmin();
+  const location = useLocation();
   
-  // Only show navigation if we have a tenant
-  if (!currentTenant) {
+  // Super admin can access /admin without a tenant
+  const isAdminPage = location.pathname === '/admin';
+  const canAccess = currentTenant || (isSuperAdmin === true && isAdminPage);
+  
+  // Only show navigation if we have a tenant or if super admin accessing admin page
+  if (!canAccess) {
     return null;
   }
 

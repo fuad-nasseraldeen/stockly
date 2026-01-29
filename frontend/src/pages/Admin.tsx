@@ -9,24 +9,34 @@ import { Badge } from '../components/ui/badge';
 import { Shield, Users, Store, Ban, CheckCircle, AlertCircle, Clock, Trash2, X, RotateCcw } from 'lucide-react';
 
 export default function Admin() {
+  console.log('🔍 Admin: Component rendering...');
+  
   const { data: isSuperAdmin, isLoading: checkingAdmin } = useSuperAdmin();
   const { data: tenants = [], isLoading: tenantsLoading, error: tenantsError } = useAdminTenants();
   const { data: auditLogs = [], isLoading: logsLoading } = useAuditLogs({ limit: 50 });
 
+  console.log('🔍 Admin: After hooks:', {
+    checkingAdmin,
+    isSuperAdmin,
+    tenantsLoading,
+    tenantsCount: tenants.length,
+    tenantsError: tenantsError ? String(tenantsError) : null,
+  });
+
   // Debug: Log all state
   useEffect(() => {
-    console.log('Admin Page State:', {
+    console.log('🔍 Admin Page State:', {
       checkingAdmin,
       isSuperAdmin,
       tenantsLoading,
       tenantsCount: tenants.length,
-      tenantsError,
+      tenantsError: tenantsError ? String(tenantsError) : null,
     });
-    console.log('Admin: checkingAdmin type:', typeof checkingAdmin, 'value:', checkingAdmin);
-    console.log('Admin: isSuperAdmin type:', typeof isSuperAdmin, 'value:', isSuperAdmin);
-    console.log('Admin: Will show loading?', checkingAdmin === true || checkingAdmin === undefined);
-    console.log('Admin: Will show error?', checkingAdmin === false && isSuperAdmin !== true);
-    console.log('Admin: Will show main?', checkingAdmin === false && isSuperAdmin === true);
+    console.log('🔍 Admin: checkingAdmin type:', typeof checkingAdmin, 'value:', checkingAdmin);
+    console.log('🔍 Admin: isSuperAdmin type:', typeof isSuperAdmin, 'value:', isSuperAdmin);
+    console.log('🔍 Admin: Will show loading?', checkingAdmin === true || checkingAdmin === undefined);
+    console.log('🔍 Admin: Will show error?', checkingAdmin === false && isSuperAdmin !== true);
+    console.log('🔍 Admin: Will show main?', checkingAdmin === false && isSuperAdmin === true);
   }, [checkingAdmin, isSuperAdmin, tenantsLoading, tenants.length, tenantsError]);
   const blockUser = useBlockUser();
   const unblockUser = useUnblockUser();
@@ -126,8 +136,18 @@ export default function Admin() {
   };
 
   // Show loading while checking admin status
+  console.log('🔍 Admin: Checking conditions...', {
+    checkingAdmin,
+    isSuperAdmin,
+    'checkingAdmin === true': checkingAdmin === true,
+    'checkingAdmin === undefined': checkingAdmin === undefined,
+    'checkingAdmin === false': checkingAdmin === false,
+    'isSuperAdmin !== true': isSuperAdmin !== true,
+    'isSuperAdmin === true': isSuperAdmin === true,
+  });
+  
   if (checkingAdmin === true || checkingAdmin === undefined) {
-    console.log('Admin: Showing loading state');
+    console.log('🔍 Admin: Showing loading state');
     return (
       <div className="w-full max-w-3xl mx-auto">
         <Card className="shadow-md border-2">
@@ -142,7 +162,7 @@ export default function Admin() {
 
   // Show error if not super admin (only after loading is done)
   if (checkingAdmin === false && isSuperAdmin !== true) {
-    console.log('Admin: Not super admin, showing error');
+    console.log('🔍 Admin: Not super admin, showing error');
     return (
       <div className="w-full max-w-3xl mx-auto">
         <Card className="shadow-md border-2">
@@ -160,11 +180,11 @@ export default function Admin() {
   }
 
   // Main content - only show if super admin
-  console.log('Admin: Before main content check', { checkingAdmin, isSuperAdmin, typeChecking: typeof checkingAdmin, typeSuper: typeof isSuperAdmin });
+  console.log('🔍 Admin: Before main content check', { checkingAdmin, isSuperAdmin, typeChecking: typeof checkingAdmin, typeSuper: typeof isSuperAdmin });
   
   // If we reach here, we should be super admin
   if (checkingAdmin === false && isSuperAdmin === true) {
-    console.log('Admin: Rendering main content');
+    console.log('🔍 Admin: Rendering main content');
     return (
       <div className="space-y-6">
       <div>
@@ -535,7 +555,7 @@ export default function Admin() {
   }
 
   // Ultimate fallback - should never reach here
-  console.error('Admin: Unexpected state', { checkingAdmin, isSuperAdmin });
+  console.error('🔍 Admin: Unexpected state - reached fallback!', { checkingAdmin, isSuperAdmin });
   return (
     <div className="w-full max-w-3xl mx-auto">
       <Card className="shadow-md border-2">

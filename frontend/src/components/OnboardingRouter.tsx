@@ -21,6 +21,16 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const [checkingInvites, setCheckingInvites] = useState(false);
   const hasCheckedInvitesRef = useRef(false);
 
+  // Debug logging for super admin check
+  useEffect(() => {
+    console.log('🔍 OnboardingRouter: Super Admin State:', {
+      isSuperAdmin,
+      checkingSuperAdmin,
+      type: typeof isSuperAdmin,
+      willShowButton: isSuperAdmin === true,
+    });
+  }, [isSuperAdmin, checkingSuperAdmin]);
+
   // Step 1: Accept pending invites and fetch tenants (only once)
   useEffect(() => {
     if (isLoading) {

@@ -4,7 +4,23 @@ import { adminApi } from '../lib/api';
 export function useAdminTenants() {
   return useQuery({
     queryKey: ['admin', 'tenants'],
-    queryFn: () => adminApi.getTenants(),
+    queryFn: async () => {
+      console.log('🔍 useAdminTenants: Starting fetch...');
+      try {
+        const result = await adminApi.getTenants();
+        console.log('🔍 useAdminTenants: Success:', result);
+        return result;
+      } catch (error) {
+        console.error('🔍 useAdminTenants: Error:', error);
+        const err = error as { message?: string; status?: number; response?: unknown };
+        console.error('🔍 useAdminTenants: Error details:', {
+          message: err?.message,
+          status: err?.status,
+          response: err?.response,
+        });
+        throw error;
+      }
+    },
   });
 }
 

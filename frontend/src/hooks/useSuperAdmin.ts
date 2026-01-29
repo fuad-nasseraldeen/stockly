@@ -5,14 +5,19 @@ export function useSuperAdmin() {
   return useQuery({
     queryKey: ['super-admin', 'check'],
     queryFn: async () => {
+      console.log('🔍 useSuperAdmin: Starting check...');
       try {
-        await adminApi.checkSuperAdmin();
+        const result = await adminApi.checkSuperAdmin();
+        console.log('🔍 useSuperAdmin: API call succeeded:', result);
         return true;
-      } catch (error) {
+      } catch (error: any) {
         // Log error in development for debugging
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Super Admin check failed:', error);
-        }
+        console.error('🔍 useSuperAdmin: API call failed:', error);
+        console.error('🔍 useSuperAdmin: Error details:', {
+          message: error?.message,
+          status: error?.status,
+          response: error?.response,
+        });
         return false;
       }
     },
