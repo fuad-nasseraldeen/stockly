@@ -29,14 +29,21 @@ export default function Products() {
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = 10
+  const pageSize = 10;
 
-  const { data: products = [], isLoading } = useProducts({
+  const { data: productsData, isLoading } = useProducts({
     search: debouncedSearch || undefined,
     supplier_id: supplierFilter || undefined,
     category_id: categoryFilter || undefined,
     sort,
+    page,
+    pageSize,
   });
+
+  const products = productsData?.products || [];
+  const totalProducts = productsData?.total || 0;
+  const totalPages = productsData?.totalPages || 0;
+  const currentPage = productsData?.page || 1;
 
   const { data: suppliers = [] } = useSuppliers();
   const { data: categories = [] } = useCategories();
@@ -81,11 +88,26 @@ export default function Products() {
     setHistorySupplierId(null);
   };
 
-  const totalProducts = products.length;
-  const totalPages = Math.max(1, Math.ceil(totalProducts / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedProducts = products.slice(startIndex, startIndex + pageSize);
+  // Reset to page 1 when search/filters change
+  const handleSearchChange = (newSearch: string) => {
+    setSearch(newSearch);
+    setPage(1);
+  };
+
+  const handleSupplierFilterChange = (newSupplier: string) => {
+    setSupplierFilter(newSupplier);
+    setPage(1);
+  };
+
+  const handleCategoryFilterChange = (newCategory: string) => {
+    setCategoryFilter(newCategory);
+    setPage(1);
+  };
+
+  const handleSortChange = (newSort: SortOption) => {
+    setSort(newSort);
+    setPage(1);
+  };
 
   return (
     <div className="space-y-6">
@@ -116,7 +138,7 @@ export default function Products() {
                 <Input
                   placeholder="חיפוש לפי שם מוצר..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="pr-10"
                 />
               </div>
@@ -125,7 +147,7 @@ export default function Products() {
               <Label className="text-sm font-medium">ספק</Label>
               <Select
                 value={supplierFilter}
-                onChange={(e) => setSupplierFilter(e.target.value)}
+                onChange={(e) => handleSupplierFilterChange(e.target.value)}
               >
                 <option value="">כל הספקים</option>
                 {suppliers?.map((s) => (
@@ -139,7 +161,7 @@ export default function Products() {
               <Label className="text-sm font-medium">קטגוריה</Label>
               <Select
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                onChange={(e) => handleCategoryFilterChange(e.target.value)}
               >
                 <option value="">כל הקטגוריות</option>
                 {categories?.map((c) => (
@@ -153,7 +175,7 @@ export default function Products() {
               <Label className="text-sm font-medium">מיון</Label>
               <Select
                 value={sort}
-                onChange={(e) => setSort(e.target.value as SortOption)}
+                onChange={(e) => handleSortChange(e.target.value as SortOption)}
               >
                 <option value="updated_desc">עודכן לאחרונה (חדש→ישן)</option>
                 <option value="updated_asc">עודכן לאחרונה (ישן→חדש)</option>
@@ -187,7 +209,7 @@ export default function Products() {
         </Card>
       ) : (
         <div className="space-y-5">
-          {paginatedProducts.map((product) => (
+          {products.map((product) => (
             <Card key={product.id} className="shadow-md hover:shadow-lg transition-all border-2">
               <CardHeader className="pb-4 border-b-2 border-border/50">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

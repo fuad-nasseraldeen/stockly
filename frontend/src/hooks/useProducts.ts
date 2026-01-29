@@ -1,7 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../lib/api';
 
-export function useProducts(params?: { search?: string; supplier_id?: string; category_id?: string; sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc' }) {
+export function useProducts(params?: { 
+  search?: string; 
+  supplier_id?: string; 
+  category_id?: string; 
+  sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
+  page?: number;
+  pageSize?: number;
+}) {
   return useQuery({
     queryKey: ['products', params],
     queryFn: () => productsApi.list(params),

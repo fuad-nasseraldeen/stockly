@@ -7,6 +7,41 @@ import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
 
+// Simple in-memory cache for search results
+// Key: `${tenantId}:${search}:${supplierId}:${categoryId}:${sort}`
+// Value: { productIds: string[], timestamp: number }
+const searchCache = new Map<string, { productIds: string[]; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(tenantId: string, search: string | undefined, supplierId: string | undefined, categoryId: string | undefined, sort: string): string {
+  return `${tenantId}:${search || ''}:${supplierId || ''}:${categoryId || ''}:${sort}`;
+}
+
+function getCachedProductIds(key: string): string[] | null {
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+  
+  // Check if cache is still valid
+  if (Date.now() - cached.timestamp > CACHE_TTL) {
+    searchCache.delete(key);
+    return null;
+  }
+  
+  return cached.productIds;
+}
+
+function setCachedProductIds(key: string, productIds: string[]): void {
+  searchCache.set(key, { productIds, timestamp: Date.now() });
+  
+  // Clean up old cache entries (keep only last 100 entries)
+  if (searchCache.size > 100) {
+    const entries = Array.from(searchCache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toDelete = entries.slice(0, entries.length - 100);
+    toDelete.forEach(([key]) => searchCache.delete(key));
+  }
+}
+
 const productSchema = z.object({
   name: z.string().trim().min(1, 'חובה להזין שם מוצר'),
   category_id: z.string().uuid().nullable().optional(),
@@ -74,45 +109,76 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     const supplierId = typeof req.query.supplier_id === 'string' ? req.query.supplier_id : undefined;
     const categoryId = typeof req.query.category_id === 'string' ? req.query.category_id : undefined;
     const sort = typeof req.query.sort === 'string' ? req.query.sort : 'updated_desc';
+    
+    // Pagination parameters
+    const page = Math.max(1, parseInt(typeof req.query.page === 'string' ? req.query.page : '1', 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt(typeof req.query.pageSize === 'string' ? req.query.pageSize : '10', 10)));
+    const offset = (page - 1) * pageSize;
 
     // Step 1: determine which product IDs match (fuzzy search when search term exists)
-    let productIds: string[] = [];
+    // Check cache first
+    const cacheKey = getCacheKey(tenant.tenantId, search, supplierId, categoryId, sort);
+    let productIds: string[] | null = getCachedProductIds(cacheKey);
 
-    if (search && search.length > 0) {
-      const searchNormalized = normalizeName(search);
+    if (productIds === null) {
+      // Cache miss - perform search
+      productIds = [];
 
-      // Use fuzzy search function (pg_trgm similarity) to get matching product IDs
-      const { data: fuzzyMatches, error: fuzzyError } = await supabase.rpc('search_products_fuzzy', {
-        tenant_uuid: tenant.tenantId,
-        search_text: searchNormalized,
-        limit_results: 200,
-      });
+      if (search && search.length > 0) {
+        const searchNormalized = normalizeName(search);
 
-      if (fuzzyError) {
-        console.error('Fuzzy search error, falling back to simple search:', fuzzyError);
-        // Fallback to simple ILIKE on name_norm if fuzzy fails
-        const { data: fallbackProducts, error: fallbackErr } = await supabase
-          .from('products')
-          .select('id')
-          .eq('tenant_id', tenant.tenantId)
-          .eq('is_active', true)
-          .ilike('name_norm', `%${searchNormalized}%`);
+        // For short searches (2 characters or less), use ILIKE instead of fuzzy search
+        // Fuzzy search doesn't work well with very short strings
+        if (searchNormalized.length <= 2) {
+          const { data: shortSearchProducts, error: shortSearchErr } = await supabase
+            .from('products')
+            .select('id')
+            .eq('tenant_id', tenant.tenantId)
+            .eq('is_active', true)
+            .ilike('name_norm', `%${searchNormalized}%`)
+            .limit(200);
 
-        if (fallbackErr) {
-          console.error('Fallback search error:', fallbackErr);
-          return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+          if (shortSearchErr) {
+            console.error('Short search error:', shortSearchErr);
+            return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+          }
+          productIds = (shortSearchProducts ?? []).map((p: any) => p.id);
+        } else {
+          // Use fuzzy search function (pg_trgm similarity) for longer searches
+          const { data: fuzzyMatches, error: fuzzyError } = await supabase.rpc('search_products_fuzzy', {
+            tenant_uuid: tenant.tenantId,
+            search_text: searchNormalized,
+            limit_results: 200,
+          });
+
+          if (fuzzyError) {
+            console.error('Fuzzy search error, falling back to simple search:', fuzzyError);
+            // Fallback to simple ILIKE on name_norm if fuzzy fails
+            const { data: fallbackProducts, error: fallbackErr } = await supabase
+              .from('products')
+              .select('id')
+              .eq('tenant_id', tenant.tenantId)
+              .eq('is_active', true)
+              .ilike('name_norm', `%${searchNormalized}%`)
+              .limit(200);
+
+            if (fallbackErr) {
+              console.error('Fallback search error:', fallbackErr);
+              return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+            }
+            productIds = (fallbackProducts ?? []).map((p: any) => p.id);
+          } else {
+            productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
+          }
         }
-        productIds = (fallbackProducts ?? []).map((p: any) => p.id);
-      } else {
-        productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
-      }
 
-      if (productIds.length === 0) {
-        return res.json([]);
+        if (productIds.length === 0) {
+          return res.json({ products: [], total: 0, page: 1, totalPages: 0 });
+        }
       }
     }
 
-    // Step 2: load base products (optionally filtered by fuzzy IDs / category)
+    // Step 2: load ALL base products (we need to sort all before pagination)
     let productsQ = supabase
       .from('products')
       .select('id,name,category_id,unit,created_at,categories(id,name,default_margin_percent)')
@@ -124,18 +190,32 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     }
     if (categoryId) productsQ = productsQ.eq('category_id', categoryId);
 
-    const { data: products, error: productsErr } = await productsQ.order('name');
+    // Load all products (we'll sort and paginate after)
+    const { data: allProducts, error: productsErr } = await productsQ.order('name');
+    
     if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
 
-    productIds = (products ?? []).map((p: any) => p.id);
-    if (productIds.length === 0) return res.json([]);
+    // Cache the product IDs if we did a search
+    if (search && search.length > 0 && productIds.length > 0) {
+      setCachedProductIds(cacheKey, productIds);
+    }
 
-    // Current prices per product+supplier (view)
+    const allProductIds = (allProducts ?? []).map((p: any) => p.id);
+    if (allProductIds.length === 0) {
+      return res.json({ 
+        products: [], 
+        total: 0, 
+        page, 
+        totalPages: 0 
+      });
+    }
+
+    // Current prices per product+supplier (view) - for ALL products
     let currentQ = supabase
       .from('product_supplier_current_price')
       .select('product_id,supplier_id,cost_price,margin_percent,sell_price,created_at')
       .eq('tenant_id', tenant.tenantId)
-      .in('product_id', productIds);
+      .in('product_id', allProductIds);
 
     if (supplierId) currentQ = currentQ.eq('supplier_id', supplierId);
 
@@ -155,12 +235,12 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         : { data: [] as any[] };
     const supplierNameById = new Map((suppliers ?? []).map((s: any) => [s.id, s.name]));
 
-    // Summary view per product
+    // Summary view per product - for ALL products
     const { data: summaries, error: sumErr } = await supabase
       .from('product_price_summary')
       .select('product_id,min_current_cost_price,min_current_sell_price,last_price_update_at')
       .eq('tenant_id', tenant.tenantId)
-      .in('product_id', productIds);
+      .in('product_id', allProductIds);
     if (sumErr) return res.status(500).json({ error: 'שגיאה בטעינת סיכום מחירים' });
     const summaryByProductId = new Map((summaries ?? []).map((s: any) => [s.product_id, s]));
 
@@ -179,8 +259,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       currentByProduct.set(pid, list);
     }
 
-    // Shape response
-    let result = (products ?? []).map((p: any) => {
+    // Shape response for ALL products
+    let result = (allProducts ?? []).map((p: any) => {
       const summary = summaryByProductId.get(p.id) ?? null;
       return {
         id: p.id,
@@ -197,7 +277,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       result = result.filter((p: any) => p.prices && p.prices.length > 0);
     }
 
-    // Sort options based on summary
+    // Sort options based on summary (sort ALL before pagination)
     const getMin = (r: any) => Number(r.summary?.min_current_cost_price ?? Number.POSITIVE_INFINITY);
     const getUpdated = (r: any) => new Date(r.summary?.last_price_update_at ?? 0).getTime();
     if (sort === 'price_asc') result.sort((a, b) => getMin(a) - getMin(b));
@@ -205,7 +285,17 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     else if (sort === 'updated_asc') result.sort((a, b) => getUpdated(a) - getUpdated(b));
     else result.sort((a, b) => getUpdated(b) - getUpdated(a));
 
-    return res.json(result);
+    // Now paginate after sorting
+    const totalCount = result.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const paginatedResult = result.slice(offset, offset + pageSize);
+
+    return res.json({
+      products: paginatedResult,
+      total: totalCount,
+      page,
+      totalPages,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

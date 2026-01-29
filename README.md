@@ -64,8 +64,16 @@
 - ✅ **מניעת כפילויות** - בדיקה אוטומטית של מוצרים/ספקים/קטגוריות זהים (normalized)
 - ✅ **חיפוש מהיר עם Debounce** - קריאת API רק אחרי עצירה קצרה בהקלדה
 - ✅ **חיפוש סלחני (Fuzzy Search)** - מבוסס `pg_trgm` ב-Postgres, תופס טעויות כתיב קטנות
+- ✅ **חיפוש קצר (2 תווים)** - משתמש ב-ILIKE לחיפושים קצרים, fuzzy search לחיפושים ארוכים
+- ✅ **Pagination בשרת** - טעינה יעילה של מוצרים עם pagination בשרת (10 מוצרים לעמוד)
+- ✅ **Cache לתוצאות חיפוש** - cache בזיכרון (5 דקות) לחיפושים חוזרים, מהיר יותר
 - ✅ **ריבוי חנויות (Multi‑Tenant)** - תמיכה במספר חנויות לכל משתמש, עם תפקידים `owner` / `worker`
 - ✅ **הזמנות (Invites)** - מנגנון הזמנה לפי אימייל, כולל קבלה אוטומטית של הזמנות ממתינות
+- ✅ **Super Admin System** - מערכת ניהול מערכת למנהל האפליקציה (`fuad@owner.com`)
+- ✅ **Admin Panel** - דף ניהול מערכת לצפייה בכל החנויות, משתמשים, ופעילות
+- ✅ **ניהול משתמשים** - חסימה/ביטול חסימה של משתמשים, הסרת משתמשים מחנויות
+- ✅ **ניהול חנויות** - איפוס נתונים, מחיקת חנויות, צפייה בסטטיסטיקות
+- ✅ **Audit Logs** - מעקב אחר פעולות משמעותיות במערכת
 - ✅ **עברית RTL** - ממשק משתמש מלא בעברית עם תמיכה מלאה ב-RTL
 - ✅ **עיצוב Mobile-First** - מותאם מושלם למובייל עם תפריט hamburger
 - ✅ **PWA Ready** - מוכן להתקנה כאפליקציה
@@ -139,18 +147,32 @@ VITE_SUPABASE_ANON_KEY=your_anon_public_key
 ### 5. הגדרת מסד הנתונים
 
 1. פתח את **Supabase Dashboard** → **SQL Editor**
-2. הרץ את המיגרציה הבסיסית:
+2. הרץ את המיגרציות בסדר הבא:
    ```sql
-   -- העתק והדבק את התוכן מ:
-   -- supabase/migrations/complete_schema.sql
-   ```
-3. הרץ את המיגרציות הנוספות (אם נדרש):
-   ```sql
-   -- supabase/migrations/002_views_settings.sql
-   -- supabase/migrations/update_policies_RLS.sql
+   -- 1. סכמה בסיסית
+   -- supabase/migrations/0001_schema.sql
+   
+   -- 2. RLS Policies
+   -- supabase/migrations/0002_rls_policies.sql
+   
+   -- 3. Indexes לחיפוש
+   -- supabase/migrations/0007_add_search_indexes.sql
+   
+   -- 4. Fuzzy search (חובה להפעיל pg_trgm קודם!)
+   CREATE EXTENSION IF NOT EXISTS pg_trgm;
+   -- supabase/migrations/0008_fuzzy_product_search.sql
+   
+   -- 5. ניהול משתמשים
+   -- supabase/migrations/0009_user_management.sql
+   
+   -- 6. Super Admin
+   -- supabase/migrations/0010_super_admin.sql
    ```
 
-> 📝 **הערה:** המיגרציה `complete_schema.sql` מכילה את כל הטבלאות, Views, RLS Policies, ו-Triggers הנדרשים.
+> 📝 **חשוב:** 
+> - המיגרציות צריכות לרוץ בסדר (לפי המספרים)
+> - `pg_trgm` extension צריך להיות מופעל לפני מיגרציה 0008
+> - Super Admin (`fuad@owner.com`) נוצר אוטומטית במיגרציה 0010
 
 ### 6. הפעלת הפרויקט
 
@@ -181,12 +203,18 @@ stockly/
 │   │   ├── app.ts             # הגדרת Express app
 │   │   ├── server.ts          # נקודת כניסה לשרת
 │   │   ├── middleware/
-│   │   │   └── auth.ts        # Middleware לאימות JWT
+│   │   │   └── auth.ts        # Middleware לאימות JWT, tenant, super admin
 │   │   ├── routes/
-│   │   │   ├── products.ts   # API routes למוצרים
+│   │   │   ├── products.ts   # API routes למוצרים (עם pagination ו-cache)
 │   │   │   ├── categories.ts # API routes לקטגוריות
 │   │   │   ├── suppliers.ts  # API routes לספקים
-│   │   │   └── settings.ts   # API routes להגדרות
+│   │   │   ├── settings.ts   # API routes להגדרות
+│   │   │   ├── tenants.ts    # API routes לניהול חנויות
+│   │   │   ├── invites.ts     # API routes להזמנות
+│   │   │   ├── import.ts      # API routes לייבוא
+│   │   │   ├── export.ts      # API routes לייצוא
+│   │   │   ├── reset.ts       # API routes לאיפוס נתונים
+│   │   │   └── admin.ts       # API routes לניהול מערכת (super admin)
 │   │   └── lib/
 │   │       ├── supabase.ts   # Supabase client
 │   │       ├── pricing.ts    # פונקציות חישוב מחירים
@@ -208,6 +236,7 @@ stockly/
 │   │   │   ├── Suppliers.tsx    # ניהול ספקים
 │   │   │   ├── ImportExport.tsx # ייבוא/ייצוא + איפוס נתונים
 │   │   │   ├── Settings.tsx     # הגדרות מערכת (מע״מ, פרופיל משתמש)
+│   │   │   ├── Admin.tsx         # דף ניהול מערכת (super admin בלבד)
 │   │   │   ├── CreateTenant.tsx # יצירת חנות חדשה (tenant)
 │   │   │   └── NoAccess.tsx     # אין גישה לחנות קיימת / המתנה להזמנה
 │   │   ├── components/
@@ -217,7 +246,10 @@ stockly/
 │   │   │   ├── useCategories.ts
 │   │   │   ├── useSuppliers.ts
 │   │   │   ├── useSettings.ts
-│   │   │   └── useDebounce.ts   # דיבאונס לחיפושים
+│   │   │   ├── useDebounce.ts   # דיבאונס לחיפושים
+│   │   │   ├── useSuperAdmin.ts # בדיקת super admin status
+│   │   │   ├── useAdmin.ts      # hooks לניהול מערכת
+│   │   │   └── useTenant.ts     # hook לניהול tenant
 │   │   └── lib/
 │   │       ├── api.ts         # API client
 │   │       ├── supabase.ts    # Supabase client
@@ -226,11 +258,27 @@ stockly/
 │   ├── package.json
 │   └── vite.config.ts
 │
+├── .github/
+│   └── workflows/
+│       └── backup.yml        # GitHub Actions workflow לגיבוי אוטומטי
+├── scripts/
+│   ├── backup.sh              # Script גיבוי ל-Linux/Mac
+│   └── backup.ps1            # Script גיבוי ל-Windows
+├── BACKUP_SETUP.md            # מדריך מפורט להגדרת גיבוי אוטומטי
 └── supabase/
     └── migrations/            # מיגרציות מסד נתונים
-        ├── complete_schema.sql
-        ├── 002_views_settings.sql
-        └── update_policies_RLS.sql
+        ├── 0001_schema.sql              # סכמה בסיסית (טבלאות, views, RLS)
+        ├── 0002_rls_policies.sql        # RLS policies
+        ├── 0003_migrate_existing_data.sql  # מיגרציה של נתונים קיימים
+        ├── 0004_backfill_profiles.sql   # מילוי profiles
+        ├── 0005_global_margin.sql       # מרווח גלובלי
+        ├── 0006_Delete_reset_allDataBase.sql  # איפוס נתונים
+        ├── 0007_add_search_indexes.sql # indexes לחיפוש
+        ├── 0008_fuzzy_product_search.sql  # fuzzy search עם pg_trgm
+        ├── 0009_user_management.sql     # ניהול משתמשים (חסימות, audit logs)
+        ├── 0010_super_admin.sql         # מערכת super admin
+        ├── 0012_fix_memberships_display.sql  # תיקון תצוגת memberships
+        └── 0013_fix_super_admin.sql     # תיקון super admin
 ```
 
 ---
@@ -276,21 +324,23 @@ npm run lint
 
 ### טבלאות עיקריות
 
-- **`profiles`** - פרופילי משתמשים (נוצר אוטומטית מ־auth.users)
+- **`profiles`** - פרופילי משתמשים (נוצר אוטומטית מ־auth.users), כולל `is_super_admin`
 - **`tenants`** - חנויות (סטוק) נפרדות לכל עסק
-- **`memberships`** - שיוך משתמשים לחנויות + תפקיד (`owner` / `worker`)
+- **`memberships`** - שיוך משתמשים לחנויות + תפקיד (`owner` / `worker`), כולל `is_blocked`
 - **`invites`** - הזמנות ממתינות לפי אימייל
 - **`categories`** - קטגוריות מוצרים (עם אחוז רווח ברירת מחדל)
 - **`suppliers`** - ספקים
 - **`products`** - מוצרים (כולל `name_norm` לחיפוש)
 - **`price_entries`** - היסטוריית מחירים (כל שינוי מחיר יוצר רשומה חדשה)
 - **`settings`** - הגדרות מערכת פר חנות (מע״מ גלובלי, מרווח גלובלי)
+- **`audit_logs`** - יומן פעולות (יצירת חנויות, הצטרפות משתמשים, חסימות, וכו')
 
 ### Views ופונקציות עזר
 
 - **`product_supplier_current_price`** - מחיר נוכחי לכל מוצר-ספק
 - **`product_price_summary`** - סיכום מחירים לכל מוצר (מינימום, תאריך עדכון אחרון)
 - **`search_products_fuzzy(tenant_uuid, search_text, limit)`** - פונקציית חיפוש סלחני (fuzzy) על שמות מוצרים בעזרת `pg_trgm`
+- **`auto_grant_super_admin()`** - פונקציה אוטומטית להענקת super admin למשתמש `fuad@owner.com`
 
 ### RLS (Row Level Security)
 
@@ -313,12 +363,25 @@ npm run lint
 5. אם ה-token תקין, הבקשה ממשיכה
 6. `OnboardingRouter` ב-frontend מקבל הזמנות ממתינות (`/api/invites/accept`) ומטען את החנויות של המשתמש
 
+### Super Admin System
+
+- **מנהל האפליקציה:** `fuad@owner.com` מקבל אוטומטית הרשאות super admin
+- **גישה:** Super admin יכול לגשת ל-`/admin` גם בלי שייכות לחנויות
+- **תכונות:**
+  - צפייה בכל החנויות והמשתמשים
+  - חסימה/ביטול חסימה של משתמשים
+  - הסרת משתמשים מחנויות
+  - איפוס נתוני חנות
+  - מחיקת חנויות
+  - צפייה ב-audit logs
+  - סטטיסטיקות לכל חנות (מוצרים, ספקים, קטגוריות, נפח DB)
+
 ### API Endpoints (עיקריים)
 
 כל ה-endpoints דורשים אימות (חוץ מ-`/health`), ורובם גם `x-tenant-id`:
 
 ```
-GET    /api/products              # רשימת מוצרים (עם חיפוש/סינון/מיון)
+GET    /api/products?page=1&pageSize=10&search=...&sort=...  # רשימת מוצרים (עם pagination, חיפוש/סינון/מיון)
 GET    /api/products/:id          # פרטי מוצר
 POST   /api/products              # יצירת מוצר + מחיר ראשוני
 PUT    /api/products/:id          # עדכון מוצר
@@ -349,7 +412,19 @@ POST   /api/invites/accept        # קבלת כל ההזמנות הממתינו�
 POST   /api/import/preview        # תצוגה מקדימה לייבוא אקסל/CSV
 POST   /api/import/apply?mode=…   # ביצוע ייבוא (merge/overwrite)
 POST   /api/tenant/reset          # איפוס כל נתוני החנות (owner-only)
+
+# Admin Endpoints (Super Admin בלבד)
+GET    /api/admin/check           # בדיקת super admin status
+GET    /api/admin/tenants         # רשימת כל החנויות עם משתמשים וסטטיסטיקות
+GET    /api/admin/audit-logs      # יומן פעולות (audit logs)
+POST   /api/admin/block-user      # חסימת משתמש בחנות
+POST   /api/admin/unblock-user    # ביטול חסימת משתמש
+DELETE /api/admin/remove-user     # הסרת משתמש מחנות
+POST   /api/admin/reset-tenant-data  # איפוס נתוני חנות
+DELETE /api/admin/delete-tenant      # מחיקת חנות לחלוטין
 ```
+
+> **הערה:** כל ה-admin endpoints דורשים `requireSuperAdmin` middleware ורק `fuad@owner.com` יכול לגשת אליהם.
 
 ---
 
@@ -367,11 +442,15 @@ POST   /api/tenant/reset          # איפוס כל נתוני החנות (owner
 - כפתורים וקלטים מותאמים למגע
 
 ### חיפוש וסינון
-- חיפוש לפי שם מוצר
+- חיפוש לפי שם מוצר (עם debounce)
+- חיפוש סלחני (fuzzy search) - תופס שגיאות כתיב קטנות
+- חיפוש קצר (2 תווים) - משתמש ב-ILIKE לחיפושים קצרים
 - סינון לפי ספק
 - סינון לפי קטגוריה
 - מיון לפי מחיר (נמוך-גבוה / גבוה-נמוך)
 - מיון לפי תאריך עדכון
+- Pagination - 10 מוצרים לעמוד עם ניווט בין עמודים
+- Cache - תוצאות חיפוש נשמרות ב-cache (5 דקות) למהירות
 
 ---
 
@@ -399,6 +478,63 @@ POST   /api/tenant/reset          # איפוס כל נתוני החנות (owner
 2. לחץ על "הוסף ספק" (שם חובה, טלפון והערות אופציונליים)
 3. ערוך או מחק ספקים קיימים
 4. מחיקת ספק עם מחירים קיימים תציג אזהרה
+
+---
+
+## ⚡ ביצועים ואופטימיזציה
+
+### Pagination בשרת
+- **Pagination יעיל:** השרת מחזיר רק את העמוד הנוכחי (10 מוצרים)
+- **Cache לתוצאות חיפוש:** תוצאות חיפוש נשמרות ב-cache (5 דקות) למהירות
+- **שיפור ביצועים:** כ-27% שיפור בזמן טעינה (מ-2.86s ל-2.08s)
+
+### Indexes במסד הנתונים
+- **Indexes לחיפוש:** `products_name_norm_search_idx`, `products_name_norm_trgm_idx`
+- **Indexes ל-sorting:** `price_entries_tenant_product_created_idx`
+- **Indexes ל-RLS:** `memberships_user_idx`, `memberships_tenant_idx`
+
+### חיפוש
+- **Fuzzy Search:** מבוסס `pg_trgm` עם threshold של 0.2
+- **חיפוש קצר:** חיפוש של 2 תווים או פחות משתמש ב-ILIKE
+- **Debounce:** חיפוש עם debounce של 350ms בפרונט-אנד
+
+### Cache
+- **In-memory cache:** תוצאות חיפוש נשמרות ב-cache (5 דקות TTL)
+- **Auto-cleanup:** Cache מנקה אוטומטית entries ישנים (שומר רק 100 אחרונים)
+
+---
+
+## 💾 גיבויים ואבטחת נתונים
+
+### גיבוי אוטומטי (מומלץ)
+- **GitHub Actions + Google Drive:** מערכת גיבוי אוטומטית מלאה
+- **תדירות:** גיבוי אוטומטי כל יום ב-2:00 UTC (4:00 בבוקר שעון ישראל)
+- **אחסון:** Google Drive (לצמיתות) + GitHub Artifacts (7 ימים)
+- **אוטומציה:** לא צריך לעשות כלום - הכל אוטומטי!
+- **הגדרה:** ראה `BACKUP_SETUP.md` להוראות מפורטות
+
+### Supabase Backups
+- **גיבויים אוטומטיים:** Supabase עושה גיבויים אוטומטיים (תלוי בתוכנית)
+- **Point-in-Time Recovery:** ניתן לשחזר נתונים לנקודת זמן ספציפית
+- **המלצה:** ודא שגיבויים מופעלים ב-Supabase Dashboard → Settings → Database → Backups
+
+### גיבוי ידני
+- **pg_dump:** ניתן להריץ גיבוי ידני עם `scripts/backup.sh` (Linux/Mac) או `scripts/backup.ps1` (Windows)
+- **Supabase Dashboard:** ניתן לייצא דרך Supabase Dashboard → Database → Backups → Export
+
+### Soft Delete
+- **מחיקה רכה:** מוצרים, ספקים, קטגוריות משתמשים ב-`is_active = false` במקום מחיקה
+- **שחזור:** ניתן לשחזר נתונים שנמחקו בטעות (עדכון `is_active = true`)
+
+### Audit Logs
+- **יומן פעולות:** כל פעולה משמעותית נרשמת ב-`audit_logs`
+- **סוגי פעולות:** `tenant_created`, `user_joined`, `user_blocked`, `invite_sent`
+- **גישה:** Super admin יכול לצפות ב-audit logs דרך דף הניהול
+
+### Export/Import
+- **ייצוא נתונים:** ניתן לייצא את כל הנתונים דרך דף ייבוא/ייצוא
+- **ייבוא נתונים:** ניתן לייבא נתונים מקבצי Excel/CSV
+- **איפוס נתונים:** ניתן לאפס את כל נתוני החנות (owner-only)
 
 ---
 

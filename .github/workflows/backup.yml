@@ -1,0 +1,97 @@
+name: Database Backup
+
+on:
+  # Run automatically every day at 2 AM UTC (4 AM Israel time)
+  schedule:
+    - cron: '0 2 * * *'
+  # Allow manual trigger from GitHub Actions UI
+  workflow_dispatch:
+  # Run on push to main (optional - for testing)
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/backup.yml'
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create backup directory
+        run: mkdir -p backups
+
+      - name: Backup database with pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          set -e  # Exit on error
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          backup_file="backups/backup_${timestamp}.sql"
+          
+          echo "Starting database backup..."
+          if pg_dump "$DATABASE_URL" > "$backup_file"; then
+            echo "✓ Database dump created successfully"
+            
+            # Get file size
+            file_size=$(du -h "$backup_file" | cut -f1)
+            echo "File size: $file_size"
+            
+            # Compress the backup
+            echo "Compressing backup..."
+            if gzip "$backup_file"; then
+              echo "✓ Backup compressed successfully"
+              compressed_size=$(du -h "${backup_file}.gz" | cut -f1)
+              echo "Compressed size: $compressed_size"
+            else
+              echo "✗ Compression failed"
+              exit 1
+            fi
+          else
+            echo "✗ Database dump failed"
+            exit 1
+          fi
+          
+          echo "Backup created: ${backup_file}.gz"
+          ls -lh backups/
+
+      - name: Upload to Google Drive
+        uses: satackey/action-google-drive-upload@v1
+        with:
+          skip_file_upload: 'false'
+          file_path: 'backups/'
+          folder_id: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          google_service_account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+        continue-on-error: true  # Continue even if Google Drive upload fails
+
+      - name: Cleanup old backups (keep last 30 days)
+        if: success() || failure()  # Run even if previous step failed
+        run: |
+          # Keep only backups from last 30 days
+          find backups/ -name "backup_*.sql.gz" -mtime +30 -delete 2>/dev/null || true
+          echo "Cleaned up old backups"
+
+      - name: Create backup summary
+        run: |
+          echo "## Database Backup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Backup Files:**" >> $GITHUB_STEP_SUMMARY
+          ls -lh backups/ | tail -n +2 | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Backup completed successfully!" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload backup as artifact (for download)
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup
+          path: backups/*.sql.gz
+          retention-days: 7

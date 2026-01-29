@@ -240,14 +240,30 @@ export const authApi = {
 };
 
 // Products API
+export type ProductsResponse = {
+  products: Product[];
+  total: number;
+  page: number;
+  totalPages: number;
+};
+
 export const productsApi = {
-  list: (params?: { search?: string; supplier_id?: string; category_id?: string; sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc' }): Promise<Product[]> => {
+  list: (params?: { 
+    search?: string; 
+    supplier_id?: string; 
+    category_id?: string; 
+    sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
+    page?: number;
+    pageSize?: number;
+  }): Promise<ProductsResponse> => {
     const queryParams = new URLSearchParams();
     if (params?.search) queryParams.append('search', params.search);
     if (params?.supplier_id) queryParams.append('supplier_id', params.supplier_id);
     if (params?.category_id) queryParams.append('category_id', params.category_id);
     if (params?.sort) queryParams.append('sort', params.sort);
-    return apiRequest<Product[]>(`/api/products?${queryParams.toString()}`);
+    if (params?.page) queryParams.append('page', String(params.page));
+    if (params?.pageSize) queryParams.append('pageSize', String(params.pageSize));
+    return apiRequest<ProductsResponse>(`/api/products?${queryParams.toString()}`);
   },
   
   get: (id: string): Promise<Product> => apiRequest<Product>(`/api/products/${id}`),
