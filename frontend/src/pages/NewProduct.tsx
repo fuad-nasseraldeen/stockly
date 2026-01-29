@@ -28,6 +28,7 @@ export default function NewProduct() {
   const [costPrice, setCostPrice] = useState('');
   const [marginPercent, setMarginPercent] = useState('');
   const [vatOverride, setVatOverride] = useState('');
+  const [costIncludesVat, setCostIncludesVat] = useState<'with' | 'without'>('with');
 
   // Inline error messages
   const [supplierError, setSupplierError] = useState<string | null>(null);
@@ -59,7 +60,14 @@ export default function NewProduct() {
   const defaultVatPercent = settings?.vat_percent ? Number(settings.vat_percent) : 18;
   const vatPercent = vatOverride !== '' ? Number(vatOverride) || 0 : defaultVatPercent;
 
-  // Calculate sell price
+  const parseNumber = (v: string): number => (v ? Number(v) || 0 : 0);
+  const rawCost = parseNumber(costPrice);
+  const costBeforeVat =
+    rawCost > 0 && vatPercent > 0 && costIncludesVat === 'with'
+      ? rawCost / (1 + vatPercent / 100)
+      : rawCost;
+
+  // Calculate sell price (always עלות לפני מע\"מ + רווח + מע\"מ)
   const calculateSellPrice = (cost: number, margin: number, vat: number) => {
     if (!cost || cost <= 0) return 0;
     const withMargin = cost + (cost * margin / 100);
@@ -67,7 +75,7 @@ export default function NewProduct() {
     return Math.round(withVat * 100) / 100;
   };
 
-  const sellPrice = calculateSellPrice(Number(costPrice) || 0, marginToUse, vatPercent);
+  const sellPrice = calculateSellPrice(costBeforeVat, marginToUse, vatPercent);
 
   const handleAddSupplier = async (): Promise<void> => {
     if (!newSupplierName.trim()) return;
@@ -134,13 +142,14 @@ export default function NewProduct() {
 
     try {
       setProductError(null);
-      // Create product with first price
+      const netCost = costBeforeVat;
+      // Create product with first price (cost_price תמיד לפני מע\"מ)
       await createProduct.mutateAsync({
         name: name.trim(),
         category_id: categoryId || null,
         unit,
         supplier_id: supplierId,
-        cost_price: Number(costPrice),
+        cost_price: netCost,
         margin_percent: marginToUse !== defaultMargin ? marginToUse : undefined,
       });
 
@@ -265,7 +274,7 @@ export default function NewProduct() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="costPrice">מחיר עלות *</Label>
+                    <Label htmlFor="costPrice">מחיר עלות מספק *</Label>
                     <Input
                       id="costPrice"
                       type="number"
@@ -276,6 +285,28 @@ export default function NewProduct() {
                       placeholder="0.00"
                       required
                     />
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="costIncludesVat"
+                          className="h-3 w-3"
+                          checked={costIncludesVat === 'with'}
+                          onChange={() => setCostIncludesVat('with')}
+                        />
+                        <span>המחיר כולל מע&quot;מ</span>
+                      </label>
+                      <label className="inline-flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="costIncludesVat"
+                          className="h-3 w-3"
+                          checked={costIncludesVat === 'without'}
+                          onChange={() => setCostIncludesVat('without')}
+                        />
+                        <span>המחיר ללא מע&quot;מ (המערכת תחשב ותוסיף מע&quot;מ)</span>
+                      </label>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -321,8 +352,12 @@ export default function NewProduct() {
                       </div>
                       <div className="text-sm space-y-2 pr-6">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">מחיר עלות:</span>
-                          <span className="font-medium">{Number(costPrice).toFixed(2)} ₪</span>
+                          <span className="text-muted-foreground">מחיר מספק (קלט):</span>
+                          <span className="font-medium">{rawCost.toFixed(2)} ₪</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">מחיר עלות לפני מע&quot;מ (לחישוב):</span>
+                          <span className="font-medium">{costBeforeVat.toFixed(2)} ₪</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">+ רווח ({marginToUse}%):</span>

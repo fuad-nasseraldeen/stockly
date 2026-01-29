@@ -45,6 +45,7 @@ export default function EditProduct() {
   const [newSupplierNotes, setNewSupplierNotes] = useState('');
   const [newPriceSupplierId, setNewPriceSupplierId] = useState('');
   const [newPriceCost, setNewPriceCost] = useState('');
+  const [newPriceIncludesVat, setNewPriceIncludesVat] = useState<'with' | 'without'>('with');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
 
@@ -121,15 +122,21 @@ export default function EditProduct() {
     }
     try {
       setPriceError(null);
+      const rawCost = Number(newPriceCost);
+      const netCost =
+        rawCost > 0 && vatPercent > 0 && newPriceIncludesVat === 'with'
+          ? rawCost / (1 + vatPercent / 100)
+          : rawCost;
       await addProductPrice.mutateAsync({
         id,
         data: {
           supplier_id: newPriceSupplierId,
-          cost_price: Number(newPriceCost),
+          cost_price: netCost,
         },
       });
       setNewPriceSupplierId('');
       setNewPriceCost('');
+      setNewPriceIncludesVat('with');
       setShowAddPrice(false);
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
@@ -138,8 +145,13 @@ export default function EditProduct() {
   };
 
   const currentPrices = product?.prices || [];
-  const calculatedSellPrice = newPriceCost
-    ? calcSellPrice(Number(newPriceCost), globalMarginPercent, vatPercent)
+  const newPriceRaw = newPriceCost ? Number(newPriceCost) || 0 : 0;
+  const newPriceNet =
+    newPriceRaw > 0 && vatPercent > 0 && newPriceIncludesVat === 'with'
+      ? newPriceRaw / (1 + vatPercent / 100)
+      : newPriceRaw;
+  const calculatedSellPrice = newPriceNet
+    ? calcSellPrice(newPriceNet, globalMarginPercent, vatPercent)
     : null;
 
   if (!id) {
@@ -321,6 +333,30 @@ export default function EditProduct() {
                 onChange={(e) => setNewPriceCost(e.target.value)}
                 placeholder="0.00"
               />
+              <div className="flex flex-col gap-1 text-xs text-muted-foreground mt-1">
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="newPriceIncludesVat"
+                      className="h-3 w-3"
+                      checked={newPriceIncludesVat === 'with'}
+                      onChange={() => setNewPriceIncludesVat('with')}
+                    />
+                    <span>המחיר כולל מע&quot;מ</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="newPriceIncludesVat"
+                      className="h-3 w-3"
+                      checked={newPriceIncludesVat === 'without'}
+                      onChange={() => setNewPriceIncludesVat('without')}
+                    />
+                    <span>המחיר ללא מע&quot;מ (המערכת תחשב ותוסיף מע&quot;מ)</span>
+                  </label>
+                </div>
+              </div>
             </div>
 
             {calculatedSellPrice && (
