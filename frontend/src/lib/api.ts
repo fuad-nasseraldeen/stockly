@@ -105,7 +105,11 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 function getTenantId(): string | null {
-  return localStorage.getItem('currentTenantId');
+  const tenantId = localStorage.getItem('currentTenantId');
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 getTenantId() called, returning:', tenantId);
+  }
+  return tenantId;
 }
 
 export async function apiRequest<T>(
@@ -114,6 +118,15 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = await getAuthToken();
   const tenantId = options?.skipTenantHeader ? undefined : getTenantId();
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 apiRequest:', {
+      endpoint,
+      skipTenantHeader: options?.skipTenantHeader,
+      tenantId,
+      hasToken: !!token,
+    });
+  }
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -126,9 +139,14 @@ export async function apiRequest<T>(
   
   if (tenantId && !options?.skipTenantHeader) {
     headers['x-tenant-id'] = tenantId;
+  } else if (!options?.skipTenantHeader) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('⚠️ apiRequest: No tenantId found for endpoint:', endpoint);
+    }
   }
 
-  const { skipTenantHeader, ...fetchOptions } = options || {};
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { skipTenantHeader: _, ...fetchOptions } = options || {};
   const url = API_URL ? `${API_URL}${endpoint}` : endpoint;
   const response = await fetch(url, {
     ...fetchOptions,
@@ -136,6 +154,57 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
+    // Handle 401 (Unauthorized) - token expired or invalid
+    if (response.status === 401) {
+      // Try to refresh the session
+      const { data: { session }, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError || !session) {
+        // Refresh failed - clear session and redirect to login
+        await supabase.auth.signOut();
+        // Clear tenant from localStorage
+        localStorage.removeItem('currentTenantId');
+        // Redirect to login page
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+        // Throw error to stop execution
+        throw new Error('ההתחברות פגה תוקף, נא להתחבר מחדש');
+      } else {
+        // Session refreshed - retry the request with new token
+        const newToken = session.access_token;
+        const retryHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${newToken}`,
+          ...(options?.headers as Record<string, string>),
+        };
+        
+        if (tenantId && !options?.skipTenantHeader) {
+          retryHeaders['x-tenant-id'] = tenantId;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { skipTenantHeader: _, ...retryFetchOptions } = options || {};
+        const retryResponse = await fetch(url, {
+          ...retryFetchOptions,
+          headers: retryHeaders,
+        });
+
+        if (!retryResponse.ok) {
+          let errorMessage = 'הבקשה נכשלה';
+          try {
+            const errorData = await retryResponse.json();
+            errorMessage = errorData.error || errorData.message || `שגיאה ${retryResponse.status}: ${retryResponse.statusText}`;
+          } catch {
+            errorMessage = `שגיאה ${retryResponse.status}: ${retryResponse.statusText || 'לא ניתן להתחבר לשרת'}`;
+          }
+          throw new Error(errorMessage);
+        }
+
+        return retryResponse.json();
+      }
+    }
+
     let errorMessage = 'הבקשה נכשלה';
     try {
       const errorData = await response.json();
@@ -289,7 +358,7 @@ export const tenantApi = {
 
 // Tenants API
 export const tenantsApi = {
-  list: (): Promise<Tenant[]> => apiRequest<Tenant[]>('/api/tenants'),
+  list: (): Promise<Tenant[]> => apiRequest<Tenant[]>('/api/tenants', { skipTenantHeader: true }),
   
   create: (data: { name: string }): Promise<Tenant> =>
     apiRequest<Tenant>('/api/tenants', {

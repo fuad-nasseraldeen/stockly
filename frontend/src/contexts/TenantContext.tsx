@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { tenantsApi } from '../lib/api';
 
@@ -9,7 +9,7 @@ export type Tenant = {
   created_at: string;
 };
 
-type TenantContextType = {
+export type TenantContextType = {
   currentTenant: Tenant | null;
   tenants: Tenant[];
   isLoading: boolean;
@@ -17,7 +17,7 @@ type TenantContextType = {
   refetchTenants: () => void;
 };
 
-const TenantContext = createContext<TenantContextType | undefined>(undefined);
+export const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [currentTenant, setCurrentTenantState] = useState<Tenant | null>(null);
@@ -25,20 +25,37 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     queryKey: ['tenants'],
     queryFn: () => tenantsApi.list(),
   });
-
-  // Load tenant from localStorage on mount
+  console.log('🔍 TenantContext - useQuery result:', { tenants, isLoading });
+  // Load tenant from localStorage on mount and update localStorage immediately when tenants load
   useEffect(() => {
-    const saved = localStorage.getItem('currentTenantId');
-    if (saved && tenants.length > 0) {
-      const tenant = tenants.find(t => t.id === saved);
-      if (tenant) {
-        setCurrentTenantState(tenant);
-      } else if (tenants.length > 0) {
-        // If saved tenant not found, use first available
-        setCurrentTenantState(tenants[0]);
+    if (tenants.length > 0) {
+      const saved = localStorage.getItem('currentTenantId');
+      let selectedTenant: Tenant | null = null;
+      
+      if (saved) {
+        const tenant = tenants.find(t => t.id === saved);
+        if (tenant) {
+          selectedTenant = tenant;
+        } else {
+          // If saved tenant not found, use first available
+          selectedTenant = tenants[0];
+        }
+      } else {
+        // No saved tenant, use first available
+        selectedTenant = tenants[0];
       }
-    } else if (tenants.length > 0) {
-      setCurrentTenantState(tenants[0]);
+      
+      // Update localStorage immediately (before state update to avoid race conditions)
+      // This ensures getTenantId() returns the correct value even if requests are sent early
+      if (selectedTenant) {
+        console.log('🔍 TenantContext: Updating localStorage with tenantId:', selectedTenant.id);
+        localStorage.setItem('currentTenantId', selectedTenant.id);
+      }
+      
+      // Update state (this may trigger a render, but localStorage is already updated)
+      if (selectedTenant) {
+        setCurrentTenantState(selectedTenant);
+      }
     }
   }, [tenants]);
 
@@ -70,10 +87,3 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useTenant() {
-  const context = useContext(TenantContext);
-  if (context === undefined) {
-    throw new Error('useTenant must be used within TenantProvider');
-  }
-  return context;
-}

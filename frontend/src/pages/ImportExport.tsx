@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useTenant } from '../contexts/TenantContext';
+import { useTenant } from '../hooks/useTenant';
 import { importApi, exportApi, tenantApi } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';

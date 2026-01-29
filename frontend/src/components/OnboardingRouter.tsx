@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useTenant } from '../contexts/TenantContext';
+import { useTenant } from '../hooks/useTenant';
 import { invitesApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';

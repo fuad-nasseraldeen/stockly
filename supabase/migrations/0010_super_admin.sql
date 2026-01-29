@@ -6,7 +6,7 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS is_super_admin boolean DEFAULT false NOT NULL;
 
 -- Create index for super admin queries
-CREATE INDEX IF NOT EXISTS profiles_super_admin_idx 
+CREATE INDEX IF NOT EXISTS profiles_super_admin_idx
   ON profiles (is_super_admin) 
   WHERE is_super_admin = true;
 

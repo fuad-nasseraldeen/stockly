@@ -5,7 +5,8 @@ import { supabase } from './lib/supabase';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
 import { Menu, X } from 'lucide-react';
-import { TenantProvider, useTenant } from './contexts/TenantContext';
+import { TenantProvider } from './contexts/TenantContext';
+import { useTenant } from './hooks/useTenant';
 import { TenantSwitcher } from './components/TenantSwitcher';
 
 import Login from './pages/Login';

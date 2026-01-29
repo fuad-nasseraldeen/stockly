@@ -126,13 +126,30 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
   }
 
   // Check if user is super admin
+  // Using service role client to bypass RLS
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('is_super_admin')
+    .select('is_super_admin, user_id')
     .eq('user_id', user.id)
     .single();
 
-  if (error || !profile || !profile.is_super_admin) {
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Super Admin Check:', {
+      user_id: user.id,
+      user_email: user.email,
+      profile: profile,
+      error: error,
+      is_super_admin: profile?.is_super_admin,
+    });
+  }
+
+  if (error) {
+    console.error('Error checking super admin:', error);
+    return res.status(403).json({ error: 'שגיאה בבדיקת הרשאות מנהל' });
+  }
+
+  if (!profile || !profile.is_super_admin) {
     return res.status(403).json({ error: 'פעולה זו זמינה למנהל המערכת בלבד' });
   }
 

@@ -2,6 +2,57 @@
 
 מערכת ניהול מלאי מלאה ומקצועית לניהול מוצרים, ספקים, קטגוריות ומחירים. המערכת בנויה עם React + Vite (Frontend) ו-Express + TypeScript (Backend), ומשתמשת ב-Supabase כמסד נתונים ואימות.
 
+---
+
+## 🛠️ טכנולוגיות
+
+### Frontend
+- **React** 19.2.0 - ספריית UI
+- **TypeScript** 5.9.3 - טיפוסים סטטיים
+- **Vite** 7.2.4 - Build tool ו-dev server
+- **React Router DOM** 6.21.0 - ניתוב (routing)
+- **React Query (@tanstack/react-query)** 5.90.19 - ניהול state ושרתים (caching, synchronization)
+- **Tailwind CSS** 4.0.0 - עיצוב utility-first
+- **Supabase JS** 2.91.0 - לקוח Supabase לאימות ומסד נתונים
+- **React Hook Form** 7.71.1 - ניהול טפסים
+- **Zod** 4.3.5 - ולידציה של סכמות
+- **Lucide React** 0.562.0 - ספריית אייקונים
+- **XLSX** 0.18.5 - קריאה וכתיבה של קבצי Excel
+- **class-variance-authority** 0.7.1 - ניהול variants של קומפוננטות
+- **clsx** & **tailwind-merge** - שילוב classes של Tailwind
+
+### Backend
+- **Node.js** 18+ - סביבת הרצה
+- **Express** 4.18.2 - מסגרת web server
+- **TypeScript** 5.3.3 - טיפוסים סטטיים
+- **Supabase JS** 2.91.0 - לקוח Supabase (service role)
+- **Multer** 1.4.5 - טיפול בהעלאת קבצים
+- **XLSX** 0.18.5 - פענוח קבצי Excel
+- **Zod** 4.3.5 - ולידציה של נתונים
+- **CORS** 2.8.5 - ניהול Cross-Origin Resource Sharing
+- **dotenv** 16.6.1 - ניהול משתני סביבה
+- **tsx** 4.7.0 - הרצת TypeScript ישירות (dev)
+
+### Database & Infrastructure
+- **PostgreSQL** (דרך Supabase) - מסד נתונים יחסי
+- **Supabase** - Backend-as-a-Service:
+  - **Supabase Auth** - אימות משתמשים (JWT)
+  - **Supabase Database** - PostgreSQL מנוהל
+  - **Row Level Security (RLS)** - אבטחה ברמת שורה
+  - **PostgREST** - REST API אוטומטי
+- **pg_trgm** - הרחבת PostgreSQL לחיפוש fuzzy (tolerance לשגיאות כתיב)
+
+### Development Tools
+- **ESLint** 9.39.1 - בדיקת איכות קוד
+- **TypeScript ESLint** 8.46.4 - כללי linting ל-TypeScript
+- **Git** - ניהול גרסאות
+
+### Deployment
+- **Vercel** - פריסת Frontend ו-Backend
+- **Supabase Cloud** - אירוח מסד נתונים ואימות
+
+---
+
 ## 🎯 תכונות עיקריות
 
 - ✅ **ניהול מוצרים** - יצירה, עריכה, מחיקה רכה, חיפוש וסינון מתקדם
@@ -435,4 +486,4 @@ npm run build
 
 ---
 
-**נבנה עם ❤️ ב-React + TypeScript + Supabase**
+**נבנה עם ❤️ ב-React, TypeScript, Express, Supabase, PostgreSQL, ו-Tailwind CSS**

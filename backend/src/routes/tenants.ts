@@ -32,23 +32,71 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
     
-    const { data: memberships, error } = await supabase
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Fetching tenants for user:', { user_id: user.id, email: user.email });
+    }
+    
+    // Fetch memberships first
+    const { data: memberships, error: membershipsError } = await supabase
       .from('memberships')
-      .select('tenant_id, role, tenants(id, name, created_at)')
+      .select('tenant_id, role')
       .eq('user_id', user.id);
 
-    if (error) {
-      return res.status(500).json({ error: 'שגיאה בטעינת טננטים' });
+    if (membershipsError) {
+      console.error('Error fetching memberships:', membershipsError);
+      return res.status(500).json({ error: 'שגיאה בטעינת טננטים', details: membershipsError.message });
     }
 
-    const tenants = (memberships || []).map((m: any) => ({
-      id: m.tenant_id,
-      role: m.role,
-      ...m.tenants,
-    }));
+    // Debug logging
+    console.log('Memberships query result:', {
+      user_id: user.id,
+      memberships_count: memberships?.length || 0,
+      memberships: memberships,
+      error: membershipsError,
+    });
+
+    if (!memberships || memberships.length === 0) {
+      console.log('No memberships found for user:', user.id);
+      return res.json([]);
+    }
+
+    // Fetch tenant details separately
+    const tenantIds = memberships.map((m: any) => m.tenant_id);
+    const { data: tenantDetails, error: tenantsError } = await supabase
+      .from('tenants')
+      .select('id, name, created_at')
+      .in('id', tenantIds);
+
+    if (tenantsError) {
+      console.error('Error fetching tenant details:', tenantsError);
+      return res.status(500).json({ error: 'שגיאה בטעינת פרטי חנויות', details: tenantsError.message });
+    }
+
+    // Combine memberships with tenant details
+    const tenantMap = new Map((tenantDetails || []).map((t: any) => [t.id, t]));
+    const tenants = memberships.map((m: any) => {
+      const tenant = tenantMap.get(m.tenant_id);
+      return {
+        id: m.tenant_id,
+        role: m.role,
+        name: tenant?.name || 'לא ידוע',
+        created_at: tenant?.created_at || null,
+      };
+    });
+
+    // Debug logging
+    console.log('Final tenants result:', {
+      tenant_ids: tenantIds,
+      tenant_details_count: tenantDetails?.length || 0,
+      tenant_details: tenantDetails,
+      tenants_count: tenants.length,
+      tenants: tenants,
+    });
 
     res.json(tenants);
   } catch (error) {
+    console.error('Get tenants error:', error);
     res.status(500).json({ error: 'שגיאת שרת' });
   }
 });

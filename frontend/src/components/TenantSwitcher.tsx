@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTenant } from '../contexts/TenantContext';
+import { useTenant } from '../hooks/useTenant';
 import { Button } from './ui/button';
 import { ChevronDown, Building2 } from 'lucide-react';
 

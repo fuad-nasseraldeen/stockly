@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
-import { useTenant } from '../contexts/TenantContext';
+import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 
 export default function Settings() {
@@ -76,7 +76,12 @@ export default function Settings() {
     queryFn: () => tenantApi.members(),
     enabled: !!currentTenant && currentTenant.role === 'owner',
   });
-
+  console.log('🔍 Settings - Members query:', {
+    currentTenant,
+    enabled: !!currentTenant && currentTenant?.role === 'owner',
+    members,
+    membersLoading,
+  });
   const {
     data: invites = [],
     isLoading: invitesLoading,
