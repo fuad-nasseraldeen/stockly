@@ -186,61 +186,61 @@ export default function Admin() {
   if (checkingAdmin === false && isSuperAdmin === true) {
     console.log('🔍 Admin: Rendering main content');
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">ניהול משתמשים</h1>
-        <p className="text-sm text-muted-foreground mt-1.5">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">ניהול משתמשים</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
           צפה בכל החנויות, המשתמשים והפעילות • ניהול חסימות
         </p>
       </div>
 
       {/* Tenants & Users Overview */}
       <Card className="shadow-md border-2">
-        <CardHeader>
-          <CardTitle className="text-xl font-bold flex items-center gap-2">
-            <Store className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            <Store className="w-4 h-4 sm:w-5 sm:h-5" />
             חנויות ומשתמשים
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {tenantsLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">טוען נתונים...</div>
           ) : tenants.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">לא נמצאו חנויות</div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {tenants.map((tenant) => (
-                <div key={tenant.id} className="border-2 border-border rounded-lg p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-bold">{tenant.name}</h3>
-                      <p className="text-xs text-muted-foreground">
+                <div key={tenant.id} className="border-2 border-border rounded-lg p-3 sm:p-4 space-y-3 sm:space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold break-words">{tenant.name}</h3>
+                      <p className="text-xs text-muted-foreground mt-1 break-words">
                         נוצר ב-{formatDate(tenant.created_at)} • {tenant.total_users} משתמשים
                         {tenant.blocked_users > 0 && (
                           <span className="text-destructive"> • {tenant.blocked_users} חסומים</span>
                         )}
                       </p>
                       {tenant.statistics && (
-                        <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                          <span className="text-muted-foreground">
+                        <div className="mt-2 flex flex-wrap gap-2 sm:gap-3 text-xs">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             📦 {tenant.statistics.products} מוצרים
                           </span>
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             🏢 {tenant.statistics.suppliers} ספקים
                           </span>
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             📁 {tenant.statistics.categories} קטגוריות
                           </span>
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             💰 {tenant.statistics.price_entries} מחירים
                           </span>
-                          <span className="text-muted-foreground">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             💾 ~{tenant.statistics.estimated_size_kb} KB
                           </span>
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-shrink-0">
                       <Button
                         variant="outline"
                         size="sm"
@@ -248,10 +248,11 @@ export default function Admin() {
                           setSelectedTenant({ id: tenant.id, name: tenant.name });
                           setResetDataDialogOpen(true);
                         }}
-                        className="text-orange-600 hover:text-orange-700"
+                        className="text-orange-600 hover:text-orange-700 text-xs sm:text-sm"
                       >
-                        <RotateCcw className="w-4 h-4 ml-1" />
-                        מחק נתונים
+                        <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                        <span className="hidden sm:inline">מחק נתונים</span>
+                        <span className="sm:hidden">נתונים</span>
                       </Button>
                       <Button
                         variant="destructive"
@@ -260,9 +261,11 @@ export default function Admin() {
                           setSelectedTenant({ id: tenant.id, name: tenant.name });
                           setDeleteTenantDialogOpen(true);
                         }}
+                        className="text-xs sm:text-sm"
                       >
-                        <Trash2 className="w-4 h-4 ml-1" />
-                        מחק חנות
+                        <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                        <span className="hidden sm:inline">מחק חנות</span>
+                        <span className="sm:hidden">מחק</span>
                       </Button>
                     </div>
                   </div>
@@ -278,18 +281,19 @@ export default function Admin() {
                         {tenant.owners.map((owner) => (
                           <div
                             key={owner.membership_id}
-                            className="flex items-center justify-between p-2 bg-muted rounded-lg"
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-2 bg-muted rounded-lg"
                           >
-                            <div>
-                              <span className="font-medium">{owner.full_name}</span>
-                              <span className="text-xs text-muted-foreground mr-2">
-                                • {owner.email}
-                              </span>
-                              <span className="text-xs text-muted-foreground mr-2">
-                                • הצטרף ב-{formatDate(owner.joined_at)}
-                              </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium break-words">{owner.full_name}</span>
+                                <Badge variant="default" className="flex-shrink-0">בעלים</Badge>
+                              </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1 text-xs text-muted-foreground">
+                                <span className="break-all">{owner.email}</span>
+                                <span className="hidden sm:inline">•</span>
+                                <span>הצטרף ב-{formatDate(owner.joined_at)}</span>
+                              </div>
                             </div>
-                            <Badge variant="default">בעלים</Badge>
                           </div>
                         ))}
                       </div>
@@ -309,23 +313,24 @@ export default function Admin() {
                         {tenant.workers.map((worker) => (
                           <div
                             key={worker.membership_id}
-                            className="flex items-center justify-between p-2 bg-muted rounded-lg"
+                            className="flex flex-col gap-2 p-2 bg-muted rounded-lg"
                           >
-                            <div>
-                              <span className="font-medium">{worker.full_name}</span>
-                              <span className="text-xs text-muted-foreground mr-2">
-                                • {worker.email}
-                              </span>
-                              <span className="text-xs text-muted-foreground mr-2">
-                                • הצטרף ב-{formatDate(worker.joined_at)}
-                              </span>
-                              {worker.is_blocked && (
-                                <Badge variant="destructive" className="mr-2">
-                                  חסום
-                                </Badge>
-                              )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium break-words">{worker.full_name}</span>
+                                {worker.is_blocked && (
+                                  <Badge variant="destructive" className="flex-shrink-0">
+                                    חסום
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mt-1 text-xs text-muted-foreground">
+                                <span className="break-all">{worker.email}</span>
+                                <span className="hidden sm:inline">•</span>
+                                <span>הצטרף ב-{formatDate(worker.joined_at)}</span>
+                              </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               {worker.is_blocked ? (
                                 <Button
                                   variant="outline"
@@ -338,9 +343,11 @@ export default function Admin() {
                                     });
                                     setUnblockDialogOpen(true);
                                   }}
+                                  className="text-xs sm:text-sm flex-1 sm:flex-initial"
                                 >
-                                  <CheckCircle className="w-4 h-4 ml-1" />
-                                  בטל חסימה
+                                  <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                                  <span className="hidden sm:inline">בטל חסימה</span>
+                                  <span className="sm:hidden">בטל</span>
                                 </Button>
                               ) : (
                                 <Button
@@ -354,8 +361,9 @@ export default function Admin() {
                                     });
                                     setBlockDialogOpen(true);
                                   }}
+                                  className="text-xs sm:text-sm flex-1 sm:flex-initial"
                                 >
-                                  <Ban className="w-4 h-4 ml-1" />
+                                  <Ban className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
                                   חסום
                                 </Button>
                               )}
@@ -370,10 +378,11 @@ export default function Admin() {
                                   });
                                   setRemoveUserDialogOpen(true);
                                 }}
-                                className="text-destructive hover:text-destructive"
+                                className="text-destructive hover:text-destructive text-xs sm:text-sm flex-1 sm:flex-initial"
                               >
-                                <X className="w-4 h-4 ml-1" />
-                                הסר
+                                <X className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                                <span className="hidden sm:inline">הסר</span>
+                                <span className="sm:hidden">הסר</span>
                               </Button>
                             </div>
                           </div>
@@ -392,45 +401,66 @@ export default function Admin() {
 
       {/* Audit Logs */}
       <Card className="shadow-md border-2">
-        <CardHeader>
-          <CardTitle className="text-xl font-bold flex items-center gap-2">
-            <Clock className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             יומן פעילות
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {logsLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">טוען לוגים...</div>
           ) : auditLogs.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">אין פעילות להצגה</div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>תאריך</TableHead>
-                    <TableHead>פעולה</TableHead>
-                    <TableHead>משתמש</TableHead>
-                    <TableHead>פרטים</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {auditLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-sm">{formatDate(log.created_at)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getActionLabel(log.action)}</Badge>
-                      </TableCell>
-                      <TableCell>{log.profiles?.full_name || 'לא ידוע'}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {log.details && typeof log.details === 'object'
-                          ? JSON.stringify(log.details, null, 0).slice(0, 100)
-                          : String(log.details || '-')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
+              <div className="min-w-full inline-block align-middle">
+                <div className="overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm">תאריך</TableHead>
+                        <TableHead className="text-xs sm:text-sm">פעולה</TableHead>
+                        <TableHead className="text-xs sm:text-sm hidden sm:table-cell">משתמש</TableHead>
+                        <TableHead className="text-xs sm:text-sm hidden md:table-cell">פרטים</TableHead>
+                        <TableHead className="text-xs sm:hidden">פרטים</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="text-xs sm:text-sm whitespace-nowrap">
+                            {formatDate(log.created_at)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">{getActionLabel(log.action)}</Badge>
+                          </TableCell>
+                          {/* Desktop: separate columns */}
+                          <TableCell className="text-xs sm:text-sm hidden sm:table-cell">
+                            {log.profiles?.full_name || 'לא ידוע'}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground hidden md:table-cell max-w-xs truncate">
+                            {log.details && typeof log.details === 'object'
+                              ? JSON.stringify(log.details, null, 0).slice(0, 100)
+                              : String(log.details || '-')}
+                          </TableCell>
+                          {/* Mobile: combined column */}
+                          <TableCell className="text-xs sm:hidden">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium">{log.profiles?.full_name || 'לא ידוע'}</span>
+                              <span className="text-muted-foreground truncate max-w-[200px]">
+                                {log.details && typeof log.details === 'object'
+                                  ? JSON.stringify(log.details, null, 0).slice(0, 50) + '...'
+                                  : String(log.details || '-').slice(0, 50)}
+                              </span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>

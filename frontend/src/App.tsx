@@ -25,6 +25,7 @@ import { OnboardingRouter } from './components/OnboardingRouter';
 function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   const location = useLocation();
   const { currentTenant } = useTenant();
+  const { data: isSuperAdmin } = useSuperAdmin();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems: Array<{ path: string; label: string }> = [
@@ -71,6 +72,19 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
                     </Link>
                   </Button>
                 ))}
+                {/* Super Admin Button - Desktop */}
+                {isSuperAdmin === true && (
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className={isActive('/admin') ? 'bg-accent' : ''}
+                  >
+                    <Link to="/admin" className="px-3 py-1.5 text-sm font-medium">
+                      ניהול מערכת
+                    </Link>
+                  </Button>
+                )}
               </nav>
               <div className="hidden sm:block h-6 w-px bg-border mx-1" />
               <TenantSwitcher />
@@ -129,6 +143,20 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
                   {item.label}
                 </Link>
               ))}
+              {/* Super Admin Button - Mobile */}
+              {isSuperAdmin === true && (
+                <Link
+                  to="/admin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`px-4 py-3 rounded-lg text-base font-medium transition-colors ${
+                    isActive('/admin')
+                      ? 'bg-accent text-accent-foreground'
+                      : 'hover:bg-muted text-foreground'
+                  }`}
+                >
+                  ניהול מערכת
+                </Link>
+              )}
               <div className="border-t-2 border-border my-2" />
               <div className="px-4 py-2 space-y-2">
                 {currentTenant && (

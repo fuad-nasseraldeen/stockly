@@ -12,9 +12,9 @@ const Dialog = ({ children, open, onOpenChange }: { children: React.ReactNode; o
   return (
     <DialogContext.Provider value={{ open, onOpenChange }}>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div className="fixed inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
-          <div className="relative z-50">{children}</div>
+          <div className="relative z-50 w-full max-w-lg">{children}</div>
         </div>
       )}
     </DialogContext.Provider>
@@ -29,7 +29,7 @@ const DialogContent = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "relative z-50 grid w-full max-w-lg gap-4 border-2 border-border bg-background p-6 shadow-xl rounded-xl",
+        "relative z-50 grid w-full gap-4 border-2 border-border bg-background p-4 sm:p-6 shadow-xl rounded-xl max-h-[90vh] overflow-y-auto",
         className
       )}
       {...props}
