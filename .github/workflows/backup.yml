@@ -63,13 +63,70 @@ jobs:
           echo "Backup created: ${backup_file}.gz"
           ls -lh backups/
 
-      - name: Upload to Google Drive
-        uses: satackey/action-google-drive-upload@v1
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          skip_file_upload: 'false'
-          file_path: 'backups/'
-          folder_id: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          google_service_account: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          python-version: '3.11'
+
+      - name: Install Google Drive dependencies
+        run: |
+          pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Upload to Google Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import glob
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          
+          # Get credentials from secret
+          service_account_info = json.loads(os.getenv('GOOGLE_SERVICE_ACCOUNT'))
+          folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+          
+          # Authenticate
+          credentials = service_account.Credentials.from_service_account_info(
+              service_account_info,
+              scopes=['https://www.googleapis.com/auth/drive.file']
+          )
+          
+          # Build Drive service
+          drive_service = build('drive', 'v3', credentials=credentials)
+          
+          # Find all backup files
+          backup_files = glob.glob('backups/*.sql.gz')
+          
+          if not backup_files:
+              print("No backup files found to upload")
+              exit(1)
+          
+          # Upload each backup file
+          for backup_file in backup_files:
+              file_name = os.path.basename(backup_file)
+              print(f"Uploading {file_name} to Google Drive...")
+              
+              file_metadata = {
+                  'name': file_name,
+                  'parents': [folder_id] if folder_id else []
+              }
+              
+              media = MediaFileUpload(backup_file, mimetype='application/gzip', resumable=True)
+              
+              file = drive_service.files().create(
+                  body=file_metadata,
+                  media_body=media,
+                  fields='id, name, size'
+              ).execute()
+              
+              print(f"✅ Successfully uploaded {file_name} (ID: {file.get('id')})")
+          
+          print("✅ All backups uploaded to Google Drive successfully!")
+          EOF
         continue-on-error: true  # Continue even if Google Drive upload fails
 
       - name: Cleanup old backups (keep last 30 days)
