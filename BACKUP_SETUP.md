@@ -15,16 +15,27 @@
 
 ## 🔧 שלב 1: קבלת Connection String מ-Supabase
 
+**⚠️ חשוב:** GitHub Actions לא יכול להתחבר ישירות ל-Supabase (port 5432). צריך להשתמש ב-**Connection Pooling** (port 6543).
+
 1. לך ל-[Supabase Dashboard](https://supabase.com/dashboard)
 2. בחר את הפרויקט שלך
 3. לך ל-**Project Settings** → **Database**
-4. מצא את **Connection String** (URI)
-5. זה נראה כך:
+4. מצא את **Connection String** → בחר **Connection Pooling** (לא Direct connection!)
+5. בחר **Session mode** (מומלץ) או **Transaction mode**
+6. זה נראה כך:
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres
+   postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true
    ```
-6. העתק את ה-Connection String (תצטרך אותו בהמשך)
- // postgresql://postgres:[YOUR-PASSWORD]@db.uhxdrlhrwddqnkxascaa.supabase.co:5432/postgres
+   או:
+   ```
+   postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?pgbouncer=true
+   ```
+7. העתק את ה-Connection String (תצטרך אותו בהמשך)
+
+**📝 הערה:** 
+- ה-workflow ימיר אוטומטית port 5432 ל-6543, אבל **מומלץ מאוד** להשתמש ב-Connection Pooling string ישירות
+- **Session mode** מומלץ ל-`pg_dump` (תומך בכל ה-features)
+- **Transaction mode** גם יעבוד, אבל עם מגבלות מסוימות
 ---
 
 ## 🔧 שלב 2: הגדרת Google Drive API
@@ -77,8 +88,9 @@ folder Id = 1lVOiwILSg9nz2uDwFsnPqVh1UT0n8aPv
 
 ### Secret 1: `SUPABASE_DATABASE_URL`
 - **Name:** `SUPABASE_DATABASE_URL`
-- **Value:** ה-Connection String מ-Supabase (משלב 1)
-- **Example:** `postgresql://postgres:password@db.xxx.supabase.co:5432/postgres`
+- **Value:** ה-Connection String מ-Supabase (משלב 1) - **חשוב: השתמש ב-Connection Pooling!**
+- **Example (Connection Pooling):** `postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true`
+- **או (Direct - יומר אוטומטית):** `postgresql://postgres:password@db.xxx.supabase.co:5432/postgres`
 
 ### Secret 2: `GOOGLE_DRIVE_FOLDER_ID`
 - **Name:** `GOOGLE_DRIVE_FOLDER_ID`
@@ -174,6 +186,13 @@ find backups/ -name "backup_*.sql.gz" -mtime +30 -delete
 ### שגיאת "pg_dump: command not found"
 **פתרון:** GitHub Actions מתקין את זה אוטומטית. אם זה לא עובד, בדוק את ה-workflow.
 
+### שגיאת "Network is unreachable" או "connection failed"
+**פתרון:**
+1. ודא שאתה משתמש ב-**Connection Pooling** (port 6543) ולא Direct connection (port 5432)
+2. לך ל-Supabase Dashboard → Database → Connection Pooling
+3. העתק את ה-Connection String עם `?pgbouncer=true`
+4. עדכן את ה-Secret `SUPABASE_DATABASE_URL` ב-GitHub
+
 ### שגיאת "DATABASE_URL not set"
 **פתרון:** ודא שה-Secret `SUPABASE_DATABASE_URL` מוגדר ב-GitHub Secrets.
 
@@ -181,7 +200,9 @@ find backups/ -name "backup_*.sql.gz" -mtime +30 -delete
 **פתרון:**
 1. ודא שה-Service Account email נוסף לתיקייה ב-Google Drive
 2. ודא שה-`GOOGLE_DRIVE_FOLDER_ID` נכון
-3. ודא שה-`GOOGLE_SERVICE_ACCOUNT` JSON נכון
+3. ודא שה-`GOOGLE_SERVICE_ACCOUNT` JSON נכון (כל התוכן של הקובץ)
+4. ודא שה-Google Drive API מופעל ב-Google Cloud Console
+5. בדוק את ה-logs ב-GitHub Actions לפרטים נוספים
 
 ### הגיבוי לא רץ אוטומטית
 **פתרון:**

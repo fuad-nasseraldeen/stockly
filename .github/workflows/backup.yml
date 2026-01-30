@@ -38,7 +38,35 @@ jobs:
           backup_file="backups/backup_${timestamp}.sql"
           
           echo "Starting database backup..."
-          if pg_dump "$DATABASE_URL" > "$backup_file"; then
+          echo "⚠️  IMPORTANT: Supabase blocks direct connections from GitHub Actions"
+          echo "Using Connection Pooling (port 6543) with Session mode"
+          
+          # Check if URL already uses pooling (port 6543)
+          if echo "$DATABASE_URL" | grep -q ":6543"; then
+            echo "✓ Connection Pooling URL detected"
+            POOLING_URL="$DATABASE_URL"
+          else
+            echo "Converting direct connection to Connection Pooling..."
+            # Convert direct connection (port 5432) to pooling (port 6543)
+            # Format: postgresql://postgres:pass@db.xxx.supabase.co:5432/postgres
+            # To:     postgresql://postgres:pass@db.xxx.supabase.co:6543/postgres?pgbouncer=true
+            POOLING_URL=$(echo "$DATABASE_URL" | sed 's/:5432\//:6543\//' | sed 's/?.*$//')
+            # Add pgbouncer=true if not present
+            if ! echo "$POOLING_URL" | grep -q "pgbouncer=true"; then
+              if echo "$POOLING_URL" | grep -q "?"; then
+                POOLING_URL="${POOLING_URL}&pgbouncer=true"
+              else
+                POOLING_URL="${POOLING_URL}?pgbouncer=true"
+              fi
+            fi
+            echo "Converted URL (password hidden for security)"
+          fi
+          
+          echo "Connecting via Connection Pooling (Session mode)..."
+          echo "If this fails, make sure you're using Connection Pooling URL from Supabase Dashboard"
+          
+          # Try with --no-owner and --no-acl for better compatibility with pooling
+          if pg_dump "$POOLING_URL" --no-owner --no-acl > "$backup_file"; then
             echo "✓ Database dump created successfully"
             
             # Get file size
