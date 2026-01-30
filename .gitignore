@@ -38,9 +38,12 @@ backups/
 
 # OS
 Thumbs.db
-
+ה
 # secret key google cloud
 backup_secret_key_google_cloud.json
+scripts/backup key google cloud.json
+
+
 # secrets
 *.json
 *service_account*
