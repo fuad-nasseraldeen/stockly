@@ -41,3 +41,8 @@ Thumbs.db
 
 # secret key google cloud
 backup_secret_key_google_cloud.json
+# secrets
+*.json
+*service_account*
+*google*key*
+
