@@ -15,27 +15,29 @@
 
 ## 🔧 שלב 1: קבלת Connection String מ-Supabase
 
-**⚠️ חשוב:** GitHub Actions לא יכול להתחבר ישירות ל-Supabase (port 5432). צריך להשתמש ב-**Connection Pooling** (port 6543).
+**⚠️ חשוב:** Supabase עלול לחסום IP addresses של GitHub Actions. יש כמה פתרונות:
+
+### אפשרות 1: Connection Pooling (מומלץ לנסות קודם)
 
 1. לך ל-[Supabase Dashboard](https://supabase.com/dashboard)
 2. בחר את הפרויקט שלך
 3. לך ל-**Project Settings** → **Database**
-4. מצא את **Connection String** → בחר **Connection Pooling** (לא Direct connection!)
-5. בחר **Session mode** (מומלץ) או **Transaction mode**
-6. זה נראה כך:
-   ```
-   postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true
-   ```
-   או:
-   ```
-   postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:6543/postgres?pgbouncer=true
-   ```
-7. העתק את ה-Connection String (תצטרך אותו בהמשך)
+4. מצא את **Connection String** → בחר **Connection Pooling**
+5. בחר **Session mode** (מומלץ)
+6. העתק את ה-Connection String
+   - זה נראה כך: `postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres`
+
+### אפשרות 2: Direct Connection (אם Pooling לא עובד)
+
+1. לך ל-**Project Settings** → **Database**
+2. מצא את **Connection String** → **Direct connection**
+3. העתק את ה-Connection String
+   - זה נראה כך: `postgresql://postgres:password@db.xxx.supabase.co:5432/postgres`
 
 **📝 הערה:** 
-- ה-workflow ימיר אוטומטית port 5432 ל-6543, אבל **מומלץ מאוד** להשתמש ב-Connection Pooling string ישירות
-- **Session mode** מומלץ ל-`pg_dump` (תומך בכל ה-features)
-- **Transaction mode** גם יעבוד, אבל עם מגבלות מסוימות
+- ה-workflow ינסה Connection Pooling קודם (port 6543)
+- אם זה לא עובד, ייתכן שצריך ליצור קשר עם Supabase Support כדי לאשר IP addresses של GitHub Actions
+- חלופה: להשתמש ב-Supabase Dashboard → Database → Backups לייצוא ידני
 ---
 
 ## 🔧 שלב 2: הגדרת Google Drive API
@@ -88,9 +90,9 @@ folder Id = 1lVOiwILSg9nz2uDwFsnPqVh1UT0n8aPv
 
 ### Secret 1: `SUPABASE_DATABASE_URL`
 - **Name:** `SUPABASE_DATABASE_URL`
-- **Value:** ה-Connection String מ-Supabase (משלב 1) - **חשוב: השתמש ב-Connection Pooling!**
-- **Example (Connection Pooling):** `postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true`
-- **או (Direct - יומר אוטומטית):** `postgresql://postgres:password@db.xxx.supabase.co:5432/postgres`
+- **Value:** ה-Connection String מ-Supabase (משלב 1)
+- **מומלץ:** Connection Pooling (port 6543)
+- **Example:** `postgresql://postgres.xxx:password@aws-0-region.pooler.supabase.com:6543/postgres`
 
 ### Secret 2: `GOOGLE_DRIVE_FOLDER_ID`
 - **Name:** `GOOGLE_DRIVE_FOLDER_ID`
@@ -188,10 +190,12 @@ find backups/ -name "backup_*.sql.gz" -mtime +30 -delete
 
 ### שגיאת "Network is unreachable" או "connection failed"
 **פתרון:**
-1. ודא שאתה משתמש ב-**Connection Pooling** (port 6543) ולא Direct connection (port 5432)
-2. לך ל-Supabase Dashboard → Database → Connection Pooling
-3. העתק את ה-Connection String עם `?pgbouncer=true`
-4. עדכן את ה-Secret `SUPABASE_DATABASE_URL` ב-GitHub
+1. ודא שאתה משתמש ב-**Connection Pooling** (port 6543)
+2. נסה להשתמש ב-Direct connection (port 5432) - לפעמים זה עובד
+3. **אם כלום לא עובד:** Supabase חוסם את ה-IP addresses של GitHub Actions
+   - פתרון 1: צור קשר עם Supabase Support כדי לאשר IP addresses של GitHub Actions
+   - פתרון 2: השתמש ב-Supabase Dashboard → Database → Backups לייצוא ידני
+   - פתרון 3: הרץ את ה-backup מ-server עם IP מורשה
 
 ### שגיאת "DATABASE_URL not set"
 **פתרון:** ודא שה-Secret `SUPABASE_DATABASE_URL` מוגדר ב-GitHub Secrets.
