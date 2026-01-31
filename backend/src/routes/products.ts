@@ -172,11 +172,14 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
           }
         }
 
-        if (productIds.length === 0) {
+        if (productIds && productIds.length === 0) {
           return res.json({ products: [], total: 0, page: 1, totalPages: 0 });
         }
       }
     }
+
+    // At this point, productIds is guaranteed to be an array (not null)
+    const productIdsArray: string[] = productIds ?? [];
 
     // Step 2: load ALL base products (we need to sort all before pagination)
     let productsQ = supabase
@@ -185,8 +188,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true);
 
-    if (productIds.length > 0) {
-      productsQ = productsQ.in('id', productIds);
+    if (productIdsArray.length > 0) {
+      productsQ = productsQ.in('id', productIdsArray);
     }
     if (categoryId) productsQ = productsQ.eq('category_id', categoryId);
 
@@ -196,11 +199,11 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
 
     // Cache the product IDs if we did a search
-    if (search && search.length > 0 && productIds.length > 0) {
-      setCachedProductIds(cacheKey, productIds);
+    if (search && search.length > 0 && productIdsArray.length > 0) {
+      setCachedProductIds(cacheKey, productIdsArray);
     }
 
-    const allProductIds = (allProducts ?? []).map((p: any) => p.id);
+    const allProductIds: string[] = (allProducts ?? []).map((p: any) => p.id);
     if (allProductIds.length === 0) {
       return res.json({ 
         products: [], 
