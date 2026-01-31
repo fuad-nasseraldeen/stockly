@@ -230,8 +230,9 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
             
             if (!skuError && skuMatches) {
               const skuIds = (skuMatches ?? []).map((p: any) => p.id);
-              // Combine and deduplicate
-              productIds = Array.from(new Set([...productIds, ...skuIds]));
+              // Combine and deduplicate - ensure productIds is an array
+              const currentIds = productIds ?? [];
+              productIds = Array.from(new Set([...currentIds, ...skuIds]));
             }
           }
         }
