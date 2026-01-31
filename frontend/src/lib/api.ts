@@ -27,6 +27,8 @@ export type Product = {
   name: string;
   category_id: string | null;
   unit: 'unit' | 'kg' | 'liter';
+  sku?: string | null;
+  package_quantity?: number;
   supplier_id: string;
   cost_price: number;
   margin_percent: number | null;
@@ -46,6 +48,8 @@ export type ProductPrice = {
   product_id: string;
   supplier_id: string;
   cost_price: number;
+  discount_percent?: number | null;
+  cost_price_after_discount?: number | null;
   margin_percent: number | null;
   sell_price: number;
   created_at: string;
@@ -72,6 +76,8 @@ export type Settings = {
   tenant_id: string;
   vat_percent: number;
   global_margin_percent?: number | null;
+  use_margin?: boolean | null;
+  use_vat?: boolean | null;
   updated_at: string;
 };
 
@@ -268,13 +274,13 @@ export const productsApi = {
   
   get: (id: string): Promise<Product> => apiRequest<Product>(`/api/products/${id}`),
   
-  create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; supplier_id: string; cost_price: number; margin_percent?: number }) =>
+  create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; sku?: string | null; package_quantity?: number; supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number }) =>
     apiRequest('/api/products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   
-  update: (id: string, data: { name?: string; category_id?: string | null; unit?: 'unit' | 'kg' | 'liter' }) =>
+  update: (id: string, data: { name?: string; category_id?: string | null; unit?: 'unit' | 'kg' | 'liter'; sku?: string | null; package_quantity?: number }) =>
     apiRequest(`/api/products/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -285,7 +291,7 @@ export const productsApi = {
       method: 'DELETE',
     }),
   
-  addPrice: (id: string, data: { supplier_id: string; cost_price: number; margin_percent?: number }) =>
+  addPrice: (id: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number }) =>
     apiRequest(`/api/products/${id}/prices`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -346,7 +352,7 @@ export const suppliersApi = {
 export const settingsApi = {
   get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
-  update: (data: { vat_percent: number; global_margin_percent?: number }): Promise<Settings> =>
+  update: (data: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean }): Promise<Settings> =>
     apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),

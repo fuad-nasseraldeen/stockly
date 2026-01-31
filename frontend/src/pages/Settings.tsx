@@ -22,6 +22,12 @@ export default function Settings() {
   const [margin, setMargin] = useState<string>(() =>
     settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '30'
   );
+  const [useMargin, setUseMargin] = useState<boolean>(() =>
+    settings?.use_margin !== false // Default to true if not set
+  );
+  const [useVat, setUseVat] = useState<boolean>(() =>
+    settings?.use_vat !== false // Default to true if not set
+  );
 
   const [userEmail, setUserEmail] = useState<string>('');
   const [fullName, setFullName] = useState('');
@@ -47,6 +53,13 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['tenantInvites'] });
     },
   });
+
+  useEffect(() => {
+    if (settings) {
+      setUseMargin(settings.use_margin !== false);
+      setUseVat(settings.use_vat !== false);
+    }
+  }, [settings]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -101,12 +114,14 @@ export default function Settings() {
       setSavingVat(true);
       setProfileMessage(null);
       const marginValue = margin.trim() ? Number(margin) : NaN;
-      const payload: { vat_percent: number; global_margin_percent?: number } = {
+      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean } = {
         vat_percent: vatValue,
       };
       if (!Number.isNaN(marginValue)) {
         payload.global_margin_percent = marginValue;
       }
+      payload.use_margin = useMargin;
+      payload.use_vat = useVat;
       await updateSettings.mutateAsync(payload);
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -228,6 +243,58 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground">
                 ערך זה יכול לשמש כברירת מחדל כשאין קטגוריה עם רווח מוגדר (כרגע לשימוש תצוגתי בלבד).
+              </p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="useMargin"
+                  checked={useMargin}
+                  onChange={(e) => setUseMargin(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="useMargin" className="cursor-pointer">
+                  חשב מחיר מכירה עם רווח
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground pr-6">
+                {useMargin 
+                  ? 'מחיר מכירה יכלול רווח'
+                  : 'מחיר מכירה ללא רווח (רק עלות + מע"מ אם מופעל)'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="useVat"
+                  checked={useVat}
+                  onChange={(e) => setUseVat(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="useVat" className="cursor-pointer">
+                  חשב מחיר מכירה עם מע&quot;מ
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground pr-6">
+                {useVat 
+                  ? 'מחיר מכירה יכלול מע"מ'
+                  : 'מחיר מכירה ללא מע"מ (רק עלות + רווח אם מופעל)'}
+              </p>
+            </div>
+            <div className="p-3 bg-muted rounded-lg border-2 border-border">
+              <p className="text-xs font-medium mb-1">סיכום החישוב:</p>
+              <p className="text-xs text-muted-foreground">
+                {!useMargin && !useVat 
+                  ? 'מחיר מכירה = עלות בלבד'
+                  : !useMargin && useVat
+                  ? 'מחיר מכירה = עלות + מע"מ'
+                  : useMargin && !useVat
+                  ? 'מחיר מכירה = עלות + רווח'
+                  : 'מחיר מכירה = עלות + רווח + מע"מ'}
               </p>
             </div>
           </div>

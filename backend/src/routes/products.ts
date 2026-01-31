@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
-import { calcSellPrice, round2 } from '../lib/pricing.js';
+import { calcSellPrice, calcCostAfterDiscount, round2 } from '../lib/pricing.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
@@ -46,6 +46,8 @@ const productSchema = z.object({
   name: z.string().trim().min(1, 'חובה להזין שם מוצר'),
   category_id: z.string().uuid().nullable().optional(),
   unit: z.enum(['unit', 'kg', 'liter']).optional(),
+  sku: z.string().trim().optional().nullable(),
+  package_quantity: z.coerce.number().min(0.01, 'כמות באריזה חייבת להיות גדולה מ-0').optional(),
 });
 
 const priceSchema = z.object({
@@ -58,6 +60,7 @@ const priceSchema = z.object({
     .max(500)
     .optional()
     .optional(),
+  discount_percent: z.coerce.number().min(0).max(100).optional(),
 });
 
 async function getVatPercent(tenantId: string): Promise<number> {
@@ -73,6 +76,24 @@ async function getGlobalMarginPercent(tenantId: string): Promise<number> {
     .eq('tenant_id', tenantId)
     .single();
   return Number(data?.global_margin_percent ?? 30);
+}
+
+async function getUseMargin(tenantId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('settings')
+    .select('use_margin')
+    .eq('tenant_id', tenantId)
+    .single();
+  return data?.use_margin !== false; // Default to true if not set
+}
+
+async function getUseVat(tenantId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('settings')
+    .select('use_vat')
+    .eq('tenant_id', tenantId)
+    .single();
+  return data?.use_vat !== false; // Default to true if not set
 }
 
 async function getCategoryDefaultMargin(tenantId: string, categoryId: string | null | undefined): Promise<number> {
@@ -126,23 +147,38 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
 
       if (search && search.length > 0) {
         const searchNormalized = normalizeName(search);
+        const searchTrimmed = search.trim();
 
         // For short searches (2 characters or less), use ILIKE instead of fuzzy search
         // Fuzzy search doesn't work well with very short strings
         if (searchNormalized.length <= 2) {
-          const { data: shortSearchProducts, error: shortSearchErr } = await supabase
-            .from('products')
-            .select('id')
-            .eq('tenant_id', tenant.tenantId)
-            .eq('is_active', true)
-            .ilike('name_norm', `%${searchNormalized}%`)
-            .limit(200);
+          // Search by name or SKU - use separate queries and combine
+          const [nameResults, skuResults] = await Promise.all([
+            supabase
+              .from('products')
+              .select('id')
+              .eq('tenant_id', tenant.tenantId)
+              .eq('is_active', true)
+              .ilike('name_norm', `%${searchNormalized}%`)
+              .limit(200),
+            supabase
+              .from('products')
+              .select('id')
+              .eq('tenant_id', tenant.tenantId)
+              .eq('is_active', true)
+              .ilike('sku', `%${searchTrimmed}%`)
+              .limit(200),
+          ]);
 
-          if (shortSearchErr) {
-            console.error('Short search error:', shortSearchErr);
+          if (nameResults.error || skuResults.error) {
+            console.error('Short search error:', nameResults.error || skuResults.error);
             return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
           }
-          productIds = (shortSearchProducts ?? []).map((p: any) => p.id);
+          
+          // Combine and deduplicate product IDs
+          const nameIds = (nameResults.data ?? []).map((p: any) => p.id);
+          const skuIds = (skuResults.data ?? []).map((p: any) => p.id);
+          productIds = Array.from(new Set([...nameIds, ...skuIds]));
         } else {
           // Use fuzzy search function (pg_trgm similarity) for longer searches
           const { data: fuzzyMatches, error: fuzzyError } = await supabase.rpc('search_products_fuzzy', {
@@ -153,22 +189,50 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
 
           if (fuzzyError) {
             console.error('Fuzzy search error, falling back to simple search:', fuzzyError);
-            // Fallback to simple ILIKE on name_norm if fuzzy fails
-            const { data: fallbackProducts, error: fallbackErr } = await supabase
+            // Fallback to simple ILIKE on name_norm or SKU if fuzzy fails
+            const [nameResults, skuResults] = await Promise.all([
+              supabase
+                .from('products')
+                .select('id')
+                .eq('tenant_id', tenant.tenantId)
+                .eq('is_active', true)
+                .ilike('name_norm', `%${searchNormalized}%`)
+                .limit(200),
+              supabase
+                .from('products')
+                .select('id')
+                .eq('tenant_id', tenant.tenantId)
+                .eq('is_active', true)
+                .ilike('sku', `%${searchTrimmed}%`)
+                .limit(200),
+            ]);
+
+            if (nameResults.error || skuResults.error) {
+              console.error('Fallback search error:', nameResults.error || skuResults.error);
+              return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+            }
+            
+            // Combine and deduplicate product IDs
+            const nameIds = (nameResults.data ?? []).map((p: any) => p.id);
+            const skuIds = (skuResults.data ?? []).map((p: any) => p.id);
+            productIds = Array.from(new Set([...nameIds, ...skuIds]));
+          } else {
+            productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
+            
+            // Also search by SKU and combine results
+            const { data: skuMatches, error: skuError } = await supabase
               .from('products')
               .select('id')
               .eq('tenant_id', tenant.tenantId)
               .eq('is_active', true)
-              .ilike('name_norm', `%${searchNormalized}%`)
+              .ilike('sku', `%${searchTrimmed}%`)
               .limit(200);
-
-            if (fallbackErr) {
-              console.error('Fallback search error:', fallbackErr);
-              return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
+            
+            if (!skuError && skuMatches) {
+              const skuIds = (skuMatches ?? []).map((p: any) => p.id);
+              // Combine and deduplicate
+              productIds = Array.from(new Set([...productIds, ...skuIds]));
             }
-            productIds = (fallbackProducts ?? []).map((p: any) => p.id);
-          } else {
-            productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
           }
         }
 
@@ -184,7 +248,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     // Step 2: load ALL base products (we need to sort all before pagination)
     let productsQ = supabase
       .from('products')
-      .select('id,name,category_id,unit,created_at,categories(id,name,default_margin_percent)')
+      .select('id,name,category_id,unit,sku,package_quantity,created_at,categories(id,name,default_margin_percent)')
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true);
 
@@ -216,7 +280,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     // Current prices per product+supplier (view) - for ALL products
     let currentQ = supabase
       .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,margin_percent,sell_price,created_at')
+      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
       .eq('tenant_id', tenant.tenantId)
       .in('product_id', allProductIds);
 
@@ -269,6 +333,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         id: p.id,
         name: p.name,
         unit: p.unit,
+        sku: p.sku ?? null,
+        package_quantity: p.package_quantity ?? null,
         category: p.categories ?? null,
         prices: currentByProduct.get(p.id) ?? [],
         summary,
@@ -326,7 +392,7 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
     // Add current prices per supplier + summary
     const { data: current } = await supabase
       .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,margin_percent,sell_price,created_at')
+      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', id);
 
@@ -394,7 +460,16 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
 
     const vat_percent = await getVatPercent(tenant.tenantId);
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
-    const sell_price = calcSellPrice({ cost_price, margin_percent: finalMargin, vat_percent });
+    const use_margin = await getUseMargin(tenant.tenantId);
+    const discount_percent = parsed.data.discount_percent ?? 0;
+    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const sell_price = calcSellPrice({ 
+      cost_price, 
+      margin_percent: finalMargin, 
+      vat_percent,
+      cost_price_after_discount,
+      use_margin
+    });
 
     const { data, error } = await supabase
       .from('price_entries')
@@ -403,11 +478,13 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
         product_id: productId,
         supplier_id,
         cost_price: round2(cost_price),
+        discount_percent: round2(discount_percent),
+        cost_price_after_discount: round2(cost_price_after_discount),
         margin_percent: round2(finalMargin),
         sell_price,
         created_by: user.id,
       })
-      .select('id,product_id,supplier_id,cost_price,margin_percent,sell_price,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לשמור מחיר. נסה שוב.' });
@@ -426,7 +503,7 @@ router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) =>
 
     let q = supabase
       .from('price_entries')
-      .select('id,product_id,supplier_id,cost_price,margin_percent,sell_price,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', productId)
       .order('created_at', { ascending: false });
@@ -509,7 +586,18 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
-    const sell_price = calcSellPrice({ cost_price, margin_percent: finalMargin, vat_percent });
+    const use_margin = await getUseMargin(tenant.tenantId);
+    const use_vat = await getUseVat(tenant.tenantId);
+    const discount_percent = parsedPrice.data.discount_percent ?? 0;
+    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const sell_price = calcSellPrice({ 
+      cost_price, 
+      margin_percent: finalMargin, 
+      vat_percent,
+      cost_price_after_discount,
+      use_margin,
+      use_vat
+    });
 
     // Create product first
     const name_norm = normalizeName(name);
@@ -521,10 +609,12 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
         name_norm,
         category_id: effectiveCategoryId,
         unit: unit ?? 'unit',
+        sku: parsedProduct.data.sku?.trim() || null,
+        package_quantity: parsedProduct.data.package_quantity ?? 1,
         is_active: true,
         created_by: user.id,
       })
-      .select('id,name,category_id,unit,created_at')
+      .select('id,name,category_id,unit,sku,package_quantity,created_at')
       .single();
 
     if (prodErr || !product) {
@@ -537,6 +627,8 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
       product_id: product.id,
       supplier_id,
       cost_price: round2(cost_price),
+      discount_percent: round2(discount_percent),
+      cost_price_after_discount: round2(cost_price_after_discount),
       margin_percent: round2(finalMargin),
       sell_price,
       created_by: user.id,
@@ -571,13 +663,15 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
     }
     if (parsed.data.category_id !== undefined) patch.category_id = parsed.data.category_id ?? null;
     if (parsed.data.unit != null) patch.unit = parsed.data.unit;
+    if (parsed.data.sku !== undefined) patch.sku = parsed.data.sku?.trim() || null;
+    if (parsed.data.package_quantity !== undefined) patch.package_quantity = parsed.data.package_quantity ?? 1;
 
     const { data, error } = await supabase
       .from('products')
       .update(patch)
       .eq('tenant_id', tenant.tenantId)
       .eq('id', id)
-      .select('id,name,category_id,unit,created_at')
+      .select('id,name,category_id,unit,sku,package_quantity,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לעדכן מוצר (ייתכן שיש כפילות בשם)' });

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant, ownerOnly } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
-import { calcSellPrice } from '../lib/pricing.js';
+import { calcSellPrice, calcCostAfterDiscount } from '../lib/pricing.js';
 import * as XLSX from 'xlsx';
 
 const router = Router();
@@ -17,6 +17,9 @@ interface ImportRow {
   supplier: string;
   price: number;
   category?: string;
+  sku?: string;
+  package_quantity?: number;
+  discount_percent?: number;
 }
 
 // Parse Excel/CSV file
@@ -30,7 +33,7 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
     throw new Error('הקובץ ריק או לא תקין');
   }
 
-  // Find header row (look for product_name, supplier, price, category)
+  // Find header row (look for product_name, supplier, price, category, sku, package_quantity, discount_percent)
   let headerRowIndex = -1;
   const headerMap: Record<string, number> = {};
 
@@ -40,8 +43,11 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
     
     const productIdx = lowerRow.findIndex(c => c.includes('product') || c.includes('מוצר'));
     const supplierIdx = lowerRow.findIndex(c => c.includes('supplier') || c.includes('ספק'));
-    const priceIdx = lowerRow.findIndex(c => c.includes('price') || c.includes('מחיר') || c.includes('cost'));
+    const priceIdx = lowerRow.findIndex(c => (c.includes('price') || c.includes('מחיר') || c.includes('cost')) && !c.includes('after') && !c.includes('אחרי'));
     const categoryIdx = lowerRow.findIndex(c => c.includes('category') || c.includes('קטגוריה'));
+    const skuIdx = lowerRow.findIndex(c => c.includes('sku') || c.includes('מק"ט') || c.includes('barcode') || c.includes('ברקוד'));
+    const packageQuantityIdx = lowerRow.findIndex(c => c.includes('package') || c.includes('quantity') || c.includes('כמות') || c.includes('אריזה'));
+    const discountIdx = lowerRow.findIndex(c => (c.includes('discount') || c.includes('הנחה')) && (c.includes('percent') || c.includes('אחוז')));
 
     if (productIdx >= 0 && supplierIdx >= 0 && priceIdx >= 0) {
       headerRowIndex = i;
@@ -49,6 +55,9 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
       headerMap.supplier = supplierIdx;
       headerMap.price = priceIdx;
       if (categoryIdx >= 0) headerMap.category = categoryIdx;
+      if (skuIdx >= 0) headerMap.sku = skuIdx;
+      if (packageQuantityIdx >= 0) headerMap.package_quantity = packageQuantityIdx;
+      if (discountIdx >= 0) headerMap.discount_percent = discountIdx;
       break;
     }
   }
@@ -69,11 +78,17 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
     const supplier = String(row[headerMap.supplier] || '').trim();
     const priceStr = String(row[headerMap.price] || '').trim();
     const category = headerMap.category !== undefined ? String(row[headerMap.category] || '').trim() : undefined;
+    const sku = headerMap.sku !== undefined ? String(row[headerMap.sku] || '').trim() : undefined;
+    const packageQuantityStr = headerMap.package_quantity !== undefined ? String(row[headerMap.package_quantity] || '').trim() : undefined;
+    const discountStr = headerMap.discount_percent !== undefined ? String(row[headerMap.discount_percent] || '').trim() : undefined;
 
     if (!productName || !supplier || !priceStr) continue;
 
     const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
     if (isNaN(price) || price < 0) continue;
+
+    const packageQuantity = packageQuantityStr ? parseFloat(packageQuantityStr.replace(/[^\d.]/g, '')) : undefined;
+    const discountPercent = discountStr ? parseFloat(discountStr.replace(/[^\d.]/g, '')) : undefined;
 
     const key = `${productName.toLowerCase()}|${supplier.toLowerCase()}`;
     const importRow: ImportRow = {
@@ -81,6 +96,9 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
       supplier,
       price,
       category: category || undefined,
+      sku: sku || undefined,
+      package_quantity: packageQuantity && !isNaN(packageQuantity) && packageQuantity > 0 ? packageQuantity : undefined,
+      discount_percent: discountPercent && !isNaN(discountPercent) && discountPercent >= 0 && discountPercent <= 100 ? discountPercent : undefined,
     };
 
     seen.set(key, importRow); // Keep last occurrence
@@ -199,10 +217,10 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       return res.status(400).json({ error: 'לא נמצאו שורות נתונים תקינות' });
     }
 
-    // Get settings for VAT
+    // Get settings for VAT, margin, use_margin, and use_vat
     const { data: settings, error: settingsError } = await supabase
       .from('settings')
-      .select('vat_percent,global_margin_percent')
+      .select('vat_percent,global_margin_percent,use_margin,use_vat')
       .eq('tenant_id', tenant.tenantId)
       .maybeSingle();
 
@@ -212,6 +230,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
 
     const vatPercent = settings?.vat_percent || 18;
     const globalMarginPercent = settings?.global_margin_percent ?? 30;
+    const useMargin = settings?.use_margin !== false; // Default to true if not set
+    const useVat = settings?.use_vat !== false; // Default to true if not set
 
     // OVERWRITE mode: delete all tenant data
     if (mode === 'overwrite') {
@@ -412,6 +432,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
             name_norm: productNameNorm,
             category_id: categoryId,
             unit: 'unit',
+            sku: row.sku?.trim() || null,
+            package_quantity: row.package_quantity ?? 1,
             is_active: true,
             created_by: user.id,
           })
@@ -444,16 +466,21 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
 
       // Always use global margin percent from settings for imports
       const marginPercent = globalMarginPercent;
+      const discountPercent = row.discount_percent ?? 0;
+      const costPriceAfterDiscount = calcCostAfterDiscount(row.price, discountPercent);
       const sellPrice = calcSellPrice({
         cost_price: row.price,
         margin_percent: marginPercent,
         vat_percent: vatPercent,
+        cost_price_after_discount: costPriceAfterDiscount,
+        use_margin: useMargin,
+        use_vat: useVat,
       });
 
       // Check current price
       const { data: currentPrice, error: priceCheckError } = await supabase
         .from('price_entries')
-        .select('cost_price, sell_price')
+        .select('cost_price, discount_percent, cost_price_after_discount, sell_price')
         .eq('tenant_id', tenant.tenantId)
         .eq('product_id', productId)
         .eq('supplier_id', supplierId)
@@ -464,6 +491,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       // Skip if price is the same (only if we successfully fetched a price)
       if (!priceCheckError && currentPrice && 
           Number(currentPrice.cost_price) === row.price &&
+          Number(currentPrice.discount_percent ?? 0) === discountPercent &&
           Number(currentPrice.sell_price) === sellPrice) {
         stats.pricesSkipped++;
         continue;
@@ -477,6 +505,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           product_id: productId,
           supplier_id: supplierId,
           cost_price: row.price,
+          discount_percent: discountPercent,
+          cost_price_after_discount: costPriceAfterDiscount,
           margin_percent: marginPercent,
           sell_price: sellPrice,
           created_by: user.id,

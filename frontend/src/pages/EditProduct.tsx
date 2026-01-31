@@ -15,8 +15,32 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ArrowRight, ArrowLeft, Plus } from 'lucide-react';
 
 // Helper function for calculating sell price
-function calcSellPrice(costPrice: number, marginPercent: number, vatPercent: number): number {
-  const base = costPrice + costPrice * (marginPercent / 100);
+function calcSellPrice(costPrice: number, marginPercent: number, vatPercent: number, discountPercent: number = 0, useMargin: boolean = true, useVat: boolean = true): number {
+  const costAfterDiscount = discountPercent > 0 ? costPrice * (1 - discountPercent / 100) : costPrice;
+  
+  // If both are false, return cost as-is
+  if (!useMargin && !useVat) {
+    return Math.round((costAfterDiscount + Number.EPSILON) * 100) / 100;
+  }
+  
+  // If use_margin is false, only add VAT (if enabled)
+  if (!useMargin) {
+    if (!useVat) {
+      return Math.round((costAfterDiscount + Number.EPSILON) * 100) / 100;
+    }
+    const sell = costAfterDiscount + costAfterDiscount * (vatPercent / 100);
+    return Math.round((sell + Number.EPSILON) * 100) / 100;
+  }
+  
+  // Add margin
+  const base = costAfterDiscount + costAfterDiscount * (marginPercent / 100);
+  
+  // Add VAT only if enabled
+  if (!useVat) {
+    return Math.round((base + Number.EPSILON) * 100) / 100;
+  }
+  
+  // Normal calculation: cost + margin + VAT
   const sell = base + base * (vatPercent / 100);
   return Math.round((sell + Number.EPSILON) * 100) / 100;
 }
@@ -35,6 +59,8 @@ export default function EditProduct() {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [unit, setUnit] = useState<'unit' | 'kg' | 'liter'>('unit');
+  const [sku, setSku] = useState('');
+  const [packageQuantity, setPackageQuantity] = useState('1');
   const [error, setError] = useState<string | null>(null);
 
   // Price management state
@@ -46,6 +72,7 @@ export default function EditProduct() {
   const [newPriceSupplierId, setNewPriceSupplierId] = useState('');
   const [newPriceCost, setNewPriceCost] = useState('');
   const [newPriceIncludesVat, setNewPriceIncludesVat] = useState<'with' | 'without'>('with');
+  const [newPriceDiscount, setNewPriceDiscount] = useState('');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
 
@@ -54,6 +81,8 @@ export default function EditProduct() {
       setName(product.name ?? '');
       setCategoryId(product.category?.id ?? '');
       setUnit((product.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
+      setSku((product as any).sku ?? '');
+      setPackageQuantity((product as any).package_quantity?.toString() ?? '1');
     }
   }, [product]);
 
@@ -71,6 +100,8 @@ export default function EditProduct() {
           name: name.trim(),
           category_id: categoryId || null,
           unit,
+          sku: sku.trim() || null,
+          package_quantity: packageQuantity ? Number(packageQuantity) : undefined,
         },
       });
       navigate('/products');
@@ -86,6 +117,8 @@ export default function EditProduct() {
 
   const vatPercent = settings?.vat_percent ?? 18;
   const globalMarginPercent = settings?.global_margin_percent ?? 30;
+  const useMargin = settings?.use_margin !== false; // Default to true if not set
+  const useVat = settings?.use_vat !== false; // Default to true if not set
 
   const handleAddSupplier = async () => {
     if (!newSupplierName.trim()) {
@@ -132,11 +165,13 @@ export default function EditProduct() {
         data: {
           supplier_id: newPriceSupplierId,
           cost_price: netCost,
+          discount_percent: newPriceDiscount ? Number(newPriceDiscount) : undefined,
         },
       });
       setNewPriceSupplierId('');
       setNewPriceCost('');
       setNewPriceIncludesVat('with');
+      setNewPriceDiscount('');
       setShowAddPrice(false);
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
@@ -150,8 +185,9 @@ export default function EditProduct() {
     newPriceRaw > 0 && vatPercent > 0 && newPriceIncludesVat === 'with'
       ? newPriceRaw / (1 + vatPercent / 100)
       : newPriceRaw;
+  const newPriceDiscountValue = newPriceDiscount ? Number(newPriceDiscount) || 0 : 0;
   const calculatedSellPrice = newPriceNet
-    ? calcSellPrice(newPriceNet, globalMarginPercent, vatPercent)
+    ? calcSellPrice(newPriceNet, globalMarginPercent, vatPercent, newPriceDiscountValue, useMargin, useVat)
     : null;
 
   if (!id) {
@@ -221,6 +257,30 @@ export default function EditProduct() {
             </Select>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="sku">מק&quot;ט / ברקוד (אופציונלי)</Label>
+            <Input
+              id="sku"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              placeholder="הזן מק&quot;ט או ברקוד"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="packageQuantity">כמות באריזה</Label>
+            <Input
+              id="packageQuantity"
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={packageQuantity}
+              onChange={(e) => setPackageQuantity(e.target.value)}
+              placeholder="1"
+            />
+            <p className="text-xs text-muted-foreground">מספר היחידות באריזה (למשל: 6 יחידות באריזה)</p>
+          </div>
+
           {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
 
           <div className="flex justify-between gap-2 pt-2">
@@ -264,7 +324,13 @@ export default function EditProduct() {
                   <TableRow>
                     <TableHead>ספק</TableHead>
                     <TableHead>מחיר עלות</TableHead>
-                    <TableHead>מחיר מכירה</TableHead>
+                    <TableHead>הנחה</TableHead>
+                    <TableHead>מחיר לאחר הנחה</TableHead>
+                    {useMargin ? (
+                      <TableHead>מחיר מכירה</TableHead>
+                    ) : (
+                      <TableHead>מחיר עלות</TableHead>
+                    )}
                     <TableHead>תאריך עדכון</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -273,6 +339,16 @@ export default function EditProduct() {
                     <TableRow key={`${price.supplier_id}-${idx}`}>
                       <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
                       <TableCell>₪{Number(price.cost_price)?.toFixed(2)}</TableCell>
+                      <TableCell>
+                        {price.discount_percent && Number(price.discount_percent) > 0 
+                          ? `${Number(price.discount_percent).toFixed(1)}%`
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {price.cost_price_after_discount 
+                          ? `₪${Number(price.cost_price_after_discount).toFixed(2)}`
+                          : `₪${Number(price.cost_price)?.toFixed(2)}`}
+                      </TableCell>
                       <TableCell className="font-semibold">₪{Number(price.sell_price)?.toFixed(2)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {price.created_at
@@ -359,13 +435,31 @@ export default function EditProduct() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="newPriceDiscount">אחוז הנחה מספק (אופציונלי)</Label>
+              <Input
+                id="newPriceDiscount"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                value={newPriceDiscount}
+                onChange={(e) => setNewPriceDiscount(e.target.value)}
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground">אחוז הנחה שהספק נותן על המחיר (0-100%)</p>
+            </div>
+
             {calculatedSellPrice && (
-              <div className="p-3 bg-muted rounded-lg">
+              <div className="p-3 bg-muted rounded-lg space-y-2">
                 <p className="text-sm font-medium">מחיר מכירה משוער:</p>
                 <p className="text-lg font-bold text-primary">₪{calculatedSellPrice.toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  נוסחה: עלות + רווח {globalMarginPercent}% + מע&quot;מ {vatPercent}%
-                </p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {newPriceDiscountValue > 0 && (
+                    <p>מחיר לאחר הנחה {newPriceDiscountValue}%: ₪{(newPriceNet * (1 - newPriceDiscountValue / 100)).toFixed(2)}</p>
+                  )}
+                  <p>נוסחה: {newPriceDiscountValue > 0 ? 'מחיר לאחר הנחה' : 'עלות'} {useMargin ? `+ רווח ${globalMarginPercent}%` : ''} {useVat ? `+ מע&quot;מ ${vatPercent}%` : ''}</p>
+                </div>
               </div>
             )}
 

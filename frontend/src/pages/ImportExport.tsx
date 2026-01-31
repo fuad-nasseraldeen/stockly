@@ -132,7 +132,7 @@ export default function ImportExport() {
 
   const downloadTemplate = () => {
     const BOM = '\uFEFF';
-    const csv = BOM + 'product_name,supplier,price,category\n"דוגמה מוצר","דוגמה ספק",10.50,"כללי"';
+    const csv = BOM + 'product_name,sku,package_quantity,supplier,price,discount_percent,category\n"דוגמה מוצר","12345",6,"דוגמה ספק",10.50,5,"כללי"';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -225,8 +225,11 @@ export default function ImportExport() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>מוצר</TableHead>
+                        <TableHead>מק&quot;ט</TableHead>
+                        <TableHead>כמות באריזה</TableHead>
                         <TableHead>ספק</TableHead>
                         <TableHead>מחיר</TableHead>
+                        <TableHead>הנחה</TableHead>
                         <TableHead>קטגוריה</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -239,8 +242,11 @@ export default function ImportExport() {
                         .map((row: any, idx: number) => (
                           <TableRow key={idx}>
                             <TableCell>{row.product_name}</TableCell>
+                            <TableCell>{row.sku || '-'}</TableCell>
+                            <TableCell>{row.package_quantity || '1'}</TableCell>
                             <TableCell>{row.supplier}</TableCell>
                             <TableCell>{row.price}</TableCell>
+                            <TableCell>{row.discount_percent ? `${row.discount_percent}%` : '-'}</TableCell>
                             <TableCell>{row.category}</TableCell>
                           </TableRow>
                         ))}

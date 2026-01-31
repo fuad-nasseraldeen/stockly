@@ -76,11 +76,15 @@ export default function Products() {
 
   const calcCostBeforeVat = (costPriceWithVat: number | string | null | undefined) => {
     const numericPrice = Number(costPriceWithVat ?? 0);
-    if (!numericPrice || !settings?.vat_percent) return numericPrice;
+    const useVat = settings?.use_vat !== false; // Default to true if not set
+    if (!numericPrice || !settings?.vat_percent || !useVat) return numericPrice;
     const vatFactor = 1 + settings.vat_percent / 100;
     // מחיר לפני מע״מ = מחיר כולל מע״מ / (1 + מע״מ/100)
     return numericPrice / vatFactor;
   };
+  
+  const useVat = settings?.use_vat !== false; // Default to true if not set
+  const useMargin = settings?.use_margin !== false; // Default to true if not set
 
   const closeHistory = () => {
     setHistoryOpen(false);
@@ -136,7 +140,7 @@ export default function Products() {
               <div className="relative">
                 <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="חיפוש לפי שם מוצר..."
+                  placeholder="חיפוש לפי שם מוצר או מק&quot;ט..."
                   value={search}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="pr-10"
@@ -215,12 +219,24 @@ export default function Products() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex-1">
                     <CardTitle className="text-xl font-bold mb-2">{product.name}</CardTitle>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                       <span className="inline-flex items-center gap-1 px-2 py-1 bg-muted rounded-md border border-border/50">
                         {product.category?.name || 'ללא קטגוריה'}
                       </span>
                       <span>•</span>
                       <span className="px-2 py-1 bg-muted rounded-md border border-border/50">{product.unit === 'unit' ? 'יחידה' : product.unit === 'kg' ? 'ק"ג' : 'ליטר'}</span>
+                      {(product as any).sku && (
+                        <>
+                          <span>•</span>
+                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">מק&quot;ט: {(product as any).sku}</span>
+                        </>
+                      )}
+                      {(product as any).package_quantity && Number((product as any).package_quantity) !== 1 && (
+                        <>
+                          <span>•</span>
+                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">כמות באריזה: {(product as any).package_quantity}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
@@ -274,16 +290,26 @@ export default function Products() {
                               <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
                               <TableHead className="font-semibold">ספק</TableHead>
                       <TableHead className="font-semibold">מחיר עלות</TableHead>
-                              <TableHead className="font-semibold">
-                                מחיר עלות לפני מע&quot;מ
-                              </TableHead>
-                              <TableHead className="font-semibold">
-                                מחיר מכירה
-                                <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                                  כולל מע&quot;מ {settings?.vat_percent ?? 18}% + רווח{' '}
-                                  {settings?.global_margin_percent ?? 30}%
-                                </div>
-                              </TableHead>
+                              <TableHead className="font-semibold">הנחה</TableHead>
+                              <TableHead className="font-semibold">מחיר לאחר הנחה</TableHead>
+                              {useVat && (
+                                <TableHead className="font-semibold">
+                                  מחיר עלות לפני מע&quot;מ
+                                </TableHead>
+                              )}
+                              {useMargin && (
+                                <TableHead className="font-semibold">
+                                  מחיר מכירה
+                                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                    {useVat && `כולל מע"מ ${settings?.vat_percent ?? 18}%`}
+                                    {useVat && useMargin && ' + '}
+                                    {useMargin && `רווח ${settings?.global_margin_percent ?? 30}%`}
+                                  </div>
+                                </TableHead>
+                              )}
+                              {!useMargin && (
+                                <TableHead className="font-semibold">מחיר עלות</TableHead>
+                              )}
                               <TableHead className="font-semibold">תאריך</TableHead>
                               <TableHead className="font-semibold">פעולות</TableHead>
                             </TableRow>
@@ -293,8 +319,24 @@ export default function Products() {
                               <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
                                 <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
                                 <TableCell>{formatPrice(Number(price.cost_price))}</TableCell>
-                                <TableCell>{formatPrice(Number(calcCostBeforeVat(price.cost_price).toFixed(2)))}</TableCell>
-                                <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
+                                <TableCell>
+                                  {price.discount_percent && Number(price.discount_percent) > 0 
+                                    ? `${Number(price.discount_percent).toFixed(1)}%`
+                                    : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {price.cost_price_after_discount 
+                                    ? formatPrice(Number(price.cost_price_after_discount))
+                                    : formatPrice(Number(price.cost_price))}
+                                </TableCell>
+                                {useVat && (
+                                  <TableCell>{formatPrice(Number(calcCostBeforeVat(price.cost_price).toFixed(2)))}</TableCell>
+                                )}
+                                {useMargin ? (
+                                  <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
+                                ) : (
+                                  <TableCell className="font-bold">{formatPrice(Number(price.cost_price_after_discount || price.cost_price))}</TableCell>
+                                )}
                                 <TableCell>{formatDate(price.created_at)}</TableCell>
                                 <TableCell>
                                   <Button
@@ -387,6 +429,8 @@ export default function Products() {
                           <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
                     <TableHead>תאריך</TableHead>
                     <TableHead>מחיר עלות</TableHead>
+                    <TableHead>הנחה</TableHead>
+                    <TableHead>מחיר לאחר הנחה</TableHead>
                     <TableHead>אחוז רווח</TableHead>
                     <TableHead>מחיר מכירה</TableHead>
                   </TableRow>
@@ -396,10 +440,28 @@ export default function Products() {
                     <TableRow key={row.id}>
                       <TableCell>{formatDate(row.created_at)}</TableCell>
                       <TableCell>{formatPrice(Number(row.cost_price))}</TableCell>
-                      <TableCell>{Number(row.margin_percent).toFixed(1)}%</TableCell>
-                      <TableCell className="font-bold text-primary">
-                        {formatPrice(Number(row.sell_price))}
+                      <TableCell>
+                        {row.discount_percent && Number(row.discount_percent) > 0 
+                          ? `${Number(row.discount_percent).toFixed(1)}%`
+                          : '-'}
                       </TableCell>
+                      <TableCell>
+                        {row.cost_price_after_discount 
+                          ? formatPrice(Number(row.cost_price_after_discount))
+                          : formatPrice(Number(row.cost_price))}
+                      </TableCell>
+                      {useMargin && (
+                        <TableCell>{Number(row.margin_percent).toFixed(1)}%</TableCell>
+                      )}
+                      {useMargin ? (
+                        <TableCell className="font-bold text-primary">
+                          {formatPrice(Number(row.sell_price))}
+                        </TableCell>
+                      ) : (
+                        <TableCell className="font-bold">
+                          {formatPrice(Number(row.cost_price_after_discount || row.cost_price))}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

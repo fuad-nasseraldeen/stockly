@@ -22,6 +22,8 @@ export default function NewProduct() {
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [unit, setUnit] = useState<'unit' | 'kg' | 'liter'>('unit');
+  const [sku, setSku] = useState('');
+  const [packageQuantity, setPackageQuantity] = useState('1');
   
   // Price details
   const [supplierId, setSupplierId] = useState<string>('');
@@ -29,6 +31,7 @@ export default function NewProduct() {
   const [marginPercent, setMarginPercent] = useState('');
   const [vatOverride, setVatOverride] = useState('');
   const [costIncludesVat, setCostIncludesVat] = useState<'with' | 'without'>('with');
+  const [discountPercent, setDiscountPercent] = useState('');
 
   // Inline error messages
   const [supplierError, setSupplierError] = useState<string | null>(null);
@@ -66,16 +69,47 @@ export default function NewProduct() {
     rawCost > 0 && vatPercent > 0 && costIncludesVat === 'with'
       ? rawCost / (1 + vatPercent / 100)
       : rawCost;
+  
+  // Calculate cost after discount
+  const discountPercentValue = parseNumber(discountPercent);
+  const costAfterDiscount = discountPercentValue > 0 
+    ? costBeforeVat * (1 - discountPercentValue / 100)
+    : costBeforeVat;
 
-  // Calculate sell price (always עלות לפני מע\"מ + רווח + מע\"מ)
-  const calculateSellPrice = (cost: number, margin: number, vat: number) => {
+  // Calculate sell price - check if use_margin and use_vat are enabled
+  const useMargin = settings?.use_margin !== false; // Default to true if not set
+  const useVat = settings?.use_vat !== false; // Default to true if not set
+  const calculateSellPrice = (cost: number, margin: number, vat: number, useMargin: boolean, useVat: boolean) => {
     if (!cost || cost <= 0) return 0;
+    
+    // If both are false, return cost as-is
+    if (!useMargin && !useVat) {
+      return Math.round(cost * 100) / 100;
+    }
+    
+    // If use_margin is false, only add VAT (if enabled)
+    if (!useMargin) {
+      if (!useVat) {
+        return Math.round(cost * 100) / 100;
+      }
+      const withVat = cost + (cost * vat / 100);
+      return Math.round(withVat * 100) / 100;
+    }
+    
+    // Add margin
     const withMargin = cost + (cost * margin / 100);
+    
+    // Add VAT only if enabled
+    if (!useVat) {
+      return Math.round(withMargin * 100) / 100;
+    }
+    
+    // Normal calculation: cost + margin + VAT
     const withVat = withMargin + (withMargin * vat / 100);
     return Math.round(withVat * 100) / 100;
   };
 
-  const sellPrice = calculateSellPrice(costBeforeVat, marginToUse, vatPercent);
+  const sellPrice = calculateSellPrice(costAfterDiscount, marginToUse, vatPercent, useMargin, useVat);
 
   const handleAddSupplier = async (): Promise<void> => {
     if (!newSupplierName.trim()) return;
@@ -229,6 +263,30 @@ export default function NewProduct() {
                   <option value="liter">ליטר</option>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sku">מק&quot;ט / ברקוד (אופציונלי)</Label>
+                <Input
+                  id="sku"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="הזן מק&quot;ט או ברקוד"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="packageQuantity">כמות באריזה</Label>
+                <Input
+                  id="packageQuantity"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={packageQuantity}
+                  onChange={(e) => setPackageQuantity(e.target.value)}
+                  placeholder="1"
+                />
+                <p className="text-xs text-muted-foreground">מספר היחידות באריזה (למשל: 6 יחידות באריזה)</p>
+              </div>
             </>
           ) : (
             <>
@@ -344,6 +402,21 @@ export default function NewProduct() {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="discountPercent">אחוז הנחה מספק (אופציונלי)</Label>
+                    <Input
+                      id="discountPercent"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={discountPercent}
+                      onChange={(e) => setDiscountPercent(e.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">אחוז הנחה שהספק נותן על המחיר (0-100%)</p>
+                  </div>
+
                   {costPrice && Number(costPrice) > 0 && (
                     <div className="p-5 bg-linear-to-r from-primary/10 to-primary/5 rounded-lg border-2 border-primary/20 shadow-sm space-y-3">
                       <div className="flex items-center gap-2">
@@ -359,18 +432,45 @@ export default function NewProduct() {
                           <span className="text-muted-foreground">מחיר עלות לפני מע&quot;מ (לחישוב):</span>
                           <span className="font-medium">{costBeforeVat.toFixed(2)} ₪</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">+ רווח ({marginToUse}%):</span>
-                          <span className="font-medium">{((Number(costPrice) * marginToUse) / 100).toFixed(2)} ₪</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">+ מע"מ ({vatPercent}%):</span>
-                          <span className="font-medium">{((Number(costPrice) * (1 + marginToUse / 100) * vatPercent) / 100).toFixed(2)} ₪</span>
-                        </div>
-                        <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between">
-                          <span>מחיר מכירה:</span>
-                          <span className="text-primary">{sellPrice.toFixed(2)} ₪</span>
-                        </div>
+                        {discountPercentValue > 0 && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">- הנחה ({discountPercentValue}%):</span>
+                              <span className="font-medium text-green-600">-{(costBeforeVat * discountPercentValue / 100).toFixed(2)} ₪</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">מחיר לאחר הנחה:</span>
+                              <span className="font-medium">{costAfterDiscount.toFixed(2)} ₪</span>
+                            </div>
+                          </>
+                        )}
+                        {useMargin && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">+ רווח ({marginToUse}%):</span>
+                            <span className="font-medium">{(costAfterDiscount * marginToUse / 100).toFixed(2)} ₪</span>
+                          </div>
+                        )}
+                        {useVat && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">+ מע&quot;מ ({vatPercent}%):</span>
+                            <span className="font-medium">
+                              {useMargin 
+                                ? ((costAfterDiscount * (1 + marginToUse / 100) * vatPercent) / 100).toFixed(2)
+                                : ((costAfterDiscount * vatPercent) / 100).toFixed(2)} ₪
+                            </span>
+                          </div>
+                        )}
+                        {useMargin || useVat ? (
+                          <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between">
+                            <span>מחיר מכירה:</span>
+                            <span className="text-primary">{sellPrice.toFixed(2)} ₪</span>
+                          </div>
+                        ) : (
+                          <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between">
+                            <span>מחיר עלות:</span>
+                            <span className="text-primary">{costAfterDiscount.toFixed(2)} ₪</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
