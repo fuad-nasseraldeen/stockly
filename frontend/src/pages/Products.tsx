@@ -12,7 +12,8 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download } from 'lucide-react';
+import { exportApi } from '../lib/api';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -83,8 +84,8 @@ export default function Products() {
     return numericPrice / vatFactor;
   };
   
-  const useVat = settings?.use_vat !== false; // Default to true if not set
-  const useMargin = settings?.use_margin !== false; // Default to true if not set
+  const useVat = settings?.use_vat === true; // Default to false if not set
+  const useMargin = settings?.use_margin === true; // Default to false if not set
 
   const closeHistory = () => {
     setHistoryOpen(false);
@@ -113,6 +114,20 @@ export default function Products() {
     setPage(1);
   };
 
+  const handleExport = async () => {
+    try {
+      await exportApi.downloadFiltered({
+        search: debouncedSearch || undefined,
+        supplier_id: supplierFilter || undefined,
+        category_id: categoryFilter || undefined,
+        sort,
+      });
+    } catch (error) {
+      console.error('Error exporting:', error);
+      alert('שגיאה בייצוא הקובץ');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -122,10 +137,21 @@ export default function Products() {
             נהל את כל המוצרים והמחירים שלך • סה״כ {totalProducts} מוצרים
           </p>
         </div>
-        <Button onClick={() => navigate('/products/new')} size="lg" className="shadow-md hover:shadow-lg">
-          <Plus className="w-4 h-4 ml-2" />
-          הוסף מוצר
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleExport} 
+            variant="outline" 
+            size="lg" 
+            className="shadow-md hover:shadow-lg"
+          >
+            <Download className="w-4 h-4 ml-2" />
+            ייצא מוצרים
+          </Button>
+          <Button onClick={() => navigate('/products/new')} size="lg" className="shadow-md hover:shadow-lg">
+            <Plus className="w-4 h-4 ml-2" />
+            הוסף מוצר
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

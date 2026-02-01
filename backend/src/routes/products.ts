@@ -7,40 +7,7 @@ import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
 
-// Simple in-memory cache for search results
-// Key: `${tenantId}:${search}:${supplierId}:${categoryId}:${sort}`
-// Value: { productIds: string[], timestamp: number }
-const searchCache = new Map<string, { productIds: string[]; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-function getCacheKey(tenantId: string, search: string | undefined, supplierId: string | undefined, categoryId: string | undefined, sort: string): string {
-  return `${tenantId}:${search || ''}:${supplierId || ''}:${categoryId || ''}:${sort}`;
-}
-
-function getCachedProductIds(key: string): string[] | null {
-  const cached = searchCache.get(key);
-  if (!cached) return null;
-  
-  // Check if cache is still valid
-  if (Date.now() - cached.timestamp > CACHE_TTL) {
-    searchCache.delete(key);
-    return null;
-  }
-  
-  return cached.productIds;
-}
-
-function setCachedProductIds(key: string, productIds: string[]): void {
-  searchCache.set(key, { productIds, timestamp: Date.now() });
-  
-  // Clean up old cache entries (keep only last 100 entries)
-  if (searchCache.size > 100) {
-    const entries = Array.from(searchCache.entries());
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
-    const toDelete = entries.slice(0, entries.length - 100);
-    toDelete.forEach(([key]) => searchCache.delete(key));
-  }
-}
+// Cache removed - RPC function handles pagination and sorting in DB, making cache unnecessary
 
 const productSchema = z.object({
   name: z.string().trim().min(1, 'חובה להזין שם מוצר'),
@@ -84,7 +51,7 @@ async function getUseMargin(tenantId: string): Promise<boolean> {
     .select('use_margin')
     .eq('tenant_id', tenantId)
     .single();
-  return data?.use_margin !== false; // Default to true if not set
+  return data?.use_margin === true; // Default to false if not set
 }
 
 async function getUseVat(tenantId: string): Promise<boolean> {
@@ -93,7 +60,7 @@ async function getUseVat(tenantId: string): Promise<boolean> {
     .select('use_vat')
     .eq('tenant_id', tenantId)
     .single();
-  return data?.use_vat !== false; // Default to true if not set
+  return data?.use_vat === true; // Default to false if not set
 }
 
 async function getCategoryDefaultMargin(tenantId: string, categoryId: string | null | undefined): Promise<number> {
@@ -137,139 +104,54 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     const offset = (page - 1) * pageSize;
 
     // Step 1: determine which product IDs match (fuzzy search when search term exists)
-    // Check cache first
-    const cacheKey = getCacheKey(tenant.tenantId, search, supplierId, categoryId, sort);
-    let productIds: string[] | null = getCachedProductIds(cacheKey);
-
-    if (productIds === null) {
-      // Cache miss - perform search
-      productIds = [];
-
-      if (search && search.length > 0) {
-        const searchNormalized = normalizeName(search);
-        const searchTrimmed = search.trim();
-
-        // For short searches (2 characters or less), use ILIKE instead of fuzzy search
-        // Fuzzy search doesn't work well with very short strings
-        if (searchNormalized.length <= 2) {
-          // Search by name or SKU - use separate queries and combine
-          const [nameResults, skuResults] = await Promise.all([
-            supabase
-              .from('products')
-              .select('id')
-              .eq('tenant_id', tenant.tenantId)
-              .eq('is_active', true)
-              .ilike('name_norm', `%${searchNormalized}%`)
-              .limit(200),
-            supabase
-              .from('products')
-              .select('id')
-              .eq('tenant_id', tenant.tenantId)
-              .eq('is_active', true)
-              .ilike('sku', `%${searchTrimmed}%`)
-              .limit(200),
-          ]);
-
-          if (nameResults.error || skuResults.error) {
-            console.error('Short search error:', nameResults.error || skuResults.error);
-            return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
-          }
-          
-          // Combine and deduplicate product IDs
-          const nameIds = (nameResults.data ?? []).map((p: any) => p.id);
-          const skuIds = (skuResults.data ?? []).map((p: any) => p.id);
-          productIds = Array.from(new Set([...nameIds, ...skuIds]));
-        } else {
-          // Use fuzzy search function (pg_trgm similarity) for longer searches
-          const { data: fuzzyMatches, error: fuzzyError } = await supabase.rpc('search_products_fuzzy', {
-            tenant_uuid: tenant.tenantId,
-            search_text: searchNormalized,
-            limit_results: 200,
-          });
-
-          if (fuzzyError) {
-            console.error('Fuzzy search error, falling back to simple search:', fuzzyError);
-            // Fallback to simple ILIKE on name_norm or SKU if fuzzy fails
-            const [nameResults, skuResults] = await Promise.all([
-              supabase
-                .from('products')
-                .select('id')
-                .eq('tenant_id', tenant.tenantId)
-                .eq('is_active', true)
-                .ilike('name_norm', `%${searchNormalized}%`)
-                .limit(200),
-              supabase
-                .from('products')
-                .select('id')
-                .eq('tenant_id', tenant.tenantId)
-                .eq('is_active', true)
-                .ilike('sku', `%${searchTrimmed}%`)
-                .limit(200),
-            ]);
-
-            if (nameResults.error || skuResults.error) {
-              console.error('Fallback search error:', nameResults.error || skuResults.error);
-              return res.status(500).json({ error: 'שגיאה בחיפוש מוצרים' });
-            }
-            
-            // Combine and deduplicate product IDs
-            const nameIds = (nameResults.data ?? []).map((p: any) => p.id);
-            const skuIds = (skuResults.data ?? []).map((p: any) => p.id);
-            productIds = Array.from(new Set([...nameIds, ...skuIds]));
-          } else {
-            productIds = (fuzzyMatches ?? []).map((r: any) => r.product_id);
-            
-            // Also search by SKU and combine results
-            const { data: skuMatches, error: skuError } = await supabase
-              .from('products')
-              .select('id')
-              .eq('tenant_id', tenant.tenantId)
-              .eq('is_active', true)
-              .ilike('sku', `%${searchTrimmed}%`)
-              .limit(200);
-            
-            if (!skuError && skuMatches) {
-              const skuIds = (skuMatches ?? []).map((p: any) => p.id);
-              // Combine and deduplicate - ensure productIds is an array
-              const currentIds = productIds ?? [];
-              productIds = Array.from(new Set([...currentIds, ...skuIds]));
-            }
-          }
-        }
-
-        if (productIds && productIds.length === 0) {
-          return res.json({ products: [], total: 0, page: 1, totalPages: 0 });
-        }
-      }
-    }
-
-    // At this point, productIds is guaranteed to be an array (not null)
-    const productIdsArray: string[] = productIds ?? [];
-
-    // Step 2: load ALL base products (we need to sort all before pagination)
-    let productsQ = supabase
-      .from('products')
-      .select('id,name,category_id,unit,sku,package_quantity,created_at,categories(id,name,default_margin_percent)')
-      .eq('tenant_id', tenant.tenantId)
-      .eq('is_active', true);
-
-    if (productIdsArray.length > 0) {
-      productsQ = productsQ.in('id', productIdsArray);
-    }
-    if (categoryId) productsQ = productsQ.eq('category_id', categoryId);
-
-    // Load all products (we'll sort and paginate after)
-    const { data: allProducts, error: productsErr } = await productsQ.order('name');
+    // OPTIMIZED: Use RPC function to get paginated product IDs with total count
+    // This pushes sorting and pagination to the database - MUCH faster!
+    const searchNormalized = search && search.trim() ? normalizeName(search.trim()) : null;
     
-    if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
+    // Log search params for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Calling RPC with params:', {
+        tenant_uuid: tenant.tenantId,
+        search_text: searchNormalized,
+        search_original: search,
+        supplier_uuid: supplierId || null,
+        category_uuid: categoryId || null,
+        sort_text: sort,
+        limit_results: pageSize,
+        offset_results: (page - 1) * pageSize,
+      });
+    }
+    
+    const { data: pageData, error: rpcError } = await supabase.rpc('products_list_page', {
+      tenant_uuid: tenant.tenantId,
+      search_text: searchNormalized,
+      supplier_uuid: supplierId || null,
+      category_uuid: categoryId || null,
+      sort_text: sort,
+      limit_results: pageSize,
+      offset_results: (page - 1) * pageSize,
+    });
 
-    // Cache the product IDs if we did a search
-    if (search && search.length > 0 && productIdsArray.length > 0) {
-      setCachedProductIds(cacheKey, productIdsArray);
+    if (rpcError) {
+      console.error('RPC products_list_page error:', rpcError);
+      console.error('Error details:', JSON.stringify(rpcError, null, 2));
+      // If RPC function doesn't exist (42883), fall back to old method
+      if (rpcError.code === '42883' || rpcError.message?.includes('does not exist')) {
+        console.warn('RPC function not found, falling back to old search method');
+        // Fall back to old method - but this should not happen if migration ran
+        return res.status(500).json({ 
+          error: 'פונקציית חיפוש לא נמצאה. יש להריץ את migration 0018',
+          details: rpcError.message 
+        });
+      }
+      return res.status(500).json({ 
+        error: 'שגיאה בחיפוש מוצרים', 
+        details: rpcError.message,
+        code: rpcError.code 
+      });
     }
 
-    const allProductIds: string[] = (allProducts ?? []).map((p: any) => p.id);
-    if (allProductIds.length === 0) {
+    if (!pageData || pageData.length === 0) {
       return res.json({ 
         products: [], 
         total: 0, 
@@ -278,12 +160,36 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       });
     }
 
-    // Current prices per product+supplier (view) - for ALL products
+    // Extract product IDs and total count from RPC result
+    const pageProductIds = pageData.map((r: any) => r.product_id);
+    const totalCount = pageData[0]?.total_count ?? 0;
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Now load details ONLY for the products on this page
+    const { data: pageProducts, error: productsErr } = await supabase
+      .from('products')
+      .select('id,name,category_id,unit,sku,package_quantity,created_at,categories(id,name,default_margin_percent)')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('is_active', true)
+      .in('id', pageProductIds);
+    
+    if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
+
+    if (!pageProducts || pageProducts.length === 0) {
+      return res.json({ 
+        products: [], 
+        total: totalCount, 
+        page, 
+        totalPages 
+      });
+    }
+
+    // Load prices and summaries ONLY for page products
     let currentQ = supabase
       .from('product_supplier_current_price')
       .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
       .eq('tenant_id', tenant.tenantId)
-      .in('product_id', allProductIds);
+      .in('product_id', pageProductIds);
 
     if (supplierId) currentQ = currentQ.eq('supplier_id', supplierId);
 
@@ -303,12 +209,12 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         : { data: [] as any[] };
     const supplierNameById = new Map((suppliers ?? []).map((s: any) => [s.id, s.name]));
 
-    // Summary view per product - for ALL products
+    // Summary view per product - ONLY for page products
     const { data: summaries, error: sumErr } = await supabase
       .from('product_price_summary')
       .select('product_id,min_current_cost_price,min_current_sell_price,last_price_update_at')
       .eq('tenant_id', tenant.tenantId)
-      .in('product_id', allProductIds);
+      .in('product_id', pageProductIds);
     if (sumErr) return res.status(500).json({ error: 'שגיאה בטעינת סיכום מחירים' });
     const summaryByProductId = new Map((summaries ?? []).map((s: any) => [s.product_id, s]));
 
@@ -327,44 +233,36 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       currentByProduct.set(pid, list);
     }
 
-    // Shape response for ALL products
-    let result = (allProducts ?? []).map((p: any) => {
-      const summary = summaryByProductId.get(p.id) ?? null;
-      return {
-        id: p.id,
-        name: p.name,
-        unit: p.unit,
-        sku: p.sku ?? null,
-        package_quantity: p.package_quantity ?? null,
-        category: p.categories ?? null,
-        prices: currentByProduct.get(p.id) ?? [],
-        summary,
-      };
-    });
+    // Shape response - maintain RPC sort order
+    const productById = new Map((pageProducts ?? []).map((p: any) => [p.id, p]));
+    const result = pageProductIds
+      .map((id: string) => {
+        const p = productById.get(id);
+        if (!p) return null;
+        const summary = summaryByProductId.get(p.id) ?? null;
+        return {
+          id: p.id,
+          name: p.name,
+          unit: p.unit,
+          sku: p.sku ?? null,
+          package_quantity: p.package_quantity ?? null,
+          category: p.categories ?? null,
+          prices: currentByProduct.get(p.id) ?? [],
+          summary,
+        };
+      })
+      .filter((p: any) => p !== null);
 
     // When filtering by supplier – hide products that don't have a price for that supplier
-    if (supplierId) {
-      result = result.filter((p: any) => p.prices && p.prices.length > 0);
-    }
-
-    // Sort options based on summary (sort ALL before pagination)
-    const getMin = (r: any) => Number(r.summary?.min_current_cost_price ?? Number.POSITIVE_INFINITY);
-    const getUpdated = (r: any) => new Date(r.summary?.last_price_update_at ?? 0).getTime();
-    if (sort === 'price_asc') result.sort((a, b) => getMin(a) - getMin(b));
-    else if (sort === 'price_desc') result.sort((a, b) => getMin(b) - getMin(a));
-    else if (sort === 'updated_asc') result.sort((a, b) => getUpdated(a) - getUpdated(b));
-    else result.sort((a, b) => getUpdated(b) - getUpdated(a));
-
-    // Now paginate after sorting
-    const totalCount = result.length;
-    const totalPages = Math.ceil(totalCount / pageSize);
-    const paginatedResult = result.slice(offset, offset + pageSize);
+    const finalResult = supplierId 
+      ? result.filter((p: any) => p.prices && p.prices.length > 0)
+      : result;
 
     return res.json({
-      products: paginatedResult,
+      products: finalResult,  // Already paginated by RPC
       total: totalCount,
       page,
-      totalPages,
+      totalPages,  // Already calculated above
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

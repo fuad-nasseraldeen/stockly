@@ -23,10 +23,10 @@ export default function Settings() {
     settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '30'
   );
   const [useMargin, setUseMargin] = useState<boolean>(() =>
-    settings?.use_margin !== false // Default to true if not set
+    settings?.use_margin === true // Default to false if not set
   );
   const [useVat, setUseVat] = useState<boolean>(() =>
-    settings?.use_vat !== false // Default to true if not set
+    settings?.use_vat === true // Default to false if not set
   );
 
   const [userEmail, setUserEmail] = useState<string>('');
@@ -56,8 +56,8 @@ export default function Settings() {
 
   useEffect(() => {
     if (settings) {
-      setUseMargin(settings.use_margin !== false);
-      setUseVat(settings.use_vat !== false);
+      setUseMargin(settings.use_margin === true);
+      setUseVat(settings.use_vat === true);
     }
   }, [settings]);
 

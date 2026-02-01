@@ -32,7 +32,7 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
     { path: '/products', label: 'מוצרים' },
     { path: '/suppliers', label: 'ספקים' },
     { path: '/categories', label: 'קטגוריות' },
-    { path: '/import-export', label: 'ייבוא/ייצוא' },
+    { path: '/import-export', label: 'ייבוא' },
     { path: '/settings', label: 'הגדרות' },
   ];
 

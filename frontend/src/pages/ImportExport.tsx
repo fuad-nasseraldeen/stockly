@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTenant } from '../hooks/useTenant';
-import { importApi, exportApi, tenantApi } from '../lib/api';
+import { importApi, tenantApi } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Upload, Download, FileSpreadsheet, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
 type ImportMode = 'merge' | 'overwrite';
 
@@ -148,30 +148,10 @@ export default function ImportExport() {
   <div className="space-y-6 relative">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">ייבוא וייצוא</h1>
-          <p className="text-muted-foreground">ייבא מוצרים ומחירים מקובץ Excel/CSV או ייצא נתונים</p>
+          <h1 className="text-2xl font-bold">ייבוא נתונים</h1>
+          <p className="text-muted-foreground">ייבא מוצרים ומחירים מקובץ Excel/CSV</p>
         </div>
       </div>
-
-      {/* Export Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>ייצוא נתונים</CardTitle>
-          <CardDescription>הורד קבצי CSV עם נתוני המחירים</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-4">
-            <Button onClick={exportApi.downloadCurrent} variant="outline" className="gap-2">
-              <Download className="w-4 h-4" />
-              ייצא מחירים נוכחיים
-            </Button>
-            <Button onClick={exportApi.downloadHistory} variant="outline" className="gap-2">
-              <Download className="w-4 h-4" />
-              ייצא היסטוריה מלאה
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Import Section */}
       <Card>

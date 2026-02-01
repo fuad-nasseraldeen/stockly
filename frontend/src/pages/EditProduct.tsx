@@ -117,8 +117,8 @@ export default function EditProduct() {
 
   const vatPercent = settings?.vat_percent ?? 18;
   const globalMarginPercent = settings?.global_margin_percent ?? 30;
-  const useMargin = settings?.use_margin !== false; // Default to true if not set
-  const useVat = settings?.use_vat !== false; // Default to true if not set
+  const useMargin = settings?.use_margin === true; // Default to false if not set
+  const useVat = settings?.use_vat === true; // Default to false if not set
 
   const handleAddSupplier = async () => {
     if (!newSupplierName.trim()) {

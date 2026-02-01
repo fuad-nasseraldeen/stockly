@@ -77,8 +77,8 @@ export default function NewProduct() {
     : costBeforeVat;
 
   // Calculate sell price - check if use_margin and use_vat are enabled
-  const useMargin = settings?.use_margin !== false; // Default to true if not set
-  const useVat = settings?.use_vat !== false; // Default to true if not set
+  const useMargin = settings?.use_margin === true; // Default to false if not set
+  const useVat = settings?.use_vat === true; // Default to false if not set
   const calculateSellPrice = (cost: number, margin: number, vat: number, useMargin: boolean, useVat: boolean) => {
     if (!cost || cost <= 0) return 0;
     
