@@ -48,12 +48,12 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
 
   // Process all sheets in the workbook
   for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[];
 
-    if (rows.length < 2) {
+  if (rows.length < 2) {
       continue; // Skip empty sheets
-    }
+  }
 
     // Use sheet name as category
     const categoryFromSheet = sheetName.trim();
@@ -64,17 +64,17 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
     const isSpecialCategory = categoryLower.includes('רטבים') || categoryLower.includes('תבלינים');
 
     // Find header row and identify all supplier columns
-    let headerRowIndex = -1;
-    const headerMap: Record<string, number> = {};
+  let headerRowIndex = -1;
+  const headerMap: Record<string, number> = {};
     const supplierColumns: Array<{ supplierCol: number; priceCol: number; discountCol: number }> = [];
     let productIdx = -1; // Declare outside loop
 
-    for (let i = 0; i < Math.min(5, rows.length); i++) {
-      const row = rows[i] as any[];
-      const lowerRow = row.map((cell: any) => String(cell || '').toLowerCase().trim());
-      
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const row = rows[i] as any[];
+    const lowerRow = row.map((cell: any) => String(cell || '').toLowerCase().trim());
+    
       productIdx = lowerRow.findIndex(c => c.includes('product') || c.includes('מוצר') || c.includes('עמודה1'));
-      const categoryIdx = lowerRow.findIndex(c => c.includes('category') || c.includes('קטגוריה'));
+    const categoryIdx = lowerRow.findIndex(c => c.includes('category') || c.includes('קטגוריה'));
       const skuIdx = lowerRow.findIndex(c => c.includes('sku') || c.includes('מק"ט') || c.includes('barcode') || c.includes('ברקוד'));
       const packageQuantityIdx = lowerRow.findIndex(c => c.includes('package') || c.includes('quantity') || c.includes('כמות') || c.includes('אריזה'));
 
@@ -139,14 +139,14 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
       }
 
       if (productIdx >= 0 && supplierColumns.length > 0) {
-        headerRowIndex = i;
-        headerMap.product_name = productIdx;
-        if (categoryIdx >= 0) headerMap.category = categoryIdx;
+      headerRowIndex = i;
+      headerMap.product_name = productIdx;
+      if (categoryIdx >= 0) headerMap.category = categoryIdx;
         if (skuIdx >= 0) headerMap.sku = skuIdx;
         if (packageQuantityIdx >= 0) headerMap.package_quantity = packageQuantityIdx;
-        break;
-      }
+      break;
     }
+  }
 
     // If still no supplier columns found, try to infer from first data row
     if (productIdx >= 0 && supplierColumns.length === 0 && rows.length > headerRowIndex + 1) {
@@ -191,11 +191,11 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
     }
 
     // Parse data rows for this sheet
-    const seen = new Map<string, ImportRow>(); // For deduplication: (product_name, supplier) -> last row
+  const seen = new Map<string, ImportRow>(); // For deduplication: (product_name, supplier) -> last row
 
-    for (let i = headerRowIndex + 1; i < rows.length; i++) {
-      const row = rows[i] as any[];
-      if (!row || row.length === 0) continue;
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const row = rows[i] as any[];
+    if (!row || row.length === 0) continue;
 
       let productName = String(row[headerMap.product_name] || '').trim();
       let sku: string | undefined = undefined;
@@ -270,7 +270,7 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
         // Skip if price is empty, 0, or dash
         if (!priceStr || priceStr === '0' || priceStr === '-') continue;
 
-        const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
+    const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
         // Skip if price is invalid, negative, or zero (price must be > 0)
         if (isNaN(price) || price <= 0) continue;
 
@@ -280,20 +280,20 @@ function parseFile(buffer: Buffer, mimetype: string): ImportRow[] {
         const packageQuantity = packageQuantityStr ? parseFloat(packageQuantityStr.replace(/[^\d.]/g, '')) : undefined;
 
         const key = `${productName.toLowerCase()}|${supplier.toLowerCase()}|${categoryFromSheet}`;
-        const importRow: ImportRow = {
-          product_name: productName,
-          supplier,
-          price,
+    const importRow: ImportRow = {
+      product_name: productName,
+      supplier,
+      price,
           // Use category from column if exists, otherwise use sheet name
           category: category,
           // Include SKU if found (from special handling or column)
           sku: sku && sku.length > 0 ? sku : undefined,
           package_quantity: packageQuantity && !isNaN(packageQuantity) && packageQuantity > 0 ? packageQuantity : undefined,
           discount_percent: discountPercent && !isNaN(discountPercent) && discountPercent >= 0 && discountPercent <= 100 ? discountPercent : undefined,
-        };
+    };
 
-        seen.set(key, importRow); // Keep last occurrence
-      }
+    seen.set(key, importRow); // Keep last occurrence
+  }
     }
 
     // Add rows from this sheet to the overall collection
@@ -659,12 +659,12 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
                 .join(',');
               
               const { data: existing } = await supabase
-                .from('suppliers')
+        .from('suppliers')
                 .select('id,name')
-                .eq('tenant_id', tenant.tenantId)
-                .eq('is_active', true)
+        .eq('tenant_id', tenant.tenantId)
+        .eq('is_active', true)
                 .or(orConditions);
-              
+
               if (existing) {
                 for (const s of existing) {
                   const key = normKey(s.name);
@@ -675,16 +675,16 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
                 }
               }
             }
-          } else {
+      } else {
             console.error('Bulk supplier insert failed:', error);
-            continue;
-          }
+          continue;
+        }
         } else {
           // Successfully inserted new suppliers
           for (const s of (inserted || [])) {
             supplierIdByName.set(normKey(s.name), s.id);
-            stats.suppliersCreated++;
-          }
+        stats.suppliersCreated++;
+      }
         }
       }
     }
@@ -706,11 +706,11 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       }
 
       const categoryRows = missingCategories.map(n => ({
-        tenant_id: tenant.tenantId,
+              tenant_id: tenant.tenantId,
         name: categoryNameMap.get(n) || n, // Use original name if available
-        default_margin_percent: 0,
-        is_active: true,
-        created_by: user.id,
+              default_margin_percent: 0,
+              is_active: true,
+              created_by: user.id,
       }));
 
       for (const part of chunk(categoryRows, 500)) {
@@ -718,7 +718,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           .from('categories')
           .insert(part)
           .select('id,name');
-        
+
         if (error) {
           // If unique constraint violation, fetch existing categories by name
           // Use ilike because unique index is on LOWER(name), not exact name
@@ -749,7 +749,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
             console.error('Bulk category insert failed:', error);
             continue;
           }
-        } else {
+          } else {
           // Successfully inserted new categories
           for (const c of (inserted || [])) {
             categoryIdByName.set(normKey(c.name), c.id);
@@ -757,8 +757,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
             stats.categoriesCreated++;
           }
         }
+        }
       }
-    }
 
     // 7) Create missing products in bulk
     // Build unique product keys desired
@@ -780,15 +780,15 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     const missingProductRows = Array.from(desiredProducts.entries())
       .filter(([key]) => !productIdByKey.has(key))
       .map(([, v]) => ({
-        tenant_id: tenant.tenantId,
+            tenant_id: tenant.tenantId,
         name: v.name,
         name_norm: v.nameNorm,
         category_id: v.categoryId,
-        unit: 'unit',
+            unit: 'unit',
         sku: v.sku ?? null,
         package_quantity: v.packageQty ?? 1,
-        is_active: true,
-        created_by: user.id,
+            is_active: true,
+            created_by: user.id,
       }));
 
     if (missingProductRows.length) {
@@ -797,7 +797,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
           .from('products')
           .insert(part)
           .select('id,name_norm,category_id');
-        
+
         if (error) {
           // If unique constraint violation, fetch existing products
           // Unique index is on (tenant_id, category_id, name_norm) - so we need exact match
@@ -830,14 +830,14 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
             }
           } else {
             console.error('Bulk product insert failed:', error);
-            continue;
-          }
+          continue;
+        }
         } else {
           // Successfully inserted new products
           for (const p of (inserted || [])) {
             productIdByKey.set(productKey(p.name_norm, p.category_id), p.id);
-            stats.productsCreated++;
-          }
+        stats.productsCreated++;
+      }
         }
       }
     }
@@ -959,7 +959,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       }
 
       priceRowsToInsert.push({
-        tenant_id: tenant.tenantId,
+          tenant_id: tenant.tenantId,
         product_id: i.productId,
         supplier_id: i.supplierId,
         cost_price: i.row.price,
@@ -967,8 +967,8 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         cost_price_after_discount: i.costAfterDiscount,
         margin_percent: globalMarginPercent,
         sell_price: i.sellPrice,
-        created_by: user.id,
-      });
+          created_by: user.id,
+        });
     }
 
     for (const part of chunk(priceRowsToInsert, 500)) {

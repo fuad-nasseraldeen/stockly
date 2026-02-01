@@ -333,9 +333,12 @@ export default function Products() {
                                   </div>
                                 </TableHead>
                               )}
-                              {!useMargin && (
-                                <TableHead className="font-semibold">מחיר עלות</TableHead>
-                              )}
+                              <TableHead className="font-semibold">
+                                מחיר לקרטון
+                                <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                                  (תלוי בספק)
+                                </div>
+                              </TableHead>
                               <TableHead className="font-semibold">תאריך</TableHead>
                               <TableHead className="font-semibold">פעולות</TableHead>
                             </TableRow>
@@ -358,11 +361,36 @@ export default function Products() {
                                 {useVat && (
                                   <TableCell>{formatPrice(Number(calcCostBeforeVat(price.cost_price).toFixed(2)))}</TableCell>
                                 )}
-                                {useMargin ? (
+                                {useMargin && (
                                   <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
-                                ) : (
-                                  <TableCell className="font-bold">{formatPrice(Number(price.cost_price_after_discount || price.cost_price))}</TableCell>
                                 )}
+                                <TableCell className="font-semibold">
+                                  {(() => {
+                                    const unitPrice = Number(price.cost_price_after_discount || price.cost_price);
+                                    // package_quantity is now per supplier (from price_entries), not per product
+                                    // Check if package_quantity exists in price object, otherwise fallback to product package_quantity or 1
+                                    const pricePackageQty = (price as any).package_quantity;
+                                    const productPackageQty = (product as any).package_quantity;
+                                    // Use price package_quantity if exists and > 0, otherwise product package_quantity if > 0, otherwise 1
+                                    let packageQty = 1;
+                                    if (pricePackageQty != null && pricePackageQty !== undefined && Number(pricePackageQty) > 0) {
+                                      packageQty = Number(pricePackageQty);
+                                    } else if (productPackageQty != null && productPackageQty !== undefined && Number(productPackageQty) > 0) {
+                                      packageQty = Number(productPackageQty);
+                                    }
+                                    const cartonPrice = unitPrice * packageQty;
+                                    return (
+                                      <div>
+                                        <div>{formatPrice(cartonPrice)}</div>
+                                        {packageQty > 1 && (
+                                          <div className="text-xs text-muted-foreground mt-0.5">
+                                            ({packageQty} יחידות × {formatPrice(unitPrice)})
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </TableCell>
                                 <TableCell>{formatDate(price.created_at)}</TableCell>
                                 <TableCell>
                                   <Button
@@ -457,8 +485,9 @@ export default function Products() {
                     <TableHead>מחיר עלות</TableHead>
                     <TableHead>הנחה</TableHead>
                     <TableHead>מחיר לאחר הנחה</TableHead>
-                    <TableHead>אחוז רווח</TableHead>
-                    <TableHead>מחיר מכירה</TableHead>
+                    {useMargin && <TableHead>אחוז רווח</TableHead>}
+                    {useMargin && <TableHead>מחיר מכירה</TableHead>}
+                    <TableHead>מחיר לקרטון</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -479,15 +508,29 @@ export default function Products() {
                       {useMargin && (
                         <TableCell>{Number(row.margin_percent).toFixed(1)}%</TableCell>
                       )}
-                      {useMargin ? (
+                      {useMargin && (
                         <TableCell className="font-bold text-primary">
                           {formatPrice(Number(row.sell_price))}
                         </TableCell>
-                      ) : (
-                        <TableCell className="font-bold">
-                          {formatPrice(Number(row.cost_price_after_discount || row.cost_price))}
-                        </TableCell>
                       )}
+                      <TableCell className="font-semibold">
+                        {(() => {
+                          const unitPrice = Number(row.cost_price_after_discount || row.cost_price);
+                          // package_quantity is now per supplier (from price_entries), not per product
+                          const packageQty = Number((row as any).package_quantity) || 1;
+                          const cartonPrice = unitPrice * packageQty;
+                          return (
+                            <div>
+                              <div>{formatPrice(cartonPrice)}</div>
+                              {packageQty > 1 && (
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  ({packageQty} יחידות × {formatPrice(unitPrice)})
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

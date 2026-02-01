@@ -48,6 +48,7 @@ export type ProductPrice = {
   product_id: string;
   supplier_id: string;
   cost_price: number;
+  package_quantity?: number | null;
   discount_percent?: number | null;
   cost_price_after_discount?: number | null;
   margin_percent: number | null;

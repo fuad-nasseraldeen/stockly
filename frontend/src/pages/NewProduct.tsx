@@ -343,28 +343,30 @@ export default function NewProduct() {
                       placeholder="0.00"
                       required
                     />
-                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
-                      <label className="inline-flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="costIncludesVat"
-                          className="h-3 w-3"
-                          checked={costIncludesVat === 'with'}
-                          onChange={() => setCostIncludesVat('with')}
-                        />
-                        <span>המחיר כולל מע&quot;מ</span>
-                      </label>
-                      <label className="inline-flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="costIncludesVat"
-                          className="h-3 w-3"
-                          checked={costIncludesVat === 'without'}
-                          onChange={() => setCostIncludesVat('without')}
-                        />
-                        <span>המחיר ללא מע&quot;מ (המערכת תחשב ותוסיף מע&quot;מ)</span>
-                      </label>
-                    </div>
+                    {useVat && (
+                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
+                        <label className="inline-flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="costIncludesVat"
+                            className="h-3 w-3"
+                            checked={costIncludesVat === 'with'}
+                            onChange={() => setCostIncludesVat('with')}
+                          />
+                          <span>המחיר כולל מע&quot;מ</span>
+                        </label>
+                        <label className="inline-flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="costIncludesVat"
+                            className="h-3 w-3"
+                            checked={costIncludesVat === 'without'}
+                            onChange={() => setCostIncludesVat('without')}
+                          />
+                          <span>המחיר ללא מע&quot;מ (המערכת תחשב ותוסיף מע&quot;מ)</span>
+                        </label>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -383,24 +385,26 @@ export default function NewProduct() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="vatPercent">
-                      מע&quot;מ (%){' '}
-                      <span className="text-xs text-muted-foreground">
-                        (ברירת מחדל: {defaultVatPercent}% – ניתן לעריכה לחישוב זה בלבד)
-                      </span>
-                    </Label>
-                    <Input
-                      id="vatPercent"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={vatOverride}
-                      onChange={(e) => setVatOverride(e.target.value)}
-                      placeholder={defaultVatPercent.toString()}
-                    />
-                  </div>
+                  {useVat && (
+                    <div className="space-y-2">
+                      <Label htmlFor="vatPercent">
+                        מע&quot;מ (%){' '}
+                        <span className="text-xs text-muted-foreground">
+                          (ברירת מחדל: {defaultVatPercent}% – ניתן לעריכה לחישוב זה בלבד)
+                        </span>
+                      </Label>
+                      <Input
+                        id="vatPercent"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="100"
+                        value={vatOverride}
+                        onChange={(e) => setVatOverride(e.target.value)}
+                        placeholder={defaultVatPercent.toString()}
+                      />
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label htmlFor="discountPercent">אחוז הנחה מספק (אופציונלי)</Label>

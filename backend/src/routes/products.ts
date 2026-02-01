@@ -28,6 +28,7 @@ const priceSchema = z.object({
     .optional()
     .optional(),
   discount_percent: z.coerce.number().min(0).max(100).optional(),
+  package_quantity: z.coerce.number().min(0.01, 'כמות באריזה חייבת להיות גדולה מ-0').optional(),
 });
 
 async function getVatPercent(tenantId: string): Promise<number> {
@@ -187,7 +188,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     // Load prices and summaries ONLY for page products
     let currentQ = supabase
       .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
+      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
       .in('product_id', pageProductIds);
 
@@ -291,7 +292,7 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
     // Add current prices per supplier + summary
     const { data: current } = await supabase
       .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
+      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', id);
 
@@ -360,6 +361,7 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
     const vat_percent = await getVatPercent(tenant.tenantId);
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const use_margin = await getUseMargin(tenant.tenantId);
+    const use_vat = await getUseVat(tenant.tenantId);
     const discount_percent = parsed.data.discount_percent ?? 0;
     const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
     const sell_price = calcSellPrice({ 
@@ -367,9 +369,12 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
       margin_percent: finalMargin, 
       vat_percent,
       cost_price_after_discount,
-      use_margin
+      use_margin,
+      use_vat
     });
 
+    const package_quantity = parsed.data.package_quantity ? round2(parsed.data.package_quantity) : null;
+    
     const { data, error } = await supabase
       .from('price_entries')
       .insert({
@@ -381,9 +386,10 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
         cost_price_after_discount: round2(cost_price_after_discount),
         margin_percent: round2(finalMargin),
         sell_price,
+        package_quantity,
         created_by: user.id,
       })
-      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לשמור מחיר. נסה שוב.' });
@@ -394,6 +400,7 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
 });
 
 // Price history per product (+ optional supplier filter)
+// Get price history for a product (optionally filtered by supplier)
 router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
@@ -402,7 +409,7 @@ router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) =>
 
     let q = supabase
       .from('price_entries')
-      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', productId)
       .order('created_at', { ascending: false });
