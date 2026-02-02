@@ -18,31 +18,40 @@ export function calcSellPrice(params: {
 }): number {
   const { cost_price, margin_percent, vat_percent, cost_price_after_discount, use_margin = true, use_vat = true } = params;
   // Use cost_price_after_discount if provided, otherwise use cost_price
-  const effectiveCost = cost_price_after_discount ?? cost_price;
+  // IMPORTANT: cost_price and cost_price_after_discount are ALWAYS stored with VAT (gross)
+  // So we need to extract the net price (before VAT) first, then add margin and VAT
+  const effectiveCostGross = cost_price_after_discount ?? cost_price;
+  
+  // Extract net price (before VAT) if VAT is enabled
+  // If use_vat is false, the cost is already net (no VAT was added)
+  const effectiveCostNet = use_vat && vat_percent > 0
+    ? effectiveCostGross / (1 + vat_percent / 100)
+    : effectiveCostGross;
   
   // If use_margin is false and use_vat is false, return cost as-is
   if (!use_margin && !use_vat) {
-    return round2(effectiveCost);
+    return round2(effectiveCostGross);
   }
   
   // If use_margin is false, only add VAT (if enabled)
   if (!use_margin) {
     if (!use_vat) {
-      return round2(effectiveCost);
+      return round2(effectiveCostGross);
     }
-    const sell = effectiveCost + effectiveCost * (vat_percent / 100);
+    // effectiveCostNet is already net, so we add VAT to get gross
+    const sell = effectiveCostNet + effectiveCostNet * (vat_percent / 100);
     return round2(sell);
   }
   
-  // Add margin
-  const base = effectiveCost + effectiveCost * (margin_percent / 100);
+  // Add margin to net cost
+  const base = effectiveCostNet + effectiveCostNet * (margin_percent / 100);
   
   // Add VAT only if enabled
   if (!use_vat) {
     return round2(base);
   }
   
-  // Normal calculation: cost + margin + VAT
+  // Normal calculation: net cost + margin + VAT
   const sell = base + base * (vat_percent / 100);
   return round2(sell);
 }

@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download } from 'lucide-react';
+import { Tooltip } from '../components/ui/tooltip';
 import { exportApi } from '../lib/api';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
@@ -71,19 +72,10 @@ export default function Products() {
   };
 
   const formatDate = (date: string | null) => {
-    if (!date) return 'לא עודכן';
+    if (!date) return '-';
     return new Date(date).toLocaleDateString('he-IL');
   };
 
-  const calcCostBeforeVat = (costPriceWithVat: number | string | null | undefined) => {
-    const numericPrice = Number(costPriceWithVat ?? 0);
-    const useVat = settings?.use_vat !== false; // Default to true if not set
-    if (!numericPrice || !settings?.vat_percent || !useVat) return numericPrice;
-    const vatFactor = 1 + settings.vat_percent / 100;
-    // מחיר לפני מע״מ = מחיר כולל מע״מ / (1 + מע״מ/100)
-    return numericPrice / vatFactor;
-  };
-  
   const useVat = settings?.use_vat === true; // Default to false if not set
   const useMargin = settings?.use_margin === true; // Default to false if not set
 
@@ -313,30 +305,43 @@ export default function Products() {
                       <div className="overflow-x-auto rounded-lg border-2 border-border shadow-sm">
                         <Table>
                           <TableHeader>
-                              <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
+                            <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
                               <TableHead className="font-semibold">ספק</TableHead>
-                      <TableHead className="font-semibold">מחיר עלות</TableHead>
-                              <TableHead className="font-semibold">הנחה</TableHead>
-                              <TableHead className="font-semibold">מחיר לאחר הנחה</TableHead>
+                              <TableHead className="font-semibold">
+                                <div className="flex items-center gap-1">
+                                  מחיר עלות
+                                  {useVat && <Tooltip content="מחיר עלות כולל מע&quot;מ" />}
+                                </div>
+                              </TableHead>
                               {useVat && (
                                 <TableHead className="font-semibold">
-                                  מחיר עלות לפני מע&quot;מ
+                                  <div>מחיר לפני מע&quot;מ</div>
+                                </TableHead>
+                              )}
+                              <TableHead className="font-semibold">הנחה</TableHead>
+                              <TableHead className="font-semibold">
+                                <div>מחיר לאחר הנחה</div>
+                                {useVat && <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(כולל מע&quot;מ)</div>}
+                              </TableHead>
+                              {useVat && (
+                                <TableHead className="font-semibold">
+                                  <div>מחיר לאחר הנחה</div>
+                                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
                                 </TableHead>
                               )}
                               {useMargin && (
                                 <TableHead className="font-semibold">
-                                  מחיר מכירה
-                                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                                    {useVat && `כולל מע"מ ${settings?.vat_percent ?? 18}%`}
-                                    {useVat && useMargin && ' + '}
-                                    {useMargin && `רווח ${settings?.global_margin_percent ?? 30}%`}
+                                  <div className="flex items-center gap-1">
+                                    מחיר מכירה
+                                    <Tooltip content="מחיר עלות + מע&quot;מ + רווח" />
                                   </div>
                                 </TableHead>
                               )}
+                              <TableHead className="font-semibold">כמות בקרטון</TableHead>
                               <TableHead className="font-semibold">
-                                מחיר לקרטון
-                                <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
-                                  (תלוי בספק)
+                                <div className="flex items-center gap-1">
+                                  מחיר לקרטון
+                                  <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
                                 </div>
                               </TableHead>
                               <TableHead className="font-semibold">תאריך</TableHead>
@@ -344,69 +349,76 @@ export default function Products() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {product.prices?.map((price, idx: number) => (
-                              <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
-                                <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
-                                <TableCell>{formatPrice(Number(price.cost_price))}</TableCell>
-                                <TableCell>
-                                  {price.discount_percent && Number(price.discount_percent) > 0 
-                                    ? `${Number(price.discount_percent).toFixed(1)}%`
-                                    : '-'}
-                                </TableCell>
-                                <TableCell>
-                                  {price.cost_price_after_discount 
-                                    ? formatPrice(Number(price.cost_price_after_discount))
-                                    : formatPrice(Number(price.cost_price))}
-                                </TableCell>
-                                {useVat && (
-                                  <TableCell>{formatPrice(Number(calcCostBeforeVat(price.cost_price).toFixed(2)))}</TableCell>
-                                )}
-                                {useMargin && (
-                                  <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
-                                )}
-                                <TableCell className="font-semibold">
-                                  {(() => {
-                                    const unitPrice = Number(price.cost_price_after_discount || price.cost_price);
-                                    // package_quantity is now per supplier (from price_entries), not per product
-                                    // Check if package_quantity exists in price object, otherwise fallback to product package_quantity or 1
-                                    const pricePackageQty = (price as any).package_quantity;
-                                    const productPackageQty = (product as any).package_quantity;
-                                    // Use price package_quantity if exists and > 0, otherwise product package_quantity if > 0, otherwise 1
-                                    let packageQty = 1;
-                                    if (pricePackageQty != null && pricePackageQty !== undefined && Number(pricePackageQty) > 0) {
-                                      packageQty = Number(pricePackageQty);
-                                    } else if (productPackageQty != null && productPackageQty !== undefined && Number(productPackageQty) > 0) {
-                                      packageQty = Number(productPackageQty);
-                                    }
-                                    const cartonPrice = unitPrice * packageQty;
-                                    return (
-                                      <div>
-                                        <div>{formatPrice(cartonPrice)}</div>
-                                        {packageQty > 1 && (
-                                          <div className="text-xs text-muted-foreground mt-0.5">
-                                            ({packageQty} יחידות × {formatPrice(unitPrice)})
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </TableCell>
-                                <TableCell>{formatDate(price.created_at)}</TableCell>
-                                <TableCell>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setHistoryProductId(product.id);
-                                      setHistorySupplierId(price.supplier_id);
-                                      setHistoryOpen(true);
-                                    }}
-                                  >
-                                    היסטוריית מחירים
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                            {product.prices?.map((price, idx: number) => {
+                              // cost_price is ALWAYS stored with VAT (if use_vat is true) or as-is (if use_vat is false)
+                              const costPriceWithVat = Number(price.cost_price);
+                              // Calculate price before VAT if useVat is true
+                              const costPriceBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
+                                ? costPriceWithVat / (1 + settings.vat_percent / 100)
+                                : costPriceWithVat;
+                              
+                              // cost_price_after_discount is also stored with VAT (if use_vat is true)
+                              const costAfterDiscountWithVat = Number(price.cost_price_after_discount || price.cost_price);
+                              const costAfterDiscountBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
+                                ? costAfterDiscountWithVat / (1 + settings.vat_percent / 100)
+                                : costAfterDiscountWithVat;
+                              
+                              // For carton price, ALWAYS use gross price (with VAT) multiplied by package quantity
+                              const unitPriceForCarton = costAfterDiscountWithVat;
+                              
+                              // package_quantity is now per supplier (from price_entries), not per product
+                              const pricePackageQty = (price as any).package_quantity;
+                              const productPackageQty = (product as any).package_quantity;
+                              let packageQty = 1;
+                              if (pricePackageQty != null && pricePackageQty !== undefined && Number(pricePackageQty) > 0) {
+                                packageQty = Number(pricePackageQty);
+                              } else if (productPackageQty != null && productPackageQty !== undefined && Number(productPackageQty) > 0) {
+                                packageQty = Number(productPackageQty);
+                              }
+                              const cartonPrice = unitPriceForCarton * packageQty;
+                              
+                              return (
+                                <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
+                                  <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
+                                  <TableCell>{formatPrice(costPriceWithVat)}</TableCell>
+                                  {useVat && (
+                                    <TableCell>{formatPrice(costPriceBeforeVat)}</TableCell>
+                                  )}
+                                  <TableCell>
+                                    {price.discount_percent && Number(price.discount_percent) > 0 
+                                      ? `${Number(price.discount_percent).toFixed(1)}%`
+                                      : '-'}
+                                  </TableCell>
+                                  <TableCell>{formatPrice(costAfterDiscountWithVat)}</TableCell>
+                                  {useVat && (
+                                    <TableCell>{formatPrice(costAfterDiscountBeforeVat)}</TableCell>
+                                  )}
+                                  {useMargin && (
+                                    <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
+                                  )}
+                                  <TableCell>
+                                    {`${packageQty} יח\``}
+                                  </TableCell>
+                                  <TableCell className="font-semibold">
+                                    <div>{formatPrice(cartonPrice)}</div>
+                                  </TableCell>
+                                  <TableCell className="text-center">{formatDate(price.created_at)}</TableCell>
+                                  <TableCell>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setHistoryProductId(product.id);
+                                        setHistorySupplierId(price.supplier_id);
+                                        setHistoryOpen(true);
+                                      }}
+                                    >
+                                      היסטוריית מחירים
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
                           </TableBody>
                         </Table>
                       </div>
@@ -480,59 +492,97 @@ export default function Products() {
             <div className="overflow-x-auto rounded-lg border-2 border-border shadow-sm max-h-[400px]">
               <Table>
                 <TableHeader>
-                          <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
-                    <TableHead>תאריך</TableHead>
-                    <TableHead>מחיר עלות</TableHead>
-                    <TableHead>הנחה</TableHead>
-                    <TableHead>מחיר לאחר הנחה</TableHead>
-                    {useMargin && <TableHead>אחוז רווח</TableHead>}
-                    {useMargin && <TableHead>מחיר מכירה</TableHead>}
-                    <TableHead>מחיר לקרטון</TableHead>
+                    <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
+                    <TableHead className="whitespace-nowrap">תאריך</TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        מחיר עלות
+                        {useVat && <Tooltip content="מחיר עלות כולל מע&quot;מ" />}
+                      </div>
+                    </TableHead>
+                    {useVat && (
+                      <TableHead className="whitespace-nowrap">
+                        <div>מחיר לפני מע&quot;מ</div>
+                      </TableHead>
+                    )}
+                    <TableHead className="whitespace-nowrap">הנחה</TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      <div>מחיר לאחר הנחה</div>
+                      {useVat && <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(כולל מע&quot;מ)</div>}
+                    </TableHead>
+                    {useVat && (
+                      <TableHead className="whitespace-nowrap">
+                        <div>מחיר לאחר הנחה</div>
+                        <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
+                      </TableHead>
+                    )}
+                    <TableHead className="whitespace-nowrap">כמות בקרטון</TableHead>
+                    <TableHead className="whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        מחיר לקרטון
+                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
+                      </div>
+                    </TableHead>
+                    {useMargin && (
+                      <TableHead className="whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          מחיר מכירה
+                          <Tooltip content="מחיר עלות + מע&quot;מ + רווח" />
+                        </div>
+                      </TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                          {priceHistory.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>{formatDate(row.created_at)}</TableCell>
-                      <TableCell>{formatPrice(Number(row.cost_price))}</TableCell>
-                      <TableCell>
-                        {row.discount_percent && Number(row.discount_percent) > 0 
-                          ? `${Number(row.discount_percent).toFixed(1)}%`
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {row.cost_price_after_discount 
-                          ? formatPrice(Number(row.cost_price_after_discount))
-                          : formatPrice(Number(row.cost_price))}
-                      </TableCell>
-                      {useMargin && (
-                        <TableCell>{Number(row.margin_percent).toFixed(1)}%</TableCell>
-                      )}
-                      {useMargin && (
-                        <TableCell className="font-bold text-primary">
-                          {formatPrice(Number(row.sell_price))}
+                  {priceHistory.map((row) => {
+                    // cost_price is ALWAYS stored with VAT (if use_vat is true) or as-is (if use_vat is false)
+                    const costPriceWithVat = Number(row.cost_price);
+                    // Calculate price before VAT if useVat is true
+                    const costPriceBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
+                      ? costPriceWithVat / (1 + settings.vat_percent / 100)
+                      : costPriceWithVat;
+                    
+                    // cost_price_after_discount is also stored with VAT (if use_vat is true)
+                    const costAfterDiscountWithVat = Number(row.cost_price_after_discount || row.cost_price);
+                    const costAfterDiscountBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
+                      ? costAfterDiscountWithVat / (1 + settings.vat_percent / 100)
+                      : costAfterDiscountWithVat;
+                    
+                    // For carton price, use net price (before VAT) if useVat is true, otherwise use gross
+                    const unitPrice = useVat ? costAfterDiscountBeforeVat : costAfterDiscountWithVat;
+                    
+                    // package_quantity is now per supplier (from price_entries), not per product
+                    const packageQty = Number((row as any).package_quantity) || 1;
+                    const cartonPrice = unitPrice * packageQty;
+                    
+                    return (
+                      <TableRow key={row.id}>
+                        <TableCell className="whitespace-nowrap">{formatDate(row.created_at)}</TableCell>
+                        <TableCell className="whitespace-nowrap">{formatPrice(costPriceWithVat)}</TableCell>
+                        {useVat && (
+                          <TableCell className="whitespace-nowrap">{formatPrice(costPriceBeforeVat)}</TableCell>
+                        )}
+                        <TableCell className="whitespace-nowrap text-center">
+                          {row.discount_percent && Number(row.discount_percent) > 0 
+                            ? `${Number(row.discount_percent).toFixed(1)}%`
+                            : '-'}
                         </TableCell>
-                      )}
-                      <TableCell className="font-semibold">
-                        {(() => {
-                          const unitPrice = Number(row.cost_price_after_discount || row.cost_price);
-                          // package_quantity is now per supplier (from price_entries), not per product
-                          const packageQty = Number((row as any).package_quantity) || 1;
-                          const cartonPrice = unitPrice * packageQty;
-                          return (
-                            <div>
-                              <div>{formatPrice(cartonPrice)}</div>
-                              {packageQty > 1 && (
-                                <div className="text-xs text-muted-foreground mt-0.5">
-                                  ({packageQty} יחידות × {formatPrice(unitPrice)})
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        <TableCell className="whitespace-nowrap">{formatPrice(costAfterDiscountWithVat)}</TableCell>
+                        {useVat && (
+                          <TableCell className="whitespace-nowrap">{formatPrice(costAfterDiscountBeforeVat)}</TableCell>
+                        )}
+                        <TableCell className="whitespace-nowrap">{packageQty} יח\`</TableCell>
+                        <TableCell className="font-semibold whitespace-nowrap">
+                          <div>{formatPrice(cartonPrice)}</div>
+                        </TableCell>
+                        {useMargin && (
+                          <TableCell className="font-bold text-primary whitespace-nowrap">
+                            {formatPrice(Number(row.sell_price))}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
