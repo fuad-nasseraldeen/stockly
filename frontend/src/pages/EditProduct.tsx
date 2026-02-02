@@ -181,7 +181,8 @@ export default function EditProduct() {
   
   // For display: unit price is the net price (before VAT) if useVat is true, otherwise gross
   const unitPrice = useVat ? costPriceAfterDiscountNet : costPriceAfterDiscountGross;
-  const cartonPrice = unitPrice * packageQty;
+  // For carton price, ALWAYS use gross price (with VAT) multiplied by package quantity
+  const cartonPrice = costPriceAfterDiscountGross * packageQty;
 
   if (!id) {
     return null;
