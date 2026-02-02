@@ -75,6 +75,30 @@ export function resolveColumns(
 }
 
 /**
+ * Get all available columns (after capability filters, regardless of visibility)
+ * Used for column management modal where all columns should be shown
+ */
+export function getAvailableColumns(settings: Settings): ColumnDefinition[] {
+  const vatEnabled = settings.use_vat === true;
+  const marginEnabled = settings.use_margin === true;
+
+  // Filter columns based on requirements only (not visibility)
+  return Object.values(PRICE_COLUMN_REGISTRY).filter((col) => {
+    // Check VAT requirement
+    if (col.requires?.vat && !vatEnabled) {
+      return false;
+    }
+
+    // Check margin requirement
+    if (col.requires?.margin && !marginEnabled) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+/**
  * Get default layout based on settings
  */
 export function getDefaultLayout(settings: Settings): ColumnLayout {
@@ -96,8 +120,18 @@ export function getDefaultLayout(settings: Settings): ColumnLayout {
     visible.profit_percent = false;
   }
 
-  // Build order excluding hidden columns
-  const order = DEFAULT_COLUMN_ORDER.filter((id) => visible[id] !== false);
-
-  return { visible, order };
+  // Build order including all available columns (not just visible ones)
+  // Order should include all available columns, maintaining DEFAULT_COLUMN_ORDER where possible
+  const availableColumns = getAvailableColumns(settings);
+  const availableIds = new Set(availableColumns.map((col) => col.id));
+  
+  // Start with DEFAULT_COLUMN_ORDER filtered to available columns
+  const order = DEFAULT_COLUMN_ORDER.filter((id) => availableIds.has(id));
+  
+  // Add any available columns that aren't in DEFAULT_COLUMN_ORDER
+  const missingIds = availableColumns
+    .map((col) => col.id)
+    .filter((id) => !order.includes(id));
+  
+  return { visible, order: [...order, ...missingIds] };
 }

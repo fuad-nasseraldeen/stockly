@@ -10,7 +10,7 @@ import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { ColumnManager } from '../components/price-table/ColumnManager';
-import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
+import { resolveColumns, getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { loadLayout, saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 
 export default function Settings() {
@@ -125,6 +125,9 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useVat, useMargin]);
   
+  // For the modal, we need ALL available columns (not filtered by visibility)
+  const allAvailableColumns = getAvailableColumns(appSettings);
+  // For the actual table display, use resolveColumns (filters by visibility)
   const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
 
   const isOwner = currentTenant?.role === 'owner';
@@ -598,7 +601,8 @@ export default function Settings() {
         open={columnManagerOpen}
         onOpenChange={setColumnManagerOpen}
         currentLayout={columnLayout || getDefaultLayout(appSettings)}
-        availableColumns={availableColumns}
+        availableColumns={allAvailableColumns}
+        settings={appSettings}
         onSave={async (layout) => {
           setColumnLayout(layout);
           await saveLayout(layout);
