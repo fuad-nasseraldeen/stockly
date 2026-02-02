@@ -14,6 +14,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ArrowRight, ArrowLeft, Plus, X } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
+import { PriceTable } from '../components/price-table/PriceTable';
+import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { netToGross } from '../lib/pricing-rules';
 
 export default function EditProduct() {
   const { id } = useParams<{ id: string }>();
@@ -48,6 +52,47 @@ export default function EditProduct() {
   const [newPricePackageQuantity, setNewPricePackageQuantity] = useState('');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
+  
+  // Column layout management - loads from database (set in Settings page)
+  const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
+  
+  // Load layout from database on mount
+  useEffect(() => {
+    const loadLayoutData = async () => {
+      try {
+        const saved = await loadLayout();
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(settings || {});
+        setColumnLayout(layout);
+      } catch (error) {
+        console.error('Failed to load column layout:', error);
+        // Fallback to default
+        setColumnLayout(getDefaultLayout(settings || {}));
+      }
+    };
+    
+    loadLayoutData();
+  }, [settings]);
+  
+  // Listen for layout changes
+  useEffect(() => {
+    const handleLayoutChange = async () => {
+      try {
+        const saved = await loadLayout();
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(settings || {});
+        setColumnLayout(layout);
+      } catch (error) {
+        console.error('Failed to reload column layout:', error);
+      }
+    };
+    
+    window.addEventListener('priceTableLayoutChanged', handleLayoutChange);
+    return () => {
+      window.removeEventListener('priceTableLayoutChanged', handleLayoutChange);
+    };
+  }, [settings]);
+  
+  // Use default layout while loading
+  const effectiveLayout = columnLayout || getDefaultLayout(settings || {});
 
   useEffect(() => {
     if (product) {
@@ -89,8 +134,21 @@ export default function EditProduct() {
   };
 
   const vatPercent = settings?.vat_percent ?? 18;
-  const useMargin = settings?.use_margin === true; // Default to false if not set
-  const useVat = settings?.use_vat === true; // Default to false if not set
+  const useMargin = settings?.use_margin === true;
+  const useVat = settings?.use_vat === true;
+  
+  // Resolve columns based on settings and layout
+  const appSettings: SettingsType = {
+    use_vat: useVat,
+    use_margin: useMargin,
+    vat_percent: vatPercent,
+    global_margin_percent: settings?.global_margin_percent,
+  };
+  
+  const availableColumns = resolveColumns(appSettings, effectiveLayout);
+  
+  // Note: columnLayout is loaded from localStorage (managed in Settings page)
+  // Changes in Settings page will be reflected after page refresh
 
   const handleAddSupplier = async () => {
     if (!newSupplierName.trim()) {
@@ -128,11 +186,10 @@ export default function EditProduct() {
     try {
       setPriceError(null);
       const rawCost = Number(newPriceCost);
-      // cost_price is ALWAYS stored with VAT
-      // If user selected "with VAT", use the price as-is
-      // If user selected "without VAT", add VAT to the price before storing
-      const costPriceToStore = useVat && rawCost > 0 && vatPercent > 0 && newPriceIncludesVat === 'without'
-          ? rawCost * (1 + vatPercent / 100)
+      // cost_price is ALWAYS stored as gross (with VAT if VAT enabled)
+      // If user selected "without VAT", convert net to gross
+      const costPriceToStore = useVat && rawCost > 0 && newPriceIncludesVat === 'without'
+          ? netToGross(rawCost, vatPercent / 100)
           : rawCost;
       await addProductPrice.mutateAsync({
         id,
@@ -313,130 +370,25 @@ export default function EditProduct() {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <Table className="min-w-full">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="whitespace-nowrap min-w-[120px]">ספק</TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[100px]">
-                      <div className="flex items-center gap-1">
-                        מחיר עלות
-                        {useVat && <Tooltip content="מחיר עלות כולל מע&quot;מ" />}
-                      </div>
-                    </TableHead>
-                    {useVat && (
-                      <TableHead className="whitespace-nowrap min-w-[120px]">
-                        <div>מחיר לפני מע&quot;מ</div>
-                      </TableHead>
-                    )}
-                    <TableHead className="whitespace-nowrap min-w-[80px]">הנחה</TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[120px]">
-                      <div>מחיר לאחר הנחה</div>
-                      {useVat && <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(כולל מע&quot;מ)</div>}
-                    </TableHead>
-                    {useVat && (
-                      <TableHead className="whitespace-nowrap min-w-[120px]">
-                        <div>מחיר לאחר הנחה</div>
-                        <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
-                      </TableHead>
-                    )}
-                    <TableHead className="whitespace-nowrap min-w-[120px]">כמות בקרטון</TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[180px]">
-                      <div className="flex items-center gap-1">
-                        מחיר לקרטון
-                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[100px]">תאריך עדכון</TableHead>
-                    <TableHead className="whitespace-nowrap min-w-[140px]">פעולות</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentPrices.map((price: any, idx: number) => {
-                    // cost_price is ALWAYS stored with VAT (if use_vat is true) or as-is (if use_vat is false)
-                    const costPriceWithVat = Number(price.cost_price);
-                    // Calculate price before VAT if useVat is true
-                    const costPriceBeforeVat = useVat && vatPercent > 0
-                      ? costPriceWithVat / (1 + vatPercent / 100)
-                      : costPriceWithVat;
-                    
-                    // cost_price_after_discount is also stored with VAT (if use_vat is true)
-                    const costAfterDiscountWithVat = Number(price.cost_price_after_discount || price.cost_price);
-                    const costAfterDiscountBeforeVat = useVat && vatPercent > 0
-                      ? costAfterDiscountWithVat / (1 + vatPercent / 100)
-                      : costAfterDiscountWithVat;
-                    
-                    return (
-                    <TableRow key={`${price.supplier_id}-${idx}`}>
-                      <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
-                      <TableCell>₪{costPriceWithVat.toFixed(2)}</TableCell>
-                      {useVat && <TableCell>₪{costPriceBeforeVat.toFixed(2)}</TableCell>}
-                      <TableCell className="text-center">
-                        {price.discount_percent && Number(price.discount_percent) > 0 
-                          ? `${Number(price.discount_percent).toFixed(1)}%`
-                          : '-'}
-                      </TableCell>
-                      <TableCell>₪{costAfterDiscountWithVat.toFixed(2)}</TableCell>
-                      {useVat && <TableCell>₪{costAfterDiscountBeforeVat.toFixed(2)}</TableCell>}
-                      <TableCell>
-                        {(() => {
-                          // Check package_quantity: first from price (supplier-specific), then product, then default to 1
-                          const pricePackageQty = (price as any).package_quantity;
-                          const productPackageQty = (product as any)?.package_quantity;
-                          let packageQty = 1;
-                          // First check if price has package_quantity (supplier-specific)
-                          if (pricePackageQty !== null && pricePackageQty !== undefined && !isNaN(Number(pricePackageQty)) && Number(pricePackageQty) > 0) {
-                            packageQty = Number(pricePackageQty);
-                          } 
-                          // Fallback to product package_quantity only if price doesn't have it
-                          else if (productPackageQty !== null && productPackageQty !== undefined && !isNaN(Number(productPackageQty)) && Number(productPackageQty) > 0) {
-                            packageQty = Number(productPackageQty);
-                          }
-                          return `${packageQty} יח\``;
-                        })()}
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        {(() => {
-                          // For carton price, ALWAYS use gross price (with VAT) multiplied by package quantity
-                          const unitPriceForCarton = costAfterDiscountWithVat;
-                          // Use the same logic as above for package quantity
-                          const pricePackageQty = (price as any).package_quantity;
-                          const productPackageQty = (product as any)?.package_quantity;
-                          let packageQty = 1;
-                          if (pricePackageQty !== null && pricePackageQty !== undefined && !isNaN(Number(pricePackageQty)) && Number(pricePackageQty) > 0) {
-                            packageQty = Number(pricePackageQty);
-                          } 
-                          else if (productPackageQty !== null && productPackageQty !== undefined && !isNaN(Number(productPackageQty)) && Number(productPackageQty) > 0) {
-                            packageQty = Number(productPackageQty);
-                          }
-                          const cartonPrice = unitPriceForCarton * packageQty;
-                          return (
-                            <div className="font-semibold text-base">₪{cartonPrice.toFixed(2)}</div>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap min-w-[100px] text-center">
-                        {price.created_at
-                          ? new Date(price.created_at).toLocaleDateString('he-IL')
-                          : '-'}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap min-w-[140px]">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs whitespace-nowrap"
-                          onClick={() => {
-                            setPriceHistorySupplierId(price.supplier_id);
-                            setShowPriceHistory(true);
-                          }}
-                        >
-                          היסטוריית מחירים
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <PriceTable
+                prices={currentPrices}
+                product={product}
+                settings={appSettings}
+                columns={availableColumns}
+                renderActions={(price) => (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs whitespace-nowrap"
+                    onClick={() => {
+                      setPriceHistorySupplierId(price.supplier_id);
+                      setShowPriceHistory(true);
+                    }}
+                  >
+                    היסטוריית מחירים
+                  </Button>
+                )}
+              />
             </div>
           )}
         </CardContent>
@@ -488,7 +440,8 @@ export default function EditProduct() {
                 placeholder="0.00"
               />
               {useVat && (
-                <div className="flex flex-col gap-1 text-xs text-muted-foreground mt-1">
+                <div className="flex flex-col gap-2 text-xs mt-2 p-3 bg-muted rounded-lg">
+                  <Label className="text-sm font-medium">המחיר שהזנת הוא:</Label>
                   <div className="flex gap-4">
                     <label className="inline-flex items-center gap-1 cursor-pointer">
                       <input
@@ -498,7 +451,7 @@ export default function EditProduct() {
                         checked={newPriceIncludesVat === 'with'}
                         onChange={() => setNewPriceIncludesVat('with')}
                       />
-                      <span>המחיר כולל מע&quot;מ</span>
+                      <span>גרוס (כולל מע&quot;מ)</span>
                     </label>
                     <label className="inline-flex items-center gap-1 cursor-pointer">
                       <input
@@ -508,9 +461,21 @@ export default function EditProduct() {
                         checked={newPriceIncludesVat === 'without'}
                         onChange={() => setNewPriceIncludesVat('without')}
                       />
-                      <span>המחיר ללא מע&quot;מ (המערכת תחשב ותוסיף מע&quot;מ)</span>
+                      <span>נטו (ללא מע&quot;מ) - המערכת תמיר לגרוס</span>
                     </label>
                   </div>
+                  {newPriceRaw > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border/50">
+                      <p className="text-xs text-muted-foreground">
+                        יישמר כ-cost (gross): ₪{costPriceGross.toFixed(2)}
+                      </p>
+                      {newPriceIncludesVat === 'without' && (
+                        <p className="text-xs text-muted-foreground">
+                          נטו: ₪{newPriceRaw.toFixed(2)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

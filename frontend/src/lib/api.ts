@@ -358,6 +358,18 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+  // User preferences API
+  getPreference: <T = any>(key: string): Promise<T | null> =>
+    apiRequest<T | null>(`/api/settings/preferences/${key}`),
+  setPreference: <T = any>(key: string, value: T): Promise<T | null> =>
+    apiRequest<T | null>(`/api/settings/preferences/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify(value),
+    }),
+  deletePreference: (key: string): Promise<{ success: boolean }> =>
+    apiRequest<{ success: boolean }>(`/api/settings/preferences/${key}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Tenant maintenance API

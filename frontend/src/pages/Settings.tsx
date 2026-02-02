@@ -9,6 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
+import { ColumnManager } from '../components/price-table/ColumnManager';
+import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { loadLayout, saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 
 export default function Settings() {
   const { data: settings, isLoading } = useSettings();
@@ -77,6 +80,52 @@ export default function Settings() {
   const [savingVat, setSavingVat] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
+  
+  // Column layout management - global for all products
+  const appSettings: SettingsType = {
+    use_vat: useVat,
+    use_margin: useMargin,
+    vat_percent: settings?.vat_percent,
+    global_margin_percent: settings?.global_margin_percent,
+  };
+  
+  const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
+  const [layoutLoading, setLayoutLoading] = useState(true);
+  
+  // Load layout from database on mount
+  useEffect(() => {
+    const loadLayoutData = async () => {
+      try {
+        setLayoutLoading(true);
+        const saved = await loadLayout();
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
+        setColumnLayout(layout);
+      } catch (error) {
+        console.error('Failed to load column layout:', error);
+        // Fallback to default
+        setColumnLayout(getDefaultLayout(appSettings));
+      } finally {
+        setLayoutLoading(false);
+      }
+    };
+    
+    loadLayoutData();
+  }, []);
+  
+  // Update layout when settings change
+  useEffect(() => {
+    if (!columnLayout) return;
+    const defaultLayout = getDefaultLayout(appSettings);
+    setColumnLayout((prev) => prev ? {
+      ...defaultLayout,
+      order: prev.order,
+      visible: { ...defaultLayout.visible, ...prev.visible },
+    } : defaultLayout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useVat, useMargin]);
+  
+  const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
 
   const isOwner = currentTenant?.role === 'owner';
 
@@ -312,6 +361,25 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Column Layout Settings */}
+      <Card className="shadow-md border-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold">תבנית עמודות טבלת מחירים</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            הגדר את העמודות שיוצגו בטבלאות המחירים בכל המוצרים. התבנית תישמר ב-database ותחול על כל המוצרים במערכת.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => setColumnManagerOpen(true)}
+            disabled={layoutLoading || !columnLayout}
+          >
+            {layoutLoading ? 'טוען...' : 'ניהול עמודות'}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Invite team members (owners only) */}
       {isOwner && (
         <>
@@ -524,6 +592,25 @@ export default function Settings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Column Manager Dialog */}
+      <ColumnManager
+        open={columnManagerOpen}
+        onOpenChange={setColumnManagerOpen}
+        currentLayout={columnLayout || getDefaultLayout(appSettings)}
+        availableColumns={availableColumns}
+        onSave={async (layout) => {
+          setColumnLayout(layout);
+          await saveLayout(layout);
+          // Dispatch custom event to notify other pages
+          window.dispatchEvent(new Event('priceTableLayoutChanged'));
+        }}
+        onReset={async () => {
+          const defaultLayout = getDefaultLayout(appSettings);
+          setColumnLayout(defaultLayout);
+          await resetLayout();
+        }}
+      />
     </div>
   );
 }

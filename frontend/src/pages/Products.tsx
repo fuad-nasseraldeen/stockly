@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProducts, useDeleteProduct, useProductPriceHistory } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
@@ -15,6 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { exportApi } from '../lib/api';
+import { PriceTable } from '../components/price-table/PriceTable';
+import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -78,6 +81,55 @@ export default function Products() {
 
   const useVat = settings?.use_vat === true; // Default to false if not set
   const useMargin = settings?.use_margin === true; // Default to false if not set
+  
+  // Column layout management - loads from database
+  const [columnLayout, setColumnLayout] = useState<ReturnType<typeof getDefaultLayout> | null>(null);
+  
+  const vatPercent = settings?.vat_percent ?? 18;
+  const appSettings: SettingsType = {
+    use_vat: useVat,
+    use_margin: useMargin,
+    vat_percent: vatPercent,
+    global_margin_percent: settings?.global_margin_percent,
+  };
+  
+  // Load layout from database on mount
+  useEffect(() => {
+    const loadLayoutData = async () => {
+      try {
+        const saved = await loadLayout();
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
+        setColumnLayout(layout);
+      } catch (error) {
+        console.error('Failed to load column layout:', error);
+        setColumnLayout(getDefaultLayout(appSettings));
+      }
+    };
+    
+    loadLayoutData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Listen for layout changes
+  useEffect(() => {
+    const handleLayoutChange = async () => {
+      try {
+        const saved = await loadLayout();
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
+        setColumnLayout(layout);
+      } catch (error) {
+        console.error('Failed to reload column layout:', error);
+      }
+    };
+    
+    window.addEventListener('priceTableLayoutChanged', handleLayoutChange);
+    return () => {
+      window.removeEventListener('priceTableLayoutChanged', handleLayoutChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
 
   const closeHistory = () => {
     setHistoryOpen(false);
@@ -303,124 +355,29 @@ export default function Products() {
                     <div>
                       <h4 className="text-base font-bold mb-4 text-foreground">מחירים לפי ספק (נמוך ראשון):</h4>
                       <div className="overflow-x-auto rounded-lg border-2 border-border shadow-sm">
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
-                              <TableHead className="font-semibold">ספק</TableHead>
-                              <TableHead className="font-semibold">
-                                <div className="flex items-center gap-1">
-                                  מחיר עלות
-                                  {useVat && <Tooltip content="מחיר עלות כולל מע&quot;מ" />}
-                                </div>
-                              </TableHead>
-                              {useVat && (
-                                <TableHead className="font-semibold">
-                                  <div>מחיר לפני מע&quot;מ</div>
-                                </TableHead>
-                              )}
-                              <TableHead className="font-semibold">הנחה</TableHead>
-                              <TableHead className="font-semibold">
-                                <div>מחיר לאחר הנחה</div>
-                                {useVat && <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(כולל מע&quot;מ)</div>}
-                              </TableHead>
-                              {useVat && (
-                                <TableHead className="font-semibold">
-                                  <div>מחיר לאחר הנחה</div>
-                                  <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
-                                </TableHead>
-                              )}
-                              {useMargin && (
-                                <TableHead className="font-semibold">
-                                  <div className="flex items-center gap-1">
-                                    מחיר מכירה
-                                    <Tooltip content="מחיר עלות + מע&quot;מ + רווח" />
-                                  </div>
-                                </TableHead>
-                              )}
-                              <TableHead className="font-semibold">כמות בקרטון</TableHead>
-                              <TableHead className="font-semibold">
-                                <div className="flex items-center gap-1">
-                                  מחיר לקרטון
-                                  <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
-                                </div>
-                              </TableHead>
-                              <TableHead className="font-semibold">תאריך</TableHead>
-                              <TableHead className="font-semibold">פעולות</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {product.prices?.map((price, idx: number) => {
-                              // cost_price is ALWAYS stored with VAT (if use_vat is true) or as-is (if use_vat is false)
-                              const costPriceWithVat = Number(price.cost_price);
-                              // Calculate price before VAT if useVat is true
-                              const costPriceBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
-                                ? costPriceWithVat / (1 + settings.vat_percent / 100)
-                                : costPriceWithVat;
-                              
-                              // cost_price_after_discount is also stored with VAT (if use_vat is true)
-                              const costAfterDiscountWithVat = Number(price.cost_price_after_discount || price.cost_price);
-                              const costAfterDiscountBeforeVat = useVat && settings?.vat_percent && settings.vat_percent > 0
-                                ? costAfterDiscountWithVat / (1 + settings.vat_percent / 100)
-                                : costAfterDiscountWithVat;
-                              
-                              // For carton price, ALWAYS use gross price (with VAT) multiplied by package quantity
-                              const unitPriceForCarton = costAfterDiscountWithVat;
-                              
-                              // package_quantity is now per supplier (from price_entries), not per product
-                              const pricePackageQty = (price as any).package_quantity;
-                              const productPackageQty = (product as any).package_quantity;
-                              let packageQty = 1;
-                              if (pricePackageQty != null && pricePackageQty !== undefined && Number(pricePackageQty) > 0) {
-                                packageQty = Number(pricePackageQty);
-                              } else if (productPackageQty != null && productPackageQty !== undefined && Number(productPackageQty) > 0) {
-                                packageQty = Number(productPackageQty);
-                              }
-                              const cartonPrice = unitPriceForCarton * packageQty;
-                              
-                              return (
-                                <TableRow key={`${price.supplier_id}-${idx}`} className="hover:bg-muted/20">
-                                  <TableCell>{price.supplier_name || 'לא ידוע'}</TableCell>
-                                  <TableCell>{formatPrice(costPriceWithVat)}</TableCell>
-                                  {useVat && (
-                                    <TableCell>{formatPrice(costPriceBeforeVat)}</TableCell>
-                                  )}
-                                  <TableCell>
-                                    {price.discount_percent && Number(price.discount_percent) > 0 
-                                      ? `${Number(price.discount_percent).toFixed(1)}%`
-                                      : '-'}
-                                  </TableCell>
-                                  <TableCell>{formatPrice(costAfterDiscountWithVat)}</TableCell>
-                                  {useVat && (
-                                    <TableCell>{formatPrice(costAfterDiscountBeforeVat)}</TableCell>
-                                  )}
-                                  {useMargin && (
-                                    <TableCell className="font-bold text-primary">{formatPrice(Number(price.sell_price))}</TableCell>
-                                  )}
-                                  <TableCell>
-                                    {`${packageQty} יח\``}
-                                  </TableCell>
-                                  <TableCell className="font-semibold">
-                                    <div>{formatPrice(cartonPrice)}</div>
-                                  </TableCell>
-                                  <TableCell className="text-center">{formatDate(price.created_at)}</TableCell>
-                                  <TableCell>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        setHistoryProductId(product.id);
-                                        setHistorySupplierId(price.supplier_id);
-                                        setHistoryOpen(true);
-                                      }}
-                                    >
-                                      היסטוריית מחירים
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
+                        {availableColumns.length > 0 ? (
+                          <PriceTable
+                            prices={product.prices}
+                            product={product}
+                            settings={appSettings}
+                            columns={availableColumns}
+                            renderActions={(price) => (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setHistoryProductId(product.id);
+                                  setHistorySupplierId(price.supplier_id);
+                                  setHistoryOpen(true);
+                                }}
+                              >
+                                היסטוריית מחירים
+                              </Button>
+                            )}
+                          />
+                        ) : (
+                          <div className="p-4 text-center text-muted-foreground">טוען תבנית עמודות...</div>
+                        )}
                       </div>
                     </div>
                   ) : (
