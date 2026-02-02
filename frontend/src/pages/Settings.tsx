@@ -10,7 +10,7 @@ import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { ColumnManager } from '../components/price-table/ColumnManager';
-import { resolveColumns, getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
+import { getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { loadLayout, saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 
 export default function Settings() {
