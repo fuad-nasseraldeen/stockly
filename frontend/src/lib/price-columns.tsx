@@ -121,7 +121,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     minWidth: 120,
     renderHeader: () => <span>מחיר לפני מע&quot;מ</span>,
     renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
-      const vatRate = (settings.vat_percent || 18) / 100;
+      const vatRate = (_settings.vat_percent || 18) / 100;
       const netPrice = grossToNet(Number(price.cost_price), vatRate);
       return <span>₪{netPrice.toFixed(2)}</span>;
     },
@@ -175,7 +175,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
       </div>
     ),
     renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
-      const vatRate = (settings.vat_percent || 18) / 100;
+      const vatRate = (_settings.vat_percent || 18) / 100;
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const netPrice = grossToNet(costAfterDiscount, vatRate);
       return <span>₪{netPrice.toFixed(2)}</span>;
@@ -208,7 +208,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     ),
     renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
-      const packageQty = getPackageQuantity(price, product);
+      const packageQty = getPackageQuantity(price, _product);
       const cartonPrice = costAfterDiscount * packageQty;
       return (
         <div className="font-semibold text-base">₪{cartonPrice.toFixed(2)}</div>

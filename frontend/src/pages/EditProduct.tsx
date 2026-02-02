@@ -146,22 +146,8 @@ export default function EditProduct() {
   const handleCancel = () => {
     navigate('/products');
   };
-
-  const vatPercent = settings?.vat_percent ?? 18;
-  const useMargin = settings?.use_margin === true;
-  const useVat = settings?.use_vat === true;
-  
-  // Resolve columns based on settings and layout
-  const appSettings: SettingsType = {
-    use_vat: useVat,
-    use_margin: useMargin,
-    vat_percent: vatPercent,
-    global_margin_percent: settings?.global_margin_percent,
-  };
   
   const availableColumns = resolveColumns(appSettings, effectiveLayout);
-  
-  // Note: columnLayout is loaded from localStorage (managed in Settings page)
   // Changes in Settings page will be reflected after page refresh
 
   const handleAddSupplier = async () => {
