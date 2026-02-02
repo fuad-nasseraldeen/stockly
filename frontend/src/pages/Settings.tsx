@@ -127,8 +127,6 @@ export default function Settings() {
   
   // For the modal, we need ALL available columns (not filtered by visibility)
   const allAvailableColumns = getAvailableColumns(appSettings);
-  // For the actual table display, use resolveColumns (filters by visibility)
-  const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
 
   const isOwner = currentTenant?.role === 'owner';
 

@@ -29,7 +29,7 @@ import { Input } from '../ui/input';
 import { ColumnId, ColumnDefinition } from '../../lib/price-columns';
 import { ColumnLayout, getDefaultLayout, type Settings } from '../../lib/column-resolver';
 import { Search, GripVertical, Eye, EyeOff } from 'lucide-react';
-import { DEFAULT_COLUMN_ORDER, DEFAULT_VISIBLE_COLUMNS } from '../../lib/price-columns';
+import { DEFAULT_COLUMN_ORDER } from '../../lib/price-columns';
 
 type ColumnManagerProps = {
   open: boolean;
