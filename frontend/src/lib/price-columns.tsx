@@ -6,7 +6,7 @@
  */
 
 import { Tooltip } from '../components/ui/tooltip';
-import { grossToNet, getVatAmount, calculateSellPrice, calculateProfitAmount, calculateProfitPercent, VAT_RATE } from './pricing-rules';
+import { grossToNet, calculateProfitAmount } from './pricing-rules';
 import * as React from 'react';
 
 export type ColumnId =
@@ -120,7 +120,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     requires: { vat: true },
     minWidth: 120,
     renderHeader: () => <span>מחיר לפני מע&quot;מ</span>,
-    renderCell: (price: PriceData, product: ProductData, settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
       const vatRate = (settings.vat_percent || 18) / 100;
       const netPrice = grossToNet(Number(price.cost_price), vatRate);
       return <span>₪{netPrice.toFixed(2)}</span>;
@@ -174,7 +174,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
         <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
       </div>
     ),
-    renderCell: (price: PriceData, product: ProductData, settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
       const vatRate = (settings.vat_percent || 18) / 100;
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const netPrice = grossToNet(costAfterDiscount, vatRate);
@@ -206,7 +206,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
         <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
       </div>
     ),
-    renderCell: (price: PriceData, product: ProductData, settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const packageQty = getPackageQuantity(price, product);
       const cartonPrice = costAfterDiscount * packageQty;

@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ArrowRight, ArrowLeft, Plus, X } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { PriceTable } from '../components/price-table/PriceTable';
-import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 import { netToGross } from '../lib/pricing-rules';
 
@@ -56,29 +56,42 @@ export default function EditProduct() {
   // Column layout management - loads from database (set in Settings page)
   const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
   
+  const vatPercent = settings?.vat_percent ?? 18;
+  const useMargin = settings?.use_margin === true;
+  const useVat = settings?.use_vat === true;
+  
+  // Resolve columns based on settings and layout
+  const appSettings: SettingsType = {
+    use_vat: useVat,
+    use_margin: useMargin,
+    vat_percent: vatPercent,
+    global_margin_percent: settings?.global_margin_percent ?? undefined,
+  };
+  
   // Load layout from database on mount
   useEffect(() => {
     const loadLayoutData = async () => {
       try {
         const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(settings || {});
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
         setColumnLayout(layout);
       } catch (error) {
         console.error('Failed to load column layout:', error);
         // Fallback to default
-        setColumnLayout(getDefaultLayout(settings || {}));
+        setColumnLayout(getDefaultLayout(appSettings));
       }
     };
     
     loadLayoutData();
-  }, [settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useVat, useMargin, vatPercent]);
   
   // Listen for layout changes
   useEffect(() => {
     const handleLayoutChange = async () => {
       try {
         const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(settings || {});
+        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
         setColumnLayout(layout);
       } catch (error) {
         console.error('Failed to reload column layout:', error);
@@ -89,10 +102,11 @@ export default function EditProduct() {
     return () => {
       window.removeEventListener('priceTableLayoutChanged', handleLayoutChange);
     };
-  }, [settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useVat, useMargin, vatPercent]);
   
   // Use default layout while loading
-  const effectiveLayout = columnLayout || getDefaultLayout(settings || {});
+  const effectiveLayout = columnLayout || getDefaultLayout(appSettings);
 
   useEffect(() => {
     if (product) {

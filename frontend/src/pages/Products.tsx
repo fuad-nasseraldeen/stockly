@@ -90,7 +90,7 @@ export default function Products() {
     use_vat: useVat,
     use_margin: useMargin,
     vat_percent: vatPercent,
-    global_margin_percent: settings?.global_margin_percent,
+    global_margin_percent: settings?.global_margin_percent ?? undefined,
   };
   
   // Load layout from database on mount

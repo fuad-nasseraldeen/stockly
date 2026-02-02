@@ -195,5 +195,77 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
   return res.json(data);
 });
 
+// User preferences endpoints
+const PREFERENCE_KEY_COLUMN_LAYOUT = 'price_table_layout';
+
+router.get('/preferences/:key', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
+  const { key } = req.params;
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('preference_value')
+    .eq('user_id', user.id)
+    .eq('tenant_id', tenant.tenantId)
+    .eq('preference_key', key)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+    return res.status(500).json({ error: 'שגיאה בטעינת העדפות' });
+  }
+
+  return res.json(data?.preference_value || null);
+});
+
+router.put('/preferences/:key', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
+  const { key } = req.params;
+
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ error: 'נתונים לא תקינים' });
+  }
+
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .upsert({
+      user_id: user.id,
+      tenant_id: tenant.tenantId,
+      preference_key: key,
+      preference_value: req.body,
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'user_id,tenant_id,preference_key',
+    })
+    .select('preference_value')
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: 'שגיאה בשמירת העדפות' });
+  }
+
+  return res.json(data?.preference_value || null);
+});
+
+router.delete('/preferences/:key', requireAuth, requireTenant, async (req, res) => {
+  const tenant = (req as any).tenant;
+  const user = (req as any).user;
+  const { key } = req.params;
+
+  const { error } = await supabase
+    .from('user_preferences')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('tenant_id', tenant.tenantId)
+    .eq('preference_key', key);
+
+  if (error) {
+    return res.status(500).json({ error: 'שגיאה במחיקת העדפות' });
+  }
+
+  return res.json({ success: true });
+});
+
 export default router;
 

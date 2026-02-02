@@ -10,7 +10,7 @@ import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { ColumnManager } from '../components/price-table/ColumnManager';
-import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { loadLayout, saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 
 export default function Settings() {
@@ -86,8 +86,8 @@ export default function Settings() {
   const appSettings: SettingsType = {
     use_vat: useVat,
     use_margin: useMargin,
-    vat_percent: settings?.vat_percent,
-    global_margin_percent: settings?.global_margin_percent,
+    vat_percent: settings?.vat_percent ?? undefined,
+    global_margin_percent: settings?.global_margin_percent ?? undefined,
   };
   
   const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
@@ -117,7 +117,7 @@ export default function Settings() {
   useEffect(() => {
     if (!columnLayout) return;
     const defaultLayout = getDefaultLayout(appSettings);
-    setColumnLayout((prev) => prev ? {
+    setColumnLayout((prev: ColumnLayout | null) => prev ? {
       ...defaultLayout,
       order: prev.order,
       visible: { ...defaultLayout.visible, ...prev.visible },

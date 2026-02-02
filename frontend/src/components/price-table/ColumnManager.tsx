@@ -8,8 +8,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { ColumnId, ColumnDefinition, PRICE_COLUMN_REGISTRY, DEFAULT_COLUMN_ORDER, DEFAULT_VISIBLE_COLUMNS } from '../../lib/price-columns';
+import { ColumnId, ColumnDefinition } from '../../lib/price-columns';
 import { ColumnLayout } from '../../lib/column-resolver';
 import { Search, GripVertical, Eye, EyeOff } from 'lucide-react';
 
@@ -32,7 +31,6 @@ export function ColumnManager({
 }: ColumnManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [localLayout, setLocalLayout] = useState<ColumnLayout>(currentLayout);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -111,7 +109,7 @@ export function ColumnManager({
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {orderedColumns
               .filter((col) => !searchTerm || filteredColumns.includes(col))
-              .map((col, index) => {
+              .map((col) => {
                 const isVisible = localLayout.visible[col.id] !== false;
                 const isInOrder = localLayout.order.includes(col.id);
                 const orderIndex = isInOrder ? localLayout.order.indexOf(col.id) : -1;
