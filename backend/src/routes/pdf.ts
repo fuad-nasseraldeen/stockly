@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium-min';
 
 const router = Router();
 
@@ -14,79 +16,52 @@ let sharedBrowser: any = null;
 let sharedBrowserLaunching: Promise<any> | null = null;
 
 async function launchBrowser(): Promise<any> {
-  // STRICT: Use ONLY puppeteer-core + @sparticuz/chromium
+  // STRICT: Use ONLY puppeteer-core + @sparticuz/chromium-min
   // NO fallbacks, NO hardcoded paths, NO system chromium
-  const [puppeteerCore, chromiumMod] = await Promise.all([
-    import('puppeteer-core'),
-    import('@sparticuz/chromium'),
-  ]);
-
-  // ESM default export handling
-  const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
-
-  // Get executable path from @sparticuz/chromium (ONLY source, NO fallbacks)
+  
+  // Get executable path from @sparticuz/chromium-min (ONLY source, NO fallbacks)
   const executablePath = await chromium.executablePath();
   
   // CRITICAL: Throw immediately if executablePath is empty or invalid
   if (!executablePath || typeof executablePath !== 'string' || executablePath.trim() === '') {
     throw new Error(
-      'Sparticuz chromium executablePath() returned empty. ' +
-      'This means @sparticuz/chromium is not properly installed or packaged. ' +
-      'Ensure: 1) @sparticuz/chromium is in dependencies (not devDependencies), ' +
+      'Sparticuz chromium-min executablePath() returned empty. ' +
+      'This means @sparticuz/chromium-min is not properly installed or packaged. ' +
+      'Ensure: 1) @sparticuz/chromium-min is in dependencies (not devDependencies), ' +
       '2) npm install completed successfully, ' +
-      '3) Vercel includes node_modules/@sparticuz/chromium in function bundle.'
+      '3) Vercel includes node_modules/@sparticuz/chromium-min in function bundle.'
     );
   }
 
-  // CRITICAL: Reject /tmp/chromium (this indicates @sparticuz/chromium failed)
+  // CRITICAL: Reject /tmp/chromium (this indicates @sparticuz/chromium-min failed)
   if (executablePath === '/tmp/chromium' || executablePath.includes('/tmp/chromium')) {
     throw new Error(
-      `@sparticuz/chromium.executablePath() returned invalid path: ${executablePath}. ` +
+      `@sparticuz/chromium-min.executablePath() returned invalid path: ${executablePath}. ` +
       'This indicates the package is not properly installed or Vercel is not bundling it correctly. ' +
-      'Check: 1) @sparticuz/chromium is in dependencies, ' +
-      '2) vercel.json includes node_modules/@sparticuz/chromium in includeFiles, ' +
+      'Check: 1) @sparticuz/chromium-min is in dependencies, ' +
+      '2) next.config.js includes @sparticuz/chromium-min in outputFileTracingIncludes (for Next.js) or vercel.json includes it (for Express), ' +
       '3) Function runs in Node.js runtime (not Edge).'
     );
   }
 
-  // Get all launch options from @sparticuz/chromium ONLY
-  const args = chromium.args || [];
-  const headless = chromium.headless !== undefined ? chromium.headless : true;
-  const defaultViewport = chromium.defaultViewport || null;
-
   // Temporary diagnostic log (ALWAYS log executablePath to verify it's NOT /tmp/chromium)
   // This will help us confirm the fix works
-  console.log('[PDF] Resolved executablePath from @sparticuz/chromium:', executablePath);
+  console.log('[PDF] Resolved executablePath from @sparticuz/chromium-min:', executablePath);
   console.log('[PDF] Path is valid (not /tmp/chromium):', !executablePath.includes('/tmp/chromium'));
   
   if (process.env.NODE_ENV === 'development' || process.env.DEBUG_PDF) {
-    console.log('[PDF Debug] Args count:', args.length);
-    console.log('[PDF Debug] Headless:', headless);
-    console.log('[PDF Debug] DefaultViewport:', defaultViewport);
+    console.log('[PDF Debug] Args count:', chromium.args?.length || 0);
+    console.log('[PDF Debug] Headless:', chromium.headless);
+    console.log('[PDF Debug] DefaultViewport:', chromium.defaultViewport);
   }
 
-  // Build launch options - ONLY from @sparticuz/chromium
-  const launchOptions: any = {
-    args,
+  // Launch with strict options from @sparticuz/chromium-min
+  return await puppeteer.launch({
+    args: chromium.args,
     executablePath,
-    headless,
-  };
-
-  // Add defaultViewport if provided by chromium
-  if (defaultViewport) {
-    launchOptions.defaultViewport = defaultViewport;
-  }
-
-  try {
-    return await puppeteerCore.launch(launchOptions);
-  } catch (error) {
-    const err = error as Error;
-    throw new Error(
-      `Puppeteer launch failed: ${err.message}. ` +
-      `ExecutablePath used: ${executablePath}. ` +
-      `If this is /tmp/chromium, @sparticuz/chromium is not working correctly.`
-    );
-  }
+    headless: chromium.headless,
+    defaultViewport: chromium.defaultViewport,
+  });
 }
 
 async function getSharedBrowser(): Promise<any> {
