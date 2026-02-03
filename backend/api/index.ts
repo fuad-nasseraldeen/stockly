@@ -67,5 +67,5 @@ export default app;
 
 // Explicitly set runtime to Node.js (Vercel will use this)
 export const config = {
-  runtime: 'nodejs20.x',
+  runtime: 'nodejs',
 };
