@@ -14,28 +14,38 @@ let sharedBrowser: any = null;
 let sharedBrowserLaunching: Promise<any> | null = null;
 
 async function launchBrowser(): Promise<any> {
-  // Vercel serverless environment: use a serverless-compatible Chromium binary
+  // Vercel serverless environment: use puppeteer-core + @sparticuz/chromium-min
   if (process.env.VERCEL) {
-    const [puppeteer, chromiumMod] = await Promise.all([
-      import('puppeteer-core'),
-      import('@sparticuz/chromium'),
-    ]);
+    try {
+      const [puppeteer, chromiumMod] = await Promise.all([
+        import('puppeteer-core'),
+        import('@sparticuz/chromium-min'),
+      ]);
 
-    // ESM default export
-    const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
+      // ESM default export
+      const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
-    const launchOptions: any = {
-      args: chromium.args || [],
-      executablePath: await chromium.executablePath(),
-      headless: true,
-    };
+      const executablePath = await chromium.executablePath();
+      const args = chromium.args || [];
+      const headless = chromium.headless !== undefined ? chromium.headless : true;
 
-    // Only add defaultViewport if it exists
-    if (chromium.defaultViewport) {
-      launchOptions.defaultViewport = chromium.defaultViewport;
+      if (!executablePath) {
+        throw new Error('Failed to get Chromium executable path from @sparticuz/chromium-min');
+      }
+
+      return puppeteer.launch({
+        args,
+        executablePath,
+        headless,
+      });
+    } catch (error) {
+      const err = error as Error;
+      throw new Error(
+        `Failed to launch Chromium in Vercel: ${err.message}. ` +
+        `This usually means @sparticuz/chromium-min is not properly installed or ` +
+        `Vercel serverless environment lacks required system libraries.`
+      );
     }
-
-    return puppeteer.launch(launchOptions);
   }
 
   // Local / traditional server: use Playwright (bundles browsers, easier for local dev)
@@ -375,27 +385,34 @@ function generateProductsHTML(
       size: A4 landscape;
       margin: 10mm;
     }
+    * {
+      box-sizing: border-box;
+    }
     body {
       font-family: Arial, sans-serif;
-      font-size: 10px;
+      font-size: 8px;
       margin: 0;
       padding: 0;
+      width: 100%;
+      overflow: hidden;
     }
     .header {
-      margin-bottom: 8mm;
+      margin-bottom: 6mm;
       border-bottom: 1px solid #000;
       padding-bottom: 2mm;
-      position: relative;
+      width: 100%;
     }
     .tenant-name {
-      font-size: 11pt;
+      font-size: 10pt;
       font-weight: bold;
       margin-bottom: 1mm;
+      text-align: right;
     }
     .date-time {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #666;
       margin-bottom: 1mm;
+      text-align: right;
     }
     .title-row {
       display: flex;
@@ -404,11 +421,11 @@ function generateProductsHTML(
       margin-bottom: 1mm;
     }
     .title {
-      font-size: 10pt;
+      font-size: 9pt;
       font-weight: bold;
     }
     .total-count {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #666;
       font-weight: normal;
     }
@@ -416,18 +433,26 @@ function generateProductsHTML(
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 10px;
+      font-size: 8px;
+      margin: 0;
+      padding: 0;
     }
     th, td {
-      padding: 3px 4px;
+      padding: 2px 3px;
       border: 0.5px solid #ddd;
       text-align: right;
       word-break: break-word;
       overflow-wrap: break-word;
+      white-space: normal;
+      vertical-align: top;
     }
     th {
       background-color: #f5f5f5;
       font-weight: bold;
+      font-size: 8px;
+    }
+    td {
+      font-size: 8px;
     }
     tr {
       break-inside: avoid;
@@ -503,27 +528,34 @@ function generatePriceHistoryHTML(
       size: A4 landscape;
       margin: 10mm;
     }
+    * {
+      box-sizing: border-box;
+    }
     body {
       font-family: Arial, sans-serif;
-      font-size: 10px;
+      font-size: 8px;
       margin: 0;
       padding: 0;
+      width: 100%;
+      overflow: hidden;
     }
     .header {
-      margin-bottom: 8mm;
+      margin-bottom: 6mm;
       border-bottom: 1px solid #000;
       padding-bottom: 2mm;
-      position: relative;
+      width: 100%;
     }
     .tenant-name {
-      font-size: 11pt;
+      font-size: 10pt;
       font-weight: bold;
       margin-bottom: 1mm;
+      text-align: right;
     }
     .date-time {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #666;
       margin-bottom: 1mm;
+      text-align: right;
     }
     .title-row {
       display: flex;
@@ -532,35 +564,44 @@ function generatePriceHistoryHTML(
       margin-bottom: 1mm;
     }
     .title {
-      font-size: 10pt;
+      font-size: 9pt;
       font-weight: bold;
     }
     .total-count {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #666;
       font-weight: normal;
     }
     .subtitle {
-      font-size: 8pt;
+      font-size: 7pt;
       color: #666;
       margin-bottom: 2mm;
+      text-align: right;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 10px;
+      font-size: 8px;
+      margin: 0;
+      padding: 0;
     }
     th, td {
-      padding: 3px 4px;
+      padding: 2px 3px;
       border: 0.5px solid #ddd;
       text-align: right;
       word-break: break-word;
       overflow-wrap: break-word;
+      white-space: normal;
+      vertical-align: top;
     }
     th {
       background-color: #f5f5f5;
       font-weight: bold;
+      font-size: 8px;
+    }
+    td {
+      font-size: 8px;
     }
     tr {
       break-inside: avoid;
@@ -728,10 +769,11 @@ async function generatePDF(html: string): Promise<Buffer> {
   const page = await browser.newPage();
 
   try {
-    // Puppeteer uses 'networkidle0', Playwright uses 'networkidle'
+    // Set content and wait for it to load
     const waitUntil = process.env.VERCEL ? 'networkidle0' : 'networkidle';
     await page.setContent(html, { waitUntil });
 
+    // Generate PDF with A4 settings
     const pdf = await page.pdf({
       format: 'A4',
       landscape: true,
@@ -741,10 +783,17 @@ async function generatePDF(html: string): Promise<Buffer> {
         bottom: '10mm',
         left: '10mm',
       },
-      printBackground: true,
+      printBackground: false, // Changed to false as per requirements
+      preferCSSPageSize: true,
     });
 
     return Buffer.from(pdf);
+  } catch (error) {
+    const err = error as Error;
+    throw new Error(
+      `PDF generation failed: ${err.message}. ` +
+      `If running on Vercel, ensure @sparticuz/chromium-min is properly installed.`
+    );
   } finally {
     // Always close the page; keep the browser alive for subsequent requests.
     await page.close().catch(() => undefined);
