@@ -16,10 +16,13 @@ let sharedBrowserLaunching: Promise<Browser> | null = null;
 async function launchBrowser(): Promise<Browser> {
   // Vercel serverless environment: use a serverless-compatible Chromium binary
   if (process.env.VERCEL) {
-    const [{ chromium: pwChromium }, chromium] = await Promise.all([
+    const [{ chromium: pwChromium }, chromiumMod] = await Promise.all([
       import('playwright-core'),
       import('@sparticuz/chromium'),
     ]);
+
+    // ESM default export
+    const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
     const executablePath = await chromium.executablePath();
 
