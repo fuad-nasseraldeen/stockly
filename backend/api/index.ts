@@ -32,7 +32,9 @@ app.use(cors({
 
     return cb(new Error('Not allowed by CORS'), false);
   },
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+  exposedHeaders: ['Content-Type', 'Content-Disposition']
 }));
 
 app.use(express.json());

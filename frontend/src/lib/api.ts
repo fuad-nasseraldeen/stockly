@@ -663,6 +663,10 @@ export const pdfApi = {
     const token = await getAuthToken();
     const tenantId = getTenantId();
     
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 PDF download - token exists:', !!token, 'tenantId:', tenantId);
+    }
+    
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (tenantId) headers['x-tenant-id'] = tenantId;
@@ -674,8 +678,22 @@ export const pdfApi = {
     if (params.sort) queryParams.append('sort', params.sort);
 
     const url = `${API_URL}/api/pdf/products.pdf${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await fetch(url, { headers });
-    if (!response.ok) throw new Error('שגיאה ביצירת PDF');
+    const response = await fetch(url, { 
+      headers,
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'שגיאה ביצירת PDF';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch {
+        // If not JSON, use the text or default
+        if (errorText) errorMessage = errorText;
+      }
+      throw new Error(errorMessage);
+    }
 
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
@@ -700,8 +718,22 @@ export const pdfApi = {
     if (supplierId) queryParams.append('supplier_id', supplierId);
 
     const url = `${API_URL}/api/pdf/price-history/${productId}.pdf${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await fetch(url, { headers });
-    if (!response.ok) throw new Error('שגיאה ביצירת PDF');
+    const response = await fetch(url, { 
+      headers,
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'שגיאה ביצירת PDF';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch {
+        // If not JSON, use the text or default
+        if (errorText) errorMessage = errorText;
+      }
+      throw new Error(errorMessage);
+    }
 
     const blob = await response.blob();
     const downloadUrl = window.URL.createObjectURL(blob);
