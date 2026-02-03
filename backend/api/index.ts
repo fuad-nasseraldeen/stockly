@@ -62,4 +62,10 @@ app.use('/api/admin', adminRouter);
 
 // Vercel Serverless Function handler
 // Export the Express app directly - Vercel will handle it as a serverless function
+// This ensures Node.js runtime (not Edge runtime)
 export default app;
+
+// Explicitly set runtime to Node.js (Vercel will use this)
+export const config = {
+  runtime: 'nodejs20.x',
+};

@@ -8,94 +8,80 @@ const router = Router();
 /**
  * Reuse a single Chromium instance across requests to avoid the high startup cost
  * of launching a browser for every PDF generation.
- * Type is any because we use Puppeteer in Vercel and Playwright locally.
+ * Uses puppeteer-core + @sparticuz/chromium for both Vercel and local environments.
  */
 let sharedBrowser: any = null;
 let sharedBrowserLaunching: Promise<any> | null = null;
 
 async function launchBrowser(): Promise<any> {
-  // Vercel serverless environment: use puppeteer-core + @sparticuz/chromium
-  if (process.env.VERCEL) {
-    try {
-      // Runtime debug (temporary) to verify packaging
-      const { existsSync } = await import('fs');
-      const { dirname, join } = await import('path');
-      
-      const cwd = process.cwd();
-      console.log('[PDF Debug] process.cwd():', cwd);
-      
-      // Try to resolve chromium package
-      let chromiumPackagePath: string | null = null;
-      try {
-        const { createRequire } = await import('module');
-        const require = createRequire(import.meta.url);
-        chromiumPackagePath = require.resolve('@sparticuz/chromium');
-        console.log('[PDF Debug] chromium package resolved to:', chromiumPackagePath);
-      } catch (resolveError) {
-        console.error('[PDF Debug] Failed to resolve @sparticuz/chromium:', resolveError);
-      }
-      
-      // Check if chromium package directory exists
-      if (chromiumPackagePath) {
-        const chromiumDir = dirname(chromiumPackagePath);
-        const binDir = join(chromiumDir, 'bin');
-        const exists = existsSync(binDir);
-        console.log('[PDF Debug] chromium bin directory exists:', exists, 'at:', binDir);
-        
-        if (!exists) {
-          // Check parent directory
-          const parentExists = existsSync(chromiumDir);
-          console.log('[PDF Debug] chromium package directory exists:', parentExists, 'at:', chromiumDir);
-        }
-      }
+  // ALWAYS use puppeteer-core + @sparticuz/chromium (works in both Vercel and local)
+  // This ensures consistent behavior and proper serverless compatibility
+  try {
+    const [puppeteerCore, chromiumMod] = await Promise.all([
+      import('puppeteer-core'),
+      import('@sparticuz/chromium'),
+    ]);
 
-      const [puppeteer, chromiumMod] = await Promise.all([
-        import('puppeteer-core'),
-        import('@sparticuz/chromium'),
-      ]);
+    // ESM default export handling
+    const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
-      // ESM default export
-      const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
+    // Get executable path from @sparticuz/chromium (MUST be the only source)
+    const executablePath = await chromium.executablePath();
+    const args = chromium.args || [];
+    const headless = chromium.headless !== undefined ? chromium.headless : true;
+    const defaultViewport = chromium.defaultViewport || null;
 
-      const executablePath = await chromium.executablePath();
-      const args = chromium.args || [];
-      const headless = chromium.headless !== undefined ? chromium.headless : true;
+    // Diagnostic logging (development only)
+    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_PDF) {
+      console.log('[PDF] Using @sparticuz/chromium executablePath:', executablePath);
+      console.log('[PDF] Args count:', args.length);
+      console.log('[PDF] Headless:', headless);
+      console.log('[PDF] DefaultViewport:', defaultViewport);
+    }
 
-      console.log('[PDF Debug] executablePath:', executablePath);
-      console.log('[PDF Debug] args count:', args.length);
-      console.log('[PDF Debug] headless:', headless);
-
-      if (!executablePath) {
-        throw new Error('Failed to get Chromium executable path from @sparticuz/chromium');
-      }
-
-      // Verify executable exists
-      if (executablePath && !existsSync(executablePath)) {
-        throw new Error(`Chromium executable not found at: ${executablePath}`);
-      }
-
-      return puppeteer.launch({
-        args,
-        executablePath,
-        headless,
-      });
-    } catch (error) {
-      const err = error as Error;
-      console.error('[PDF Debug] Launch error:', err.message, err.stack);
+    // Validate executablePath is from @sparticuz/chromium (not hardcoded /tmp/chromium)
+    if (!executablePath) {
       throw new Error(
-        `Failed to launch Chromium in Vercel: ${err.message}. ` +
-        `This usually means @sparticuz/chromium is not properly installed or ` +
-        `Vercel serverless environment lacks required system libraries.`
+        'Chromium executablePath is empty. @sparticuz/chromium package may not be installed correctly. ' +
+        'Ensure @sparticuz/chromium is in dependencies (not devDependencies) and npm install completed.'
       );
     }
-  }
 
-  // Local / traditional server: use Playwright (bundles browsers, easier for local dev)
-  const { chromium } = await import('playwright');
-  return chromium.launch({
-    // Helps when running in containers / hardened environments; safe to pass generally.
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  }) as any; // Type cast for Puppeteer compatibility
+    // Hard rule: reject any hardcoded /tmp/chromium paths
+    if (executablePath === '/tmp/chromium' || executablePath.includes('/tmp/chromium')) {
+      throw new Error(
+        `Invalid executablePath detected: ${executablePath}. ` +
+        'This indicates @sparticuz/chromium is not providing the correct path. ' +
+        'Do not use hardcoded paths. Use chromium.executablePath() from @sparticuz/chromium only.'
+      );
+    }
+
+    // Build launch options from @sparticuz/chromium ONLY
+    const launchOptions: any = {
+      args,
+      executablePath,
+      headless,
+    };
+
+    // Add defaultViewport if provided by chromium
+    if (defaultViewport) {
+      launchOptions.defaultViewport = defaultViewport;
+    }
+
+    return puppeteerCore.launch(launchOptions);
+  } catch (error) {
+    const err = error as Error;
+    const errorMessage = 
+      `Failed to launch Chromium: ${err.message}. ` +
+      `Executable source: @sparticuz/chromium.executablePath(). ` +
+      `If this fails on Vercel, ensure: ` +
+      `1) @sparticuz/chromium is in dependencies (not devDependencies), ` +
+      `2) Node.js runtime (not Edge), ` +
+      `3) Function has sufficient memory (1024MB+) and timeout (60s+).`;
+    
+    console.error('[PDF] Launch error:', errorMessage);
+    throw new Error(errorMessage);
+  }
 }
 
 async function getSharedBrowser(): Promise<any> {
@@ -804,16 +790,16 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Generate PDF from HTML using Puppeteer (Vercel) or Playwright (local)
+ * Generate PDF from HTML using Puppeteer-core + @sparticuz/chromium
+ * This works in both Vercel serverless and local environments.
  */
 async function generatePDF(html: string): Promise<Buffer> {
   const browser = await getSharedBrowser();
   const page = await browser.newPage();
 
   try {
-    // Set content and wait for it to load
-    const waitUntil = process.env.VERCEL ? 'networkidle0' : 'networkidle';
-    await page.setContent(html, { waitUntil });
+    // Puppeteer uses 'networkidle0' (not 'networkidle' like Playwright)
+    await page.setContent(html, { waitUntil: 'networkidle0' });
 
     // Generate PDF with A4 settings
     const pdf = await page.pdf({
@@ -825,7 +811,7 @@ async function generatePDF(html: string): Promise<Buffer> {
         bottom: '10mm',
         left: '10mm',
       },
-      printBackground: false, // Changed to false as per requirements
+      printBackground: false,
       preferCSSPageSize: true,
     });
 
@@ -834,7 +820,8 @@ async function generatePDF(html: string): Promise<Buffer> {
     const err = error as Error;
     throw new Error(
       `PDF generation failed: ${err.message}. ` +
-      `If running on Vercel, ensure @sparticuz/chromium-min is properly installed.`
+      `Browser: puppeteer-core + @sparticuz/chromium. ` +
+      `If this fails on Vercel, check function logs for executablePath diagnostic.`
     );
   } finally {
     // Always close the page; keep the browser alive for subsequent requests.
