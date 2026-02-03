@@ -24,9 +24,6 @@ async function launchBrowser(): Promise<any> {
     // ESM default export
     const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
-    // For Vercel, we need to set the executable path
-    chromium.setGraphicsMode(false);
-
     return puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
