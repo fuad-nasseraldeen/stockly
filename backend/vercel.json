@@ -1,6 +1,6 @@
 {
   "buildCommand": "echo 'Skipping build - Vercel compiles serverless functions automatically'",
-  "installCommand": "npm install",
+  "installCommand": "npm install --prefer-offline --no-audit",
   "functions": {
     "api/index.ts": {
       "includeFiles": "src/**",
