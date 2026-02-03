@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
-import type { Browser } from 'playwright-core';
 import { normalizeName } from '../lib/normalize.js';
 
 const router = Router();
@@ -9,40 +8,42 @@ const router = Router();
 /**
  * Reuse a single Chromium instance across requests to avoid the high startup cost
  * of launching a browser for every PDF generation.
+ * Type is any because we use Puppeteer in Vercel and Playwright locally.
  */
-let sharedBrowser: Browser | null = null;
-let sharedBrowserLaunching: Promise<Browser> | null = null;
+let sharedBrowser: any = null;
+let sharedBrowserLaunching: Promise<any> | null = null;
 
-async function launchBrowser(): Promise<Browser> {
+async function launchBrowser(): Promise<any> {
   // Vercel serverless environment: use a serverless-compatible Chromium binary
   if (process.env.VERCEL) {
-    const [{ chromium: pwChromium }, chromiumMod] = await Promise.all([
-      import('playwright-core'),
+    const [puppeteer, chromiumMod] = await Promise.all([
+      import('puppeteer-core'),
       import('@sparticuz/chromium'),
     ]);
 
     // ESM default export
     const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
-    const executablePath = await chromium.executablePath();
+    // For Vercel, we need to set the executable path
+    chromium.setGraphicsMode(false);
 
-    return pwChromium.launch({
+    return puppeteer.launch({
       args: chromium.args,
-      executablePath,
-      // Playwright expects a boolean here; in serverless we always run headless.
-      headless: true,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
   }
 
-  // Local / traditional server: use full Playwright (bundles browsers)
+  // Local / traditional server: use Playwright (bundles browsers, easier for local dev)
   const { chromium } = await import('playwright');
   return chromium.launch({
     // Helps when running in containers / hardened environments; safe to pass generally.
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  }) as any; // Type cast for Puppeteer compatibility
 }
 
-async function getSharedBrowser(): Promise<Browser> {
+async function getSharedBrowser(): Promise<any> {
   if (sharedBrowser && sharedBrowser.isConnected()) return sharedBrowser;
   if (sharedBrowserLaunching) return sharedBrowserLaunching;
 
@@ -717,14 +718,16 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Generate PDF from HTML using Playwright
+ * Generate PDF from HTML using Puppeteer (Vercel) or Playwright (local)
  */
 async function generatePDF(html: string): Promise<Buffer> {
   const browser = await getSharedBrowser();
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, { waitUntil: 'networkidle' });
+    // Puppeteer uses 'networkidle0', Playwright uses 'networkidle'
+    const waitUntil = process.env.VERCEL ? 'networkidle0' : 'networkidle';
+    await page.setContent(html, { waitUntil });
 
     const pdf = await page.pdf({
       format: 'A4',
