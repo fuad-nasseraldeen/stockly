@@ -18,7 +18,7 @@ async function launchBrowser(): Promise<any> {
   if (process.env.VERCEL) {
     const [puppeteer, chromiumMod] = await Promise.all([
       import('puppeteer-core'),
-      import('@sparticuz/chromium-min'),
+      import('@sparticuz/chromium'),
     ]);
 
     // ESM default export
