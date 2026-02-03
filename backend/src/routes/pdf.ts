@@ -215,13 +215,9 @@ router.get('/products.pdf', requireAuth, requireTenant, async (req, res) => {
     const details = err?.message || String(error);
     console.error('PDF generation error (products):', details, err?.stack ? `\n${err.stack}` : '');
 
-    const debugEnabled =
-      process.env.PDF_DEBUG === '1' ||
-      (typeof req.query.debug === 'string' && req.query.debug === '1');
-
     res.status(500).json({
       error: 'שגיאה ביצירת PDF',
-      ...(debugEnabled ? { details } : {}),
+      details,
     });
   }
 });
@@ -334,13 +330,9 @@ router.get('/price-history/:productId.pdf', requireAuth, requireTenant, async (r
     const details = err?.message || String(error);
     console.error('PDF generation error (price-history):', details, err?.stack ? `\n${err.stack}` : '');
 
-    const debugEnabled =
-      process.env.PDF_DEBUG === '1' ||
-      (typeof req.query.debug === 'string' && req.query.debug === '1');
-
     res.status(500).json({
       error: 'שגיאה ביצירת PDF',
-      ...(debugEnabled ? { details } : {}),
+      details,
     });
   }
 });
