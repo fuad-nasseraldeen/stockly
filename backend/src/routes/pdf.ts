@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { supabase } from '../lib/supabase.js';
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright-core';
 import { normalizeName } from '../lib/normalize.js';
 
 const router = Router();
@@ -13,15 +13,36 @@ const router = Router();
 let sharedBrowser: Browser | null = null;
 let sharedBrowserLaunching: Promise<Browser> | null = null;
 
+async function launchBrowser(): Promise<Browser> {
+  // Vercel serverless environment: use a serverless-compatible Chromium binary
+  if (process.env.VERCEL) {
+    const [{ chromium: pwChromium }, chromium] = await Promise.all([
+      import('playwright-core'),
+      import('@sparticuz/chromium'),
+    ]);
+
+    const executablePath = await chromium.executablePath();
+
+    return pwChromium.launch({
+      args: chromium.args,
+      executablePath,
+      headless: chromium.headless,
+    });
+  }
+
+  // Local / traditional server: use full Playwright (bundles browsers)
+  const { chromium } = await import('playwright');
+  return chromium.launch({
+    // Helps when running in containers / hardened environments; safe to pass generally.
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
+}
+
 async function getSharedBrowser(): Promise<Browser> {
   if (sharedBrowser && sharedBrowser.isConnected()) return sharedBrowser;
   if (sharedBrowserLaunching) return sharedBrowserLaunching;
 
-  sharedBrowserLaunching = chromium
-    .launch({
-      // Helps when running in containers / hardened environments; safe to pass generally.
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    })
+  sharedBrowserLaunching = launchBrowser()
     .then((b) => {
       sharedBrowser = b;
       return b;
@@ -188,7 +209,12 @@ router.get('/products.pdf', requireAuth, requireTenant, async (req, res) => {
     res.send(pdf);
   } catch (error) {
     console.error('PDF generation error:', error);
-    res.status(500).json({ error: 'שגיאה ביצירת PDF' });
+    res.status(500).json({
+      error: 'שגיאה ביצירת PDF',
+      ...(process.env.NODE_ENV === 'development'
+        ? { details: (error as any)?.message || String(error) }
+        : {}),
+    });
   }
 });
 
@@ -297,7 +323,12 @@ router.get('/price-history/:productId.pdf', requireAuth, requireTenant, async (r
     res.send(pdf);
   } catch (error) {
     console.error('PDF generation error:', error);
-    res.status(500).json({ error: 'שגיאה ביצירת PDF' });
+    res.status(500).json({
+      error: 'שגיאה ביצירת PDF',
+      ...(process.env.NODE_ENV === 'development'
+        ? { details: (error as any)?.message || String(error) }
+        : {}),
+    });
   }
 });
 
