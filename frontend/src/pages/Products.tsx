@@ -12,9 +12,9 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, Loader2 } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { exportApi } from '../lib/api';
+import { exportApi, pdfApi } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
@@ -27,6 +27,7 @@ export default function Products() {
   const debouncedSearch = useDebounce(search, 350); // Debounce search input by 350ms
   const [supplierFilter, setSupplierFilter] = useState<string>('');
   const [sort, setSort] = useState<SortOption>('updated_desc');
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
@@ -183,6 +184,41 @@ export default function Products() {
         </div>
         <div className="flex gap-2">
           <Button 
+            onClick={async () => {
+              if (isPdfGenerating) return;
+              setIsPdfGenerating(true);
+              try {
+                await pdfApi.downloadProducts({
+                  search: debouncedSearch || undefined,
+                  supplier_id: supplierFilter || undefined,
+                  category_id: categoryFilter || undefined,
+                  sort,
+                });
+              } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('שגיאה ביצירת PDF');
+              } finally {
+                setIsPdfGenerating(false);
+              }
+            }}
+            disabled={isPdfGenerating}
+            variant="outline" 
+            size="lg" 
+            className="shadow-md hover:shadow-lg"
+          >
+            {isPdfGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                מכין PDF...
+              </>
+            ) : (
+              <>
+                <FileText className="w-4 h-4 ml-2" />
+                הורד PDF
+              </>
+            )}
+          </Button>
+          <Button 
             onClick={handleExport} 
             variant="outline" 
             size="lg" 
@@ -295,16 +331,16 @@ export default function Products() {
                       </span>
                       <span>•</span>
                       <span className="px-2 py-1 bg-muted rounded-md border border-border/50">{product.unit === 'unit' ? 'יחידה' : product.unit === 'kg' ? 'ק"ג' : 'ליטר'}</span>
-                      {(product as any).sku && (
+                      {product.sku && (
                         <>
                           <span>•</span>
-                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">מק&quot;ט: {(product as any).sku}</span>
+                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">מק&quot;ט: {product.sku}</span>
                         </>
                       )}
-                      {(product as any).package_quantity && Number((product as any).package_quantity) !== 1 && (
+                      {product.package_quantity && Number(product.package_quantity) !== 1 && (
                         <>
                           <span>•</span>
-                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">כמות באריזה: {(product as any).package_quantity}</span>
+                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">כמות באריזה: {product.package_quantity}</span>
                         </>
                       )}
                     </div>
@@ -434,9 +470,28 @@ export default function Products() {
       {/* Price history dialog */}
       <Dialog open={historyOpen} onOpenChange={(open) => (open ? setHistoryOpen(true) : closeHistory())}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>היסטוריית מחירים</DialogTitle>
-          </DialogHeader>
+          <div className="flex items-center justify-between mb-4">
+            <DialogHeader className="flex-1">
+              <DialogTitle>היסטוריית מחירים</DialogTitle>
+            </DialogHeader>
+            {historyProductId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await pdfApi.downloadPriceHistory(historyProductId, historySupplierId || undefined);
+                  } catch (error) {
+                    console.error('Error generating PDF:', error);
+                    alert('שגיאה ביצירת PDF');
+                  }
+                }}
+              >
+                <FileText className="w-4 h-4 ml-2" />
+                הורד PDF
+              </Button>
+            )}
+          </div>
           {historyLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               טוען היסטוריית מחירים...
@@ -509,7 +564,7 @@ export default function Products() {
                     const unitPrice = useVat ? costAfterDiscountBeforeVat : costAfterDiscountWithVat;
                     
                     // package_quantity is now per supplier (from price_entries), not per product
-                    const packageQty = Number((row as any).package_quantity) || 1;
+                    const packageQty = Number(row.package_quantity) || 1;
                     const cartonPrice = unitPrice * packageQty;
                     
                     return (
@@ -528,7 +583,7 @@ export default function Products() {
                         {useVat && (
                           <TableCell className="whitespace-nowrap">{formatPrice(costAfterDiscountBeforeVat)}</TableCell>
                         )}
-                        <TableCell className="whitespace-nowrap">{packageQty} יח\`</TableCell>
+                        <TableCell className="whitespace-nowrap">{packageQty} יח`</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">
                           <div>{formatPrice(cartonPrice)}</div>
                         </TableCell>

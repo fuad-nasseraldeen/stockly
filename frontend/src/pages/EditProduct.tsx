@@ -12,7 +12,7 @@ import { Select } from '../components/ui/select';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { ArrowRight, ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Plus, X, FileText } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
@@ -612,14 +612,34 @@ export default function EditProduct() {
                   : 'כל היסטוריית המחירים למוצר זה'}
               </DialogDescription>
             </DialogHeader>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setShowPriceHistory(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-2">
+              {id && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const { pdfApi } = await import('../lib/api');
+                      await pdfApi.downloadPriceHistory(id, priceHistorySupplierId || undefined);
+                    } catch (error) {
+                      console.error('Error generating PDF:', error);
+                      alert('שגיאה ביצירת PDF');
+                    }
+                  }}
+                >
+                  <FileText className="w-4 h-4 ml-2" />
+                  הורד PDF
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowPriceHistory(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           {isLoadingHistory ? (
             <div className="text-center py-8">טוען...</div>
@@ -722,7 +742,7 @@ export default function EditProduct() {
                         </TableCell>
                         <TableCell className="whitespace-nowrap">₪{costAfterDiscountWithVat.toFixed(2)}</TableCell>
                         {useVat && <TableCell className="whitespace-nowrap">₪{costAfterDiscountBeforeVat.toFixed(2)}</TableCell>}
-                        <TableCell className="whitespace-nowrap">{packageQty} יח\`</TableCell>
+                        <TableCell className="whitespace-nowrap">{packageQty} יח`</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">
                           ₪{cartonPrice.toFixed(2)}
                         </TableCell>

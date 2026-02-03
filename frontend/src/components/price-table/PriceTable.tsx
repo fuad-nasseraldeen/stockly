@@ -24,11 +24,16 @@ export function PriceTable({
   columns,
   renderActions,
 }: PriceTableProps) {
+  // Filter out actions column if no renderActions provided
+  const displayColumns = renderActions 
+    ? columns 
+    : columns.filter(col => col.id !== 'actions');
+  
   return (
     <Table className="min-w-full">
       <TableHeader>
         <TableRow>
-          {columns.map((col) => (
+          {displayColumns.map((col) => (
             <TableHead
               key={col.id}
               className={`whitespace-nowrap ${col.minWidth ? `min-w-[${col.minWidth}px]` : ''} ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : ''}`}
@@ -41,7 +46,7 @@ export function PriceTable({
       <TableBody>
         {prices.map((price, idx) => (
           <TableRow key={`${price.supplier_id}-${idx}`}>
-            {columns.map((col) => {
+            {displayColumns.map((col) => {
               if (col.id === 'actions' && renderActions) {
                 return (
                   <TableCell key={col.id} className="whitespace-nowrap">

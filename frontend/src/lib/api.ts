@@ -652,3 +652,65 @@ export const exportApi = {
     document.body.removeChild(a);
   },
 };
+
+export const pdfApi = {
+  downloadProducts: async (params: {
+    search?: string;
+    supplier_id?: string;
+    category_id?: string;
+    sort?: string;
+  }): Promise<void> => {
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const queryParams = new URLSearchParams();
+    if (params.search) queryParams.append('search', params.search);
+    if (params.supplier_id) queryParams.append('supplier_id', params.supplier_id);
+    if (params.category_id) queryParams.append('category_id', params.category_id);
+    if (params.sort) queryParams.append('sort', params.sort);
+
+    const url = `${API_URL}/api/pdf/products.pdf${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error('שגיאה ביצירת PDF');
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = 'products.pdf';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+  },
+
+  downloadPriceHistory: async (productId: string, supplierId?: string): Promise<void> => {
+    const token = await getAuthToken();
+    const tenantId = getTenantId();
+    
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (tenantId) headers['x-tenant-id'] = tenantId;
+    
+    const queryParams = new URLSearchParams();
+    if (supplierId) queryParams.append('supplier_id', supplierId);
+
+    const url = `${API_URL}/api/pdf/price-history/${productId}.pdf${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+    const response = await fetch(url, { headers });
+    if (!response.ok) throw new Error('שגיאה ביצירת PDF');
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = 'price_history.pdf';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(downloadUrl);
+    document.body.removeChild(a);
+  },
+};

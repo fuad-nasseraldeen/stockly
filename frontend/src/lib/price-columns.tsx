@@ -190,7 +190,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     renderHeader: () => <span>כמות בקרטון</span>,
     renderCell: (price: PriceData, product: ProductData) => {
       const packageQty = getPackageQuantity(price, product);
-      return <span>{packageQty} יח\`</span>;
+      return <span>{packageQty} יח`</span>;
     },
   },
 
