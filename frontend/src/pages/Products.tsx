@@ -173,6 +173,24 @@ export default function Products() {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (isPdfGenerating) return;
+    setIsPdfGenerating(true);
+    try {
+      await pdfApi.downloadProducts({
+        search: debouncedSearch || undefined,
+        supplier_id: supplierFilter || undefined,
+        category_id: categoryFilter || undefined,
+        sort,
+      });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('שגיאה ביצירת PDF');
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -182,29 +200,53 @@ export default function Products() {
             נהל את כל המוצרים והמחירים שלך • סה״כ {totalProducts} מוצרים
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={async () => {
-              if (isPdfGenerating) return;
-              setIsPdfGenerating(true);
-              try {
-                await pdfApi.downloadProducts({
-                  search: debouncedSearch || undefined,
-                  supplier_id: supplierFilter || undefined,
-                  category_id: categoryFilter || undefined,
-                  sort,
-                });
-              } catch (error) {
-                console.error('Error generating PDF:', error);
-                alert('שגיאה ביצירת PDF');
-              } finally {
-                setIsPdfGenerating(false);
-              }
-            }}
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+          {/* Add product */}
+          <Button
+            onClick={() => navigate('/products/new')}
+            size="lg"
+            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
+          >
+            <Plus className="w-4 h-4 ml-2" />
+            הוסף מוצר
+          </Button>
+          <Button
+            onClick={() => navigate('/products/new')}
+            size="default"
+            className="shadow-md hover:shadow-lg sm:hidden"
+          >
+            <Plus className="w-4 h-4 ml-2" />
+            הוסף
+          </Button>
+
+          {/* Export */}
+          <Button
+            onClick={handleExport}
+            variant="outline"
+            size="lg"
+            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
+          >
+            <Download className="w-4 h-4 ml-2" />
+            ייצא מוצרים
+          </Button>
+          <Button
+            onClick={handleExport}
+            variant="outline"
+            size="icon"
+            className="shadow-md hover:shadow-lg sm:hidden"
+            aria-label="ייצא מוצרים"
+            title="ייצא מוצרים"
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+
+          {/* PDF */}
+          <Button
+            onClick={handleDownloadPdf}
             disabled={isPdfGenerating}
-            variant="outline" 
-            size="lg" 
-            className="shadow-md hover:shadow-lg"
+            variant="outline"
+            size="lg"
+            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
           >
             {isPdfGenerating ? (
               <>
@@ -218,18 +260,20 @@ export default function Products() {
               </>
             )}
           </Button>
-          <Button 
-            onClick={handleExport} 
-            variant="outline" 
-            size="lg" 
-            className="shadow-md hover:shadow-lg"
+          <Button
+            onClick={handleDownloadPdf}
+            disabled={isPdfGenerating}
+            variant="outline"
+            size="icon"
+            className="shadow-md hover:shadow-lg sm:hidden"
+            aria-label="הורד PDF"
+            title="הורד PDF"
           >
-            <Download className="w-4 h-4 ml-2" />
-            ייצא מוצרים
-          </Button>
-          <Button onClick={() => navigate('/products/new')} size="lg" className="shadow-md hover:shadow-lg">
-            <Plus className="w-4 h-4 ml-2" />
-            הוסף מוצר
+            {isPdfGenerating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileText className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>
