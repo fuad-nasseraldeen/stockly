@@ -29,7 +29,8 @@ async function launchBrowser(): Promise<Browser> {
     return pwChromium.launch({
       args: chromium.args,
       executablePath,
-      headless: chromium.headless,
+      // Playwright expects a boolean here; in serverless we always run headless.
+      headless: true,
     });
   }
 
