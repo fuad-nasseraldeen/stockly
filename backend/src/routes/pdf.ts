@@ -211,12 +211,17 @@ router.get('/products.pdf', requireAuth, requireTenant, async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="products.pdf"');
     res.send(pdf);
   } catch (error) {
-    console.error('PDF generation error:', error);
+    const err = error as any;
+    const details = err?.message || String(error);
+    console.error('PDF generation error (products):', details, err?.stack ? `\n${err.stack}` : '');
+
+    const debugEnabled =
+      process.env.PDF_DEBUG === '1' ||
+      (typeof req.query.debug === 'string' && req.query.debug === '1');
+
     res.status(500).json({
       error: 'שגיאה ביצירת PDF',
-      ...(process.env.NODE_ENV === 'development'
-        ? { details: (error as any)?.message || String(error) }
-        : {}),
+      ...(debugEnabled ? { details } : {}),
     });
   }
 });
@@ -325,12 +330,17 @@ router.get('/price-history/:productId.pdf', requireAuth, requireTenant, async (r
     res.setHeader('Content-Disposition', 'attachment; filename="price_history.pdf"');
     res.send(pdf);
   } catch (error) {
-    console.error('PDF generation error:', error);
+    const err = error as any;
+    const details = err?.message || String(error);
+    console.error('PDF generation error (price-history):', details, err?.stack ? `\n${err.stack}` : '');
+
+    const debugEnabled =
+      process.env.PDF_DEBUG === '1' ||
+      (typeof req.query.debug === 'string' && req.query.debug === '1');
+
     res.status(500).json({
       error: 'שגיאה ביצירת PDF',
-      ...(process.env.NODE_ENV === 'development'
-        ? { details: (error as any)?.message || String(error) }
-        : {}),
+      ...(debugEnabled ? { details } : {}),
     });
   }
 });
