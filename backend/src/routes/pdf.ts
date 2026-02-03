@@ -24,12 +24,18 @@ async function launchBrowser(): Promise<any> {
     // ESM default export
     const chromium = (chromiumMod as any).default ?? (chromiumMod as any);
 
-    return puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
+    const launchOptions: any = {
+      args: chromium.args || [],
       executablePath: await chromium.executablePath(),
       headless: true,
-    });
+    };
+
+    // Only add defaultViewport if it exists
+    if (chromium.defaultViewport) {
+      launchOptions.defaultViewport = chromium.defaultViewport;
+    }
+
+    return puppeteer.launch(launchOptions);
   }
 
   // Local / traditional server: use Playwright (bundles browsers, easier for local dev)
