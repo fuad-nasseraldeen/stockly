@@ -14,12 +14,44 @@ let sharedBrowser: any = null;
 let sharedBrowserLaunching: Promise<any> | null = null;
 
 async function launchBrowser(): Promise<any> {
-  // Vercel serverless environment: use puppeteer-core + @sparticuz/chromium-min
+  // Vercel serverless environment: use puppeteer-core + @sparticuz/chromium
   if (process.env.VERCEL) {
     try {
+      // Runtime debug (temporary) to verify packaging
+      const { existsSync } = await import('fs');
+      const { dirname, join } = await import('path');
+      
+      const cwd = process.cwd();
+      console.log('[PDF Debug] process.cwd():', cwd);
+      
+      // Try to resolve chromium package
+      let chromiumPackagePath: string | null = null;
+      try {
+        const { createRequire } = await import('module');
+        const require = createRequire(import.meta.url);
+        chromiumPackagePath = require.resolve('@sparticuz/chromium');
+        console.log('[PDF Debug] chromium package resolved to:', chromiumPackagePath);
+      } catch (resolveError) {
+        console.error('[PDF Debug] Failed to resolve @sparticuz/chromium:', resolveError);
+      }
+      
+      // Check if chromium package directory exists
+      if (chromiumPackagePath) {
+        const chromiumDir = dirname(chromiumPackagePath);
+        const binDir = join(chromiumDir, 'bin');
+        const exists = existsSync(binDir);
+        console.log('[PDF Debug] chromium bin directory exists:', exists, 'at:', binDir);
+        
+        if (!exists) {
+          // Check parent directory
+          const parentExists = existsSync(chromiumDir);
+          console.log('[PDF Debug] chromium package directory exists:', parentExists, 'at:', chromiumDir);
+        }
+      }
+
       const [puppeteer, chromiumMod] = await Promise.all([
         import('puppeteer-core'),
-        import('@sparticuz/chromium-min'),
+        import('@sparticuz/chromium'),
       ]);
 
       // ESM default export
@@ -29,8 +61,17 @@ async function launchBrowser(): Promise<any> {
       const args = chromium.args || [];
       const headless = chromium.headless !== undefined ? chromium.headless : true;
 
+      console.log('[PDF Debug] executablePath:', executablePath);
+      console.log('[PDF Debug] args count:', args.length);
+      console.log('[PDF Debug] headless:', headless);
+
       if (!executablePath) {
-        throw new Error('Failed to get Chromium executable path from @sparticuz/chromium-min');
+        throw new Error('Failed to get Chromium executable path from @sparticuz/chromium');
+      }
+
+      // Verify executable exists
+      if (executablePath && !existsSync(executablePath)) {
+        throw new Error(`Chromium executable not found at: ${executablePath}`);
       }
 
       return puppeteer.launch({
@@ -40,9 +81,10 @@ async function launchBrowser(): Promise<any> {
       });
     } catch (error) {
       const err = error as Error;
+      console.error('[PDF Debug] Launch error:', err.message, err.stack);
       throw new Error(
         `Failed to launch Chromium in Vercel: ${err.message}. ` +
-        `This usually means @sparticuz/chromium-min is not properly installed or ` +
+        `This usually means @sparticuz/chromium is not properly installed or ` +
         `Vercel serverless environment lacks required system libraries.`
       );
     }
