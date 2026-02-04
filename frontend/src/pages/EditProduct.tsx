@@ -18,10 +18,14 @@ import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 import { netToGross } from '../lib/pricing-rules';
+import { downloadTablePdf } from '../lib/pdf-service';
+import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
+import { useTenant } from '../hooks/useTenant';
 
 export default function EditProduct() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currentTenant } = useTenant();
   const { data: product, isLoading } = useProduct(id || '');
   const { data: categories = [] } = useCategories();
   const { data: suppliers = [] } = useSuppliers();
@@ -619,16 +623,36 @@ export default function EditProduct() {
                   size="sm"
                   onClick={async () => {
                     try {
-                      const { pdfApi } = await import('../lib/api');
-                      await pdfApi.downloadPriceHistory(id, priceHistorySupplierId || undefined);
+                      const { columns } = await getPriceTableExportLayout(appSettings, 'priceHistoryTable');
+                      const columnKeys = columns.map((c) => c.key);
+
+                      const rowObjects = (priceHistory || []).map((price: any) =>
+                        priceRowToExportValues({
+                          price,
+                          product: product || {},
+                          settings: appSettings,
+                          columnKeys,
+                        })
+                      );
+
+                      await downloadTablePdf({
+                        storeName: currentTenant?.name || 'Stockly',
+                        title: 'היסטוריית מחירים',
+                        columns: columns.map((c) => ({
+                          key: c.key,
+                          label: c.headerLabel,
+                        })),
+                        rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+                        filename: 'price_history.pdf',
+                      });
                     } catch (error) {
-                      console.error('Error generating PDF:', error);
-                      alert('שגיאה ביצירת PDF');
+                      console.error('Error printing:', error);
+                      alert('שגיאה בייצוא PDF');
                     }
                   }}
                 >
                   <FileText className="w-4 h-4 ml-2" />
-                  הורד PDF
+                  ייצא PDF
                 </Button>
               )}
               <Button

@@ -12,22 +12,25 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { exportApi, pdfApi } from '../lib/api';
+import { exportApi } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { downloadTablePdf } from '../lib/pdf-service';
+import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
+import { useTenant } from '../hooks/useTenant';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
 export default function Products() {
   const navigate = useNavigate();
+  const { currentTenant } = useTenant();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 350); // Debounce search input by 350ms
   const [supplierFilter, setSupplierFilter] = useState<string>('');
   const [sort, setSort] = useState<SortOption>('updated_desc');
-  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<{ id: string; name: string } | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
@@ -174,20 +177,46 @@ export default function Products() {
   };
 
   const handleDownloadPdf = async () => {
-    if (isPdfGenerating) return;
-    setIsPdfGenerating(true);
     try {
-      await pdfApi.downloadProducts({
-        search: debouncedSearch || undefined,
-        supplier_id: supplierFilter || undefined,
-        category_id: categoryFilter || undefined,
-        sort,
+      if (!products || products.length === 0) {
+        alert('אין מוצרים לייצוא');
+        return;
+      }
+
+      const { columns } = await getPriceTableExportLayout(appSettings, 'productsTable');
+      const columnKeys = columns.map((c) => c.key);
+
+      // Build row objects keyed by column key
+      const rowObjects = products.map((p) => {
+        const price = p?.prices?.[0]; // prices are shown "lowest first" in UI
+        if (!price) {
+          return columnKeys.reduce<Record<string, string | number | null>>((acc, key) => {
+            acc[key] = '-';
+            return acc;
+          }, {});
+        }
+        return priceRowToExportValues({
+          price,
+          product: p,
+          settings: appSettings,
+          columnKeys,
+        });
+      });
+
+      // Adapt columns & rows to the flat table format expected by the PDF service
+      await downloadTablePdf({
+        storeName: currentTenant?.name || 'Stockly',
+        title: 'מוצרים',
+        columns: columns.map((c) => ({
+          key: c.key,
+          label: c.headerLabel,
+        })),
+        rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+        filename: 'products.pdf',
       });
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('שגיאה ביצירת PDF');
-    } finally {
-      setIsPdfGenerating(false);
+      console.error('Error printing:', error);
+      alert('שגיאה בייצוא PDF');
     }
   };
 
@@ -240,40 +269,25 @@ export default function Products() {
             <Download className="w-4 h-4" />
           </Button>
 
-          {/* PDF */}
+          {/* PDF export */}
           <Button
             onClick={handleDownloadPdf}
-            disabled={isPdfGenerating}
             variant="outline"
             size="lg"
             className="shadow-md hover:shadow-lg hidden sm:inline-flex"
           >
-            {isPdfGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                מכין PDF...
-              </>
-            ) : (
-              <>
-                <FileText className="w-4 h-4 ml-2" />
-                הורד PDF
-              </>
-            )}
+            <FileText className="w-4 h-4 ml-2" />
+            ייצא PDF
           </Button>
           <Button
             onClick={handleDownloadPdf}
-            disabled={isPdfGenerating}
             variant="outline"
             size="icon"
             className="shadow-md hover:shadow-lg sm:hidden"
-            aria-label="הורד PDF"
-            title="הורד PDF"
+            aria-label="ייצא PDF"
+            title="ייצא PDF"
           >
-            {isPdfGenerating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <FileText className="w-4 h-4" />
-            )}
+            <FileText className="w-4 h-4" />
           </Button>
         </div>
       </div>
@@ -524,15 +538,32 @@ export default function Products() {
                 size="sm"
                 onClick={async () => {
                   try {
-                    await pdfApi.downloadPriceHistory(historyProductId, historySupplierId || undefined);
+                    const { columns } = await getPriceTableExportLayout(appSettings, 'priceHistoryTable');
+                    const columnKeys = columns.map((c) => c.key);
+
+                    const product = products.find((p) => p.id === historyProductId) || {};
+                    const rowObjects = (priceHistory || []).map((price) =>
+                      priceRowToExportValues({ price, product, settings: appSettings, columnKeys })
+                    );
+
+                    await downloadTablePdf({
+                      storeName: currentTenant?.name || 'Stockly',
+                      title: 'היסטוריית מחירים',
+                      columns: columns.map((c) => ({
+                        key: c.key,
+                        label: c.headerLabel,
+                      })),
+                      rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+                      filename: 'price_history.pdf',
+                    });
                   } catch (error) {
-                    console.error('Error generating PDF:', error);
-                    alert('שגיאה ביצירת PDF');
+                    console.error('Error exporting price history PDF:', error);
+                    alert('שגיאה בייצוא PDF');
                   }
                 }}
               >
                 <FileText className="w-4 h-4 ml-2" />
-                הורד PDF
+                ייצא PDF
               </Button>
             )}
           </div>
