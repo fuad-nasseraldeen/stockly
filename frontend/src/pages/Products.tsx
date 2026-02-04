@@ -548,8 +548,8 @@ export default function Products() {
                     const { columns } = await getPriceTableExportLayout(appSettings, 'priceHistoryTable');
                     
                     // Add SKU column if product has SKU
-                    const product = products.find((p) => p.id === historyProductId) || {};
-                    const exportColumns = product.sku
+                    const product = products.find((p) => p.id === historyProductId);
+                    const exportColumns = product?.sku
                       ? [
                           ...columns,
                           { key: 'sku', label: 'מק״ט' },

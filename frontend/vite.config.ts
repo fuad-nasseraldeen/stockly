@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/pdf-proxy/, ''),
         configure: (proxy, _options) => {
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
+          proxy.on('proxyReq', (_proxyReq, req, _res) => {
             // Log the request for debugging
             if (process.env.NODE_ENV !== 'production') {
               console.log('[Vite Proxy] Proxying PDF request:', {

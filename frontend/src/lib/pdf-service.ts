@@ -105,7 +105,14 @@ export async function downloadTablePdf(input: DownloadTablePdfInput): Promise<vo
       const value = typeof row === 'object' && row !== null && key in row
         ? (row as Record<string, unknown>)[key]
         : null;
-      rowObj[key] = value === null || value === undefined ? '' : value;
+      // Ensure value is string, number, or null
+      if (value === null || value === undefined) {
+        rowObj[key] = '';
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        rowObj[key] = value;
+      } else {
+        rowObj[key] = String(value);
+      }
     });
     return rowObj;
   });
