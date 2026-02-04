@@ -186,14 +186,11 @@ export default function Products() {
       const { columns } = await getPriceTableExportLayout(appSettings, 'productsTable');
       const columnKeys = columns.map((c) => c.key);
 
-      // Build row objects keyed by column key
+      // Build row arrays in the same order as columnKeys
       const rowObjects = products.map((p) => {
         const price = p?.prices?.[0]; // prices are shown "lowest first" in UI
         if (!price) {
-          return columnKeys.reduce<Record<string, string | number | null>>((acc, key) => {
-            acc[key] = '-';
-            return acc;
-          }, {});
+          return columnKeys.map(() => '-' as string | number | null);
         }
         return priceRowToExportValues({
           price,
@@ -209,9 +206,9 @@ export default function Products() {
         title: 'מוצרים',
         columns: columns.map((c) => ({
           key: c.key,
-          label: c.headerLabel,
+          label: c.label,
         })),
-        rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+        rows: rowObjects,
         filename: 'products.pdf',
       });
     } catch (error) {
@@ -551,9 +548,10 @@ export default function Products() {
                       title: 'היסטוריית מחירים',
                       columns: columns.map((c) => ({
                         key: c.key,
-                        label: c.headerLabel,
+                        label: c.label,
                       })),
-                      rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+                      // `priceRowToExportValues` already returns values in the same order as `columnKeys`
+                      rows: rowObjects,
                       filename: 'price_history.pdf',
                     });
                   } catch (error) {

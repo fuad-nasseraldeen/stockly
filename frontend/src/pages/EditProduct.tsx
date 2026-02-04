@@ -640,9 +640,10 @@ export default function EditProduct() {
                         title: 'היסטוריית מחירים',
                         columns: columns.map((c) => ({
                           key: c.key,
-                          label: c.headerLabel,
+                          label: c.label,
                         })),
-                        rows: rowObjects.map((row) => columnKeys.map((key) => row[key] ?? '-')),
+                        // `priceRowToExportValues` already returns values in the same order as `columnKeys`
+                        rows: rowObjects,
                         filename: 'price_history.pdf',
                       });
                     } catch (error) {
