@@ -12,7 +12,6 @@ import importRouter from './routes/import.js';
 import exportRouter from './routes/export.js';
 import resetRouter from './routes/reset.js';
 import adminRouter from './routes/admin.js';
-import pdfRouter from './routes/pdf.js';
 
 export function createApp() {
   const app = express();
@@ -57,7 +56,6 @@ export function createApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/import', importRouter);
   app.use('/api/export', exportRouter);
-  app.use('/api/pdf', pdfRouter);
   app.use('/api/tenant/reset', resetRouter);
   app.use('/api/admin', adminRouter);
 

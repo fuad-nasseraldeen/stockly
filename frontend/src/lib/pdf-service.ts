@@ -12,23 +12,9 @@ type DownloadTablePdfInput = {
 };
 
 function getPdfServiceConfig() {
-  // Primary source: CRA-style env vars (as requested)
-  const url = process.env.REACT_APP_PDF_SERVICE_URL;
-  const key = process.env.REACT_APP_PDF_SERVICE_KEY;
+  const url = import.meta.env.VITE_PDF_SERVICE_URL
+  const key = import.meta.env.VITE_PDF_SERVICE_KEY
 
-  const missing: string[] = [];
-  if (!url) missing.push('REACT_APP_PDF_SERVICE_URL');
-  if (!key) missing.push('REACT_APP_PDF_SERVICE_KEY');
-
-  if (missing.length > 0) {
-    const message = `Missing PDF env vars: ${missing.join(', ')}`;
-    console.error(message);
-    if (typeof window !== 'undefined') {
-      // Visible UI error as requested
-      alert(message);
-    }
-    throw new Error(message);
-  }
 
   return { url: url.replace(/\/+$/, ''), key: key! };
 }

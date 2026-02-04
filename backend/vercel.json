@@ -3,7 +3,7 @@
   "installCommand": "npm install --prefer-offline --no-audit",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "src/**,node_modules/@sparticuz/chromium-min/**,node_modules/puppeteer-core/**",
+      "includeFiles": "src/**",
       "memory": 1024,
       "maxDuration": 60
     }

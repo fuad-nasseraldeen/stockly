@@ -37,11 +37,13 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+  const REACT_APP_PDF_SERVICE_URL = (import.meta.env.VITE_PDF_SERVICE_URL ?? '').trim();
+  const REACT_APP_PDF_SERVICE_KEY = (import.meta.env.VITE_PDF_SERVICE_KEY ?? '').trim();
   console.log(
     'PDF URL:',
-    process.env.REACT_APP_PDF_SERVICE_URL,
+    REACT_APP_PDF_SERVICE_URL,
     'PDF KEY exists:',
-    !!process.env.REACT_APP_PDF_SERVICE_KEY
+    !!REACT_APP_PDF_SERVICE_KEY
   );
   return (
     <>
