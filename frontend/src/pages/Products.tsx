@@ -210,10 +210,18 @@ export default function Products() {
         });
       });
 
+      // Format date for subtitle
+      const currentDate = new Date().toLocaleDateString('he-IL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      
       // Adapt columns & rows to the flat table format expected by the PDF service
       await downloadTablePdf({
         storeName: currentTenant?.name || 'Stockly',
-        title: 'מוצרים',
+        title: `מוצרים | ${currentDate}`, // Title with date on the right (RTL)
+        subtitle: `סך הכל: ${products.length} מוצרים`, // Total count
         columns: exportColumns.map((c) => ({
           key: c.key,
           label: c.label,
