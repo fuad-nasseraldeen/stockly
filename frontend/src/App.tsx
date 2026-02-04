@@ -37,14 +37,6 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   ];
 
   const isActive = (path: string) => location.pathname === path;
-  const REACT_APP_PDF_SERVICE_URL = (import.meta.env.VITE_PDF_SERVICE_URL ?? '').trim();
-  const REACT_APP_PDF_SERVICE_KEY = (import.meta.env.VITE_PDF_SERVICE_KEY ?? '').trim();
-  console.log(
-    'PDF URL:',
-    REACT_APP_PDF_SERVICE_URL,
-    'PDF KEY exists:',
-    !!REACT_APP_PDF_SERVICE_KEY
-  );
   return (
     <>
       <header className="sticky top-0 z-50 border-b-2 border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 shadow-md">

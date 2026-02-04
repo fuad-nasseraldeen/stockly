@@ -112,6 +112,9 @@ export function priceRowToExportValues(params: {
       case 'date':
         return formatDateHe(price?.created_at);
 
+      case 'sku':
+        return product?.sku || '-';
+
       default:
         return '-';
     }

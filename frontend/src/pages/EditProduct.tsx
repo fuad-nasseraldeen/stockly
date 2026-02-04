@@ -624,8 +624,16 @@ export default function EditProduct() {
                   onClick={async () => {
                     try {
                       const { columns } = await getPriceTableExportLayout(appSettings, 'priceHistoryTable');
-                      const columnKeys = columns.map((c) => c.key);
-
+                      
+                      // Add SKU column if product has SKU
+                      const exportColumns = product?.sku
+                        ? [
+                            ...columns,
+                            { key: 'sku', label: 'מק״ט' },
+                          ]
+                        : columns;
+                      
+                      const columnKeys = exportColumns.map((c) => c.key);
                       const rowObjects = (priceHistory || []).map((price: any) =>
                         priceRowToExportValues({
                           price,
@@ -638,11 +646,10 @@ export default function EditProduct() {
                       await downloadTablePdf({
                         storeName: currentTenant?.name || 'Stockly',
                         title: 'היסטוריית מחירים',
-                        columns: columns.map((c) => ({
+                        columns: exportColumns.map((c) => ({
                           key: c.key,
                           label: c.label,
                         })),
-                        // `priceRowToExportValues` already returns values in the same order as `columnKeys`
                         rows: rowObjects,
                         filename: 'price_history.pdf',
                       });

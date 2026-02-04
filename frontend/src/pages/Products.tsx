@@ -184,7 +184,17 @@ export default function Products() {
       }
 
       const { columns } = await getPriceTableExportLayout(appSettings, 'productsTable');
-      const columnKeys = columns.map((c) => c.key);
+      
+      // Check if any product has SKU, and add SKU column if needed
+      const hasSku = products.some((p) => p.sku);
+      const exportColumns = hasSku
+        ? [
+            ...columns,
+            { key: 'sku', label: 'מק״ט' },
+          ]
+        : columns;
+      
+      const columnKeys = exportColumns.map((c) => c.key);
 
       // Build row arrays in the same order as columnKeys
       const rowObjects = products.map((p) => {
@@ -204,7 +214,7 @@ export default function Products() {
       await downloadTablePdf({
         storeName: currentTenant?.name || 'Stockly',
         title: 'מוצרים',
-        columns: columns.map((c) => ({
+        columns: exportColumns.map((c) => ({
           key: c.key,
           label: c.label,
         })),
@@ -536,9 +546,17 @@ export default function Products() {
                 onClick={async () => {
                   try {
                     const { columns } = await getPriceTableExportLayout(appSettings, 'priceHistoryTable');
-                    const columnKeys = columns.map((c) => c.key);
-
+                    
+                    // Add SKU column if product has SKU
                     const product = products.find((p) => p.id === historyProductId) || {};
+                    const exportColumns = product.sku
+                      ? [
+                          ...columns,
+                          { key: 'sku', label: 'מק״ט' },
+                        ]
+                      : columns;
+                    
+                    const columnKeys = exportColumns.map((c) => c.key);
                     const rowObjects = (priceHistory || []).map((price) =>
                       priceRowToExportValues({ price, product, settings: appSettings, columnKeys })
                     );
@@ -546,11 +564,10 @@ export default function Products() {
                     await downloadTablePdf({
                       storeName: currentTenant?.name || 'Stockly',
                       title: 'היסטוריית מחירים',
-                      columns: columns.map((c) => ({
+                      columns: exportColumns.map((c) => ({
                         key: c.key,
                         label: c.label,
                       })),
-                      // `priceRowToExportValues` already returns values in the same order as `columnKeys`
                       rows: rowObjects,
                       filename: 'price_history.pdf',
                     });
