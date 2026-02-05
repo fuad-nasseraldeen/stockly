@@ -12,7 +12,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, Printer } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { exportApi, productsApi } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
