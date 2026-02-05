@@ -77,44 +77,37 @@ export async function downloadTablePdf(input: DownloadTablePdfInput): Promise<vo
 
   // Server expects columns as array of objects with key and label
   // For RTL Hebrew, reverse the column order (rightmost column first)
-  // Ensure SKU is the rightmost column (first after reverse)
+  // Ensure SKU and product_name are the rightmost columns (first after reverse)
   const originalColumns = input.columns.map((col) => ({
     key: col.key || String(col),
     label: col.label || col.key || String(col),
   }));
-  
-  // Separate SKU column if it exists, to place it at the end (rightmost)
-  const skuColumn = originalColumns.find((col) => col.key === 'sku');
-  const otherColumns = originalColumns.filter((col) => col.key !== 'sku');
-  
-  // Reverse columns for RTL display, with SKU as the rightmost (first in reversed array)
-  const columns = skuColumn 
-    ? [skuColumn, ...otherColumns.reverse()]
-    : [...otherColumns].reverse();
+
+  const pinnedKeys = ['sku', 'product_name'];
+  const pinnedColumns = originalColumns.filter((col) => pinnedKeys.includes(col.key));
+  const otherColumns = originalColumns.filter((col) => !pinnedKeys.includes(col.key));
+
+  // Reverse remaining columns for RTL display, keeping pinned columns on the right in defined order
+  const columns = [...pinnedColumns, ...otherColumns.reverse()];
   const columnKeys = columns.map((col) => col.key);
   
-  // Server expects rows as array of objects, where each object has column keys as properties
-  // Map rows to objects with column keys, preserving RTL order
+  // Server expects rows as array of objects, where each object has column keys as properties.
+  // Map array rows using the original column key order, then reorder into the RTL order.
   const originalColumnKeys = originalColumns.map((col) => col.key);
   const rows = input.rows.map((row) => {
     if (Array.isArray(row)) {
-      // Convert array to object using original column keys as map
-      // Then reorder according to new columnKeys (RTL order with SKU first)
-      const rowObj: Record<string, string | number | null> = {};
-      
-      // First, map array values to original column keys
+      const baseRow: Record<string, string | number | null> = {};
       originalColumnKeys.forEach((key, index) => {
         const value = row[index];
-        rowObj[key] = value === null || value === undefined ? '' : value;
+        baseRow[key] = value === null || value === undefined ? '' : value;
       });
-      
-      // Now create new object in the order of columnKeys (RTL with SKU first)
-      const orderedRowObj: Record<string, string | number | null> = {};
+
+      const orderedRow: Record<string, string | number | null> = {};
       columnKeys.forEach((key) => {
-        orderedRowObj[key] = rowObj[key] ?? '';
+        orderedRow[key] = baseRow[key] ?? '';
       });
-      
-      return orderedRowObj;
+
+      return orderedRow;
     }
     // If already an object, ensure all column keys are present (order doesn't matter for objects)
     const rowObj: Record<string, string | number | null> = {};

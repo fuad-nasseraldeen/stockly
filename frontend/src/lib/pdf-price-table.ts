@@ -31,7 +31,8 @@ export async function getPriceTableExportLayout(settings: Settings, layoutKey: L
   const saved = await loadLayout(layoutKey);
   const merged = saved ? mergeWithDefaults(saved) : undefined;
   const resolved = resolveColumns(settings, merged as Partial<ColumnLayout> | undefined)
-    .filter((c) => c.id !== 'actions'); // never export actions
+    // Never export internal-only columns
+    .filter((c) => c.id !== 'actions' && c.id !== 'cost_after_discount_net' && c.id !== 'profit_amount');
 
   const columns: TablePdfColumn[] = resolved.map((c) => ({
     key: c.id,
@@ -111,6 +112,9 @@ export function priceRowToExportValues(params: {
 
       case 'date':
         return formatDateHe(price?.created_at);
+
+      case 'product_name':
+        return product?.name || '-';
 
       case 'sku':
         return product?.sku || '-';

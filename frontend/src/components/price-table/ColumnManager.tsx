@@ -45,9 +45,21 @@ type SortableColumnItemProps = {
   column: ColumnDefinition;
   isVisible: boolean;
   onToggleVisibility: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  disableUp?: boolean;
+  disableDown?: boolean;
 };
 
-function SortableColumnItem({ column, isVisible, onToggleVisibility }: SortableColumnItemProps) {
+function SortableColumnItem({
+  column,
+  isVisible,
+  onToggleVisibility,
+  onMoveUp,
+  onMoveDown,
+  disableUp,
+  disableDown,
+}: SortableColumnItemProps) {
   const {
     attributes,
     listeners,
@@ -63,25 +75,27 @@ function SortableColumnItem({ column, isVisible, onToggleVisibility }: SortableC
     opacity: isDragging ? 0.5 : 1,
   };
 
-
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
       className={`flex items-center gap-2 p-2 border rounded-lg hover:bg-muted/50 cursor-grab active:cursor-grabbing ${
         !isVisible ? 'opacity-50 bg-muted/30' : ''
       }`}
     >
-      <GripVertical className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      {/* Drag handle - mouse + touch */}
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          onToggleVisibility();
-        }}
+        {...attributes}
+        {...listeners}
+        className="p-1 rounded-md hover:bg-muted flex-shrink-0 cursor-grab active:cursor-grabbing touch-none"
+        aria-label="שנה מיקום עמודה"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleVisibility}
         className="flex items-center gap-2 flex-1 text-right cursor-pointer"
       >
         {isVisible ? (
@@ -98,6 +112,27 @@ function SortableColumnItem({ column, isVisible, onToggleVisibility }: SortableC
           </span>
         )}
       </button>
+      {/* Fallback controls for mobile: move up/down without drag */}
+      <div className="flex flex-col gap-1 flex-shrink-0">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={disableUp}
+          className="w-6 h-4 text-xs leading-none border rounded-md flex items-center justify-center disabled:opacity-30"
+          aria-label="העלה עמודה"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={disableDown}
+          className="w-6 h-4 text-xs leading-none border rounded-md flex items-center justify-center disabled:opacity-30"
+          aria-label="הורד עמודה"
+        >
+          ↓
+        </button>
+      </div>
     </div>
   );
 }
@@ -198,6 +233,21 @@ export function ColumnManager({
     }));
   };
 
+  const handleMoveColumn = (columnId: ColumnId, direction: -1 | 1) => {
+    setLocalLayout((prev) => {
+      const currentIndex = prev.order.indexOf(columnId);
+      if (currentIndex === -1) return prev;
+      const newIndex = currentIndex + direction;
+      if (newIndex < 0 || newIndex >= prev.order.length) return prev;
+
+      const newOrder = arrayMove(prev.order, currentIndex, newIndex);
+      return {
+        ...prev,
+        order: newOrder,
+      };
+    });
+  };
+
   const handleSave = () => {
     onSave(localLayout);
     onOpenChange(false);
@@ -212,7 +262,8 @@ export function ColumnManager({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      {/* Make the dialog use nearly full viewport height with a single scroll area */}
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>ניהול עמודות</DialogTitle>
           <DialogDescription>
@@ -242,15 +293,21 @@ export function ColumnManager({
               items={orderedColumns.map((col) => col.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {/* Let the list grow; rely on the dialog scroll instead of inner scrollbars */}
+              <div className="space-y-2">
                 {filteredOrderedColumns.map((col) => {
                   const isVisible = localLayout.visible[col.id] !== false;
+                  const indexInOrder = localLayout.order.indexOf(col.id as ColumnId);
                   return (
                     <SortableColumnItem
                       key={col.id}
                       column={col}
                       isVisible={isVisible}
                       onToggleVisibility={() => handleToggleVisibility(col.id)}
+                       onMoveUp={() => handleMoveColumn(col.id, -1)}
+                       onMoveDown={() => handleMoveColumn(col.id, 1)}
+                       disableUp={indexInOrder <= 0}
+                       disableDown={indexInOrder === -1 || indexInOrder >= localLayout.order.length - 1}
                     />
                   );
                 })}

@@ -176,14 +176,23 @@ export default function NewProduct() {
 
     try {
       setProductError(null);
-      const netCost = costBeforeVat;
-      // Create product with first price (cost_price תמיד לפני מע\"מ)
+      // Normalize cost_price to the invariant of the system:
+      // אם מע\"מ פעיל (useVat=true), cost_price תמיד נשמר כ"כולל מע\"מ" (gross).
+      // אם המשתמש הזין מחיר ללא מע\"מ, נוסיף מע\"מ לפני השליחה לשרת.
+      const costPriceNumber = rawCost; // כבר Number(costPrice) מהחישובים למעלה
+      const costPriceToStore = useVat
+        ? costIncludesVat === 'with'
+          ? costPriceNumber
+          : costPriceNumber * (1 + vatPercent / 100)
+        : costPriceNumber;
+
+      // Create product with first price (cost_price נשמר ככולל מע\"מ כאשר מע\"מ פעיל)
       await createProduct.mutateAsync({
         name: name.trim(),
         category_id: categoryId || null,
         unit,
         supplier_id: supplierId,
-        cost_price: netCost,
+        cost_price: costPriceToStore,
         margin_percent: marginToUse !== defaultMargin ? marginToUse : undefined,
       });
 

@@ -12,9 +12,9 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, Printer } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { exportApi } from '../lib/api';
+import { exportApi, productsApi } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
@@ -39,6 +39,9 @@ export default function Products() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState(0);
+  const [pdfStage, setPdfStage] = useState<'idle' | 'fetching' | 'generating' | 'downloading'>('idle');
 
   const { data: productsData, isLoading } = useProducts({
     search: debouncedSearch || undefined,
@@ -177,37 +180,120 @@ export default function Products() {
   };
 
   const handleDownloadPdf = async () => {
+    if (isExportingPdf) return;
+
+    let generatingIntervalId: number | undefined;
+
     try {
-      if (!products || products.length === 0) {
+      setIsExportingPdf(true);
+      setPdfStage('fetching');
+      setPdfProgress(0);
+
+      // Fetch ALL products matching current filters (across all pages)
+      const allProducts: any[] = [];
+      let pageToFetch = 1;
+      const pageSizeForExport = 200; // larger page size for export
+      let totalProductsForExport = 0;
+      let totalPagesForExport = 0;
+
+      for (;;) {
+        const response = await productsApi.list({
+          search: debouncedSearch || undefined,
+          supplier_id: supplierFilter || undefined,
+          category_id: categoryFilter || undefined,
+          sort,
+          page: pageToFetch,
+          pageSize: pageSizeForExport,
+        });
+
+        allProducts.push(...(response.products || []));
+        totalProductsForExport = response.total ?? totalProductsForExport ?? 0;
+        totalPagesForExport = response.totalPages ?? totalPagesForExport ?? 0;
+
+        // Real fetch progress: based on number of pages / products loaded
+        if (totalProductsForExport > 0) {
+          const loadedCount = allProducts.length;
+          const fetchProgress = Math.min(
+            75,
+            Math.round((loadedCount / totalProductsForExport) * 75)
+          );
+          setPdfProgress(fetchProgress);
+        } else if (totalPagesForExport > 0) {
+          const pagesLoaded = pageToFetch;
+          const fetchProgress = Math.min(
+            75,
+            Math.round((pagesLoaded / totalPagesForExport) * 75)
+          );
+          setPdfProgress(fetchProgress);
+        }
+
+        if (!response.totalPages || pageToFetch >= response.totalPages) {
+          break;
+        }
+
+        pageToFetch += 1;
+      }
+
+      if (!allProducts || allProducts.length === 0) {
         alert('אין מוצרים לייצוא');
         return;
       }
 
+      // Switch to "generating PDF" stage with smooth simulated progress (75–95%)
+      setPdfStage('generating');
+      generatingIntervalId = window.setInterval(() => {
+        const startBase = 75;
+        const maxTarget = 95;
+
+        setPdfProgress((prev) => {
+          // התחלה לפחות מ-75
+          const current = Math.max(prev, startBase);
+          // צעד קטן קדימה
+          const next = current + 1.5;
+          return Math.min(next, maxTarget);
+        });
+      }, 250);
+
       const { columns } = await getPriceTableExportLayout(appSettings, 'productsTable');
-      
-      // Check if any product has SKU, and add SKU column if needed
-      const hasSku = products.some((p) => p.sku);
+
+      // Always include product name column in export
+      const baseColumns = [
+        ...columns,
+        { key: 'product_name', label: 'שם מוצר' },
+      ];
+
+      // Add SKU column if any product has SKU
+      const hasSku = allProducts.some((p) => p.sku);
       const exportColumns = hasSku
         ? [
-            ...columns,
+            ...baseColumns,
             { key: 'sku', label: 'מק״ט' },
           ]
-        : columns;
-      
+        : baseColumns;
+
       const columnKeys = exportColumns.map((c) => c.key);
 
-      // Build row arrays in the same order as columnKeys
-      const rowObjects = products.map((p) => {
-        const price = p?.prices?.[0]; // prices are shown "lowest first" in UI
-        if (!price) {
-          return columnKeys.map(() => '-' as string | number | null);
+      // Build row arrays in the same order as columnKeys.
+      // Each supplier price becomes its own row.
+      const rowObjects = allProducts.flatMap((p) => {
+        const prices = p?.prices || [];
+
+        if (!prices.length) {
+          // Product with no prices – single empty row with product context only
+          return [
+            columnKeys.map(() => '-' as string | number | null),
+          ];
         }
-        return priceRowToExportValues({
-          price,
-          product: p,
-          settings: appSettings,
-          columnKeys,
-        });
+
+        // One row per supplier price
+        return prices.map((price: any) =>
+          priceRowToExportValues({
+            price,
+            product: p,
+            settings: appSettings,
+            columnKeys,
+          }),
+        );
       });
 
       // Format date for subtitle
@@ -216,12 +302,12 @@ export default function Products() {
         month: '2-digit',
         day: '2-digit',
       });
-      
+
       // Adapt columns & rows to the flat table format expected by the PDF service
       await downloadTablePdf({
         storeName: currentTenant?.name || 'Stockly',
         title: `מוצרים | ${currentDate}`, // Title with date on the right (RTL)
-        subtitle: `סך הכל: ${products.length} מוצרים`, // Total count
+        subtitle: `סך הכל: ${allProducts.length} מוצרים`, // Total count of products
         columns: exportColumns.map((c) => ({
           key: c.key,
           label: c.label,
@@ -229,9 +315,25 @@ export default function Products() {
         rows: rowObjects,
         filename: 'products.pdf',
       });
+
+      // Download started
+      if (generatingIntervalId !== undefined) {
+        window.clearInterval(generatingIntervalId);
+      }
+      setPdfStage('downloading');
+      setPdfProgress(100);
     } catch (error) {
       console.error('Error printing:', error);
       alert('שגיאה בייצוא PDF');
+    } finally {
+      window.setTimeout(() => {
+        if (generatingIntervalId !== undefined) {
+          window.clearInterval(generatingIntervalId);
+        }
+        setIsExportingPdf(false);
+        setPdfProgress(0);
+        setPdfStage('idle');
+      }, 400);
     }
   };
 
@@ -244,66 +346,143 @@ export default function Products() {
             נהל את כל המוצרים והמחירים שלך • סה״כ {totalProducts} מוצרים
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-          {/* Add product */}
-          <Button
-            onClick={() => navigate('/products/new')}
-            size="lg"
-            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
-          >
-            <Plus className="w-4 h-4 ml-2" />
-            הוסף מוצר
-          </Button>
-          <Button
-            onClick={() => navigate('/products/new')}
-            size="default"
-            className="shadow-md hover:shadow-lg sm:hidden"
-          >
-            <Plus className="w-4 h-4 ml-2" />
-            הוסף
-          </Button>
+        <div className="flex flex-col gap-2 items-stretch sm:items-center">
+          {/* Desktop actions */}
+          <div className="hidden sm:flex gap-2 flex-wrap">
+            {/* Add product */}
+            <Button
+              onClick={() => navigate('/products/new')}
+              size="lg"
+              className="shadow-md hover:shadow-lg"
+            >
+              <Plus className="w-4 h-4 ml-2" />
+              הוסף מוצר
+            </Button>
 
-          {/* Export */}
-          <Button
-            onClick={handleExport}
-            variant="outline"
-            size="lg"
-            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
-          >
-            <Download className="w-4 h-4 ml-2" />
-            ייצא מוצרים
-          </Button>
-          <Button
-            onClick={handleExport}
-            variant="outline"
-            size="icon"
-            className="shadow-md hover:shadow-lg sm:hidden"
-            aria-label="ייצא מוצרים"
-            title="ייצא מוצרים"
-          >
-            <Download className="w-4 h-4" />
-          </Button>
+            {/* Export (Excel/CSV) */}
+            <Button
+              onClick={handleExport}
+              variant="outline"
+              size="lg"
+              className="shadow-md hover:shadow-lg"
+            >
+              <Download className="w-4 h-4 ml-2" />
+              ייצא מוצרים
+            </Button>
 
-          {/* PDF export */}
-          <Button
-            onClick={handleDownloadPdf}
-            variant="outline"
-            size="lg"
-            className="shadow-md hover:shadow-lg hidden sm:inline-flex"
-          >
-            <FileText className="w-4 h-4 ml-2" />
-            ייצא PDF
-          </Button>
-          <Button
-            onClick={handleDownloadPdf}
-            variant="outline"
-            size="icon"
-            className="shadow-md hover:shadow-lg sm:hidden"
-            aria-label="ייצא PDF"
-            title="ייצא PDF"
-          >
-            <FileText className="w-4 h-4" />
-          </Button>
+            {/* PDF export */}
+            <Button
+              onClick={handleDownloadPdf}
+              variant="outline"
+              size="lg"
+              className="shadow-md hover:shadow-lg min-w-[160px]"
+              disabled={isExportingPdf}
+            >
+              <FileText className="w-4 h-4 ml-2" />
+              {isExportingPdf ? (
+                <span className="inline-flex items-center gap-1">
+                  <span>
+                    {pdfStage === 'fetching'
+                      ? 'טוען מוצרים…'
+                      : pdfStage === 'generating'
+                      ? 'מייצר PDF…'
+                      : pdfStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : 'מכין PDF…'}
+                  </span>
+                  {pdfStage !== 'downloading' && (
+                    <span className="inline-block w-10 text-right tabular-nums">
+                      {pdfProgress}%
+                    </span>
+                  )}
+                </span>
+              ) : (
+                'ייצא PDF'
+              )}
+            </Button>
+          </div>
+
+          {/* Mobile actions */}
+          <div className="flex flex-col gap-2 w-full sm:hidden">
+            {/* Row 1: Add product */}
+            <Button
+              onClick={() => navigate('/products/new')}
+              size="default"
+              className="shadow-md hover:shadow-lg w-full"
+            >
+              <Plus className="w-4 h-4 ml-2" />
+              הוסף מוצר
+            </Button>
+
+            {/* Row 2: Export actions (Excel, PDF, Print) */}
+            <div className="flex gap-2 w-full">
+              <Button
+                onClick={handleExport}
+                variant="outline"
+                size="default"
+                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2"
+                aria-label="ייצא מוצרים (Excel)"
+                title="ייצא מוצרים (Excel)"
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-sm">אקסל</span>
+              </Button>
+              <Button
+                onClick={handleDownloadPdf}
+                variant="outline"
+                size="default"
+                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2 min-w-[120px]"
+                aria-label={
+                  isExportingPdf
+                    ? pdfStage === 'fetching'
+                      ? `טוען מוצרים… ${pdfProgress}%`
+                      : pdfStage === 'generating'
+                      ? `מייצר PDF… ${pdfProgress}%`
+                      : pdfStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : `מכין PDF… ${pdfProgress}%`
+                    : 'ייצא PDF'
+                }
+                title={
+                  isExportingPdf
+                    ? pdfStage === 'fetching'
+                      ? `טוען מוצרים… ${pdfProgress}%`
+                      : pdfStage === 'generating'
+                      ? `מייצר PDF… ${pdfProgress}%`
+                      : pdfStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : `מכין PDF… ${pdfProgress}%`
+                    : 'ייצא PDF'
+                }
+                disabled={isExportingPdf}
+              >
+                <FileText className="w-4 h-4" />
+                <span className="text-sm">
+                  {isExportingPdf ? (
+                    pdfStage === 'downloading' ? (
+                      'מוריד...'
+                    ) : (
+                      <span className="inline-block w-10 text-center tabular-nums">
+                        {pdfProgress}%
+                      </span>
+                    )
+                  ) : (
+                    'PDF'
+                  )}
+                </span>
+              </Button>
+              {/* <Button
+                onClick={() => window.print()}
+                variant="outline"
+                size="icon"
+                className="shadow-md hover:shadow-lg flex-1"
+                aria-label="הדפסה"
+                title="הדפסה"
+              >
+                <Printer className="w-4 h-4" />
+              </Button> */}
+            </div>
+          </div>
         </div>
       </div>
 
