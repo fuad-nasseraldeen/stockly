@@ -24,6 +24,7 @@ import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { ProductsSkeleton } from '../components/ProductsSkeleton';
+import { SplashScreen } from '../components/SplashScreen';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -93,6 +94,7 @@ export default function Products() {
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [excelProgress, setExcelProgress] = useState(0);
   const [excelStage, setExcelStage] = useState<'idle' | 'fetching' | 'generating' | 'downloading'>('idle');
+  const [showProductsSplash, setShowProductsSplash] = useState(false);
 
   const { data: productsData, isLoading } = useProducts({
     search: debouncedSearch || undefined,
@@ -116,6 +118,25 @@ export default function Products() {
     historySupplierId || undefined
   );
   const deleteProduct = useDeleteProduct();
+
+  // One-time splash for the Products page on first load (per tab)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Only show if we are currently loading and haven't seen the products splash yet
+    if (!isLoading) return;
+
+    const seen = window.sessionStorage.getItem('seen_products_splash') === 'true';
+    if (seen) return;
+
+    setShowProductsSplash(true);
+    const timeout = window.setTimeout(() => {
+      setShowProductsSplash(false);
+      window.sessionStorage.setItem('seen_products_splash', 'true');
+    }, 1200); // ~1.2s splash מעל המסך "0 מוצרים"
+
+    return () => window.clearTimeout(timeout);
+  }, [isLoading]);
 
   const handleDelete = async () => {
     if (!productToDelete) return;
@@ -473,6 +494,10 @@ export default function Products() {
       }, 400);
     }
   };
+
+  if (showProductsSplash) {
+    return <SplashScreen mode="enter" />;
+  }
 
   return (
     <div className="space-y-6">

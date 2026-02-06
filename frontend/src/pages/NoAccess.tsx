@@ -23,14 +23,13 @@ export default function NoAccess() {
   const handleCheckAgain = async () => {
     setLoading(true);
     try {
-      // Accept any pending invites
-      await invitesApi.accept();
-      
-      // Refetch tenants
-      await refetchTenants();
-      
-      // If tenants were found, they'll be set automatically by TenantContext
-      // and OnboardingRouter will navigate
+      // Accept any pending invites. Result tells us if anything actually changed.
+      const { accepted } = await invitesApi.accept();
+
+      // Only refetch tenants when something was accepted to avoid redundant /api/tenants calls.
+      if (accepted) {
+        await refetchTenants();
+      }
     } catch (error: any) {
       console.error('Error checking invites:', error);
       // Ignore errors - just refetch tenants

@@ -8,9 +8,13 @@ import NoAccess from '../pages/NoAccess';
 import CreateTenant from '../pages/CreateTenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
-import { Building2, Store, Loader2, Shield } from 'lucide-react';
+import { Building2, Store, Shield } from 'lucide-react';
+import { TenantLoadingBar } from './TenantLoadingBar';
 
 type OnboardingStep = 'loading' | 'choice' | 'ready';
+
+// Lightweight perf flag (can be toggled without external libs)
+const DEBUG_PERF = import.meta.env.DEV && false;
 
 export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -21,21 +25,40 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   // Only check super admin when on admin route (non-blocking)
   const { data: isSuperAdmin } = useSuperAdmin(isAdminRoute);
   const hasCheckedInvitesRef = useRef(false);
+  const mountTimeRef = useRef<number | null>(null);
 
-  // Only call invitesApi.accept when on /onboarding route (non-blocking, best-effort)
+  // Capture mount time once for "time to ready UI" measurement (inside an effect to keep render pure)
   useEffect(() => {
-    if (!isOnboardingRoute || hasCheckedInvitesRef.current || isLoading) return;
+    if (!DEBUG_PERF || mountTimeRef.current !== null || typeof performance === 'undefined') return;
+    mountTimeRef.current = performance.now();
+  }, []);
+
+  // Accept tenant invites in the background, ONLY when user actually has an invite token in URL.
+  useEffect(() => {
+    if (!isOnboardingRoute || hasCheckedInvitesRef.current) return;
+
+    const search = location.search || '';
+    const params = new URLSearchParams(search);
+    const hasInviteParam =
+      params.has('invite') || params.has('token') || params.has('invite_token');
+
+    // No invite in URL -> completely skip /api/invites/accept (saves an extra network roundtrip)
+    if (!hasInviteParam) return;
 
     const checkInvites = async () => {
       hasCheckedInvitesRef.current = true;
       try {
-        await invitesApi.accept();
+        const { accepted } = await invitesApi.accept();
         // Only refetch tenants if an invite was actually accepted
-        await refetchTenants();
+        if (accepted) {
+          await refetchTenants();
+        }
       } catch (error) {
         // Best-effort: ignore errors (404, network, etc.)
-        // Don't log 404 errors to reduce console noise
-        const errorMessage = error && typeof error === 'object' && 'message' in error ? String((error as { message?: string }).message) : '';
+        const errorMessage =
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message?: string }).message)
+            : '';
         if (errorMessage && !errorMessage.includes('404') && !errorMessage.includes('Not Found')) {
           console.log('Error accepting invites (non-blocking):', errorMessage);
         }
@@ -43,11 +66,14 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     };
 
     checkInvites();
-  }, [isOnboardingRoute, isLoading, refetchTenants]);
+  }, [isOnboardingRoute, location.search, refetchTenants]);
 
   // Derive the current onboarding step purely from query state.
   // Only block on tenants loading; super admin check is non-blocking.
   const step: OnboardingStep = (() => {
+    // IMPORTANT: React Query's `isLoading` is only true when there's no cached data.
+    // This means cached tenants from a previous session will be treated as "ready"
+    // and we won't block the UI on background refetches.
     if (isLoading) return 'loading';
 
     // Super admin can access admin page even without tenants
@@ -58,56 +84,32 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     return 'choice';
   })();
 
-  // Show loading state ONLY while we fetch tenants the first time.
-  // Do NOT block on checkingSuperAdmin (it's non-blocking and gated by enabled flag).
-  if (isLoading || step === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground">בודק גישה...</p>
-        </div>
-      </div>
-    );
-  }
+  const showTenantLoadingUi = isLoading || step === 'loading';
 
-  // Handle specific routes
-  if (location.pathname === '/create-tenant') {
-    return <CreateTenant />;
-  }
-  if (location.pathname === '/no-access') {
-    return <NoAccess />;
-  }
+  const withTenantLoader = (node: React.ReactNode) => (
+    <>
+      {showTenantLoadingUi && <TenantLoadingBar />}
+      {node}
+    </>
+  );
 
-  // Super admin can access /admin even without tenants
-  if (isSuperAdmin === true && location.pathname === '/admin') {
-    return <>{children}</>;
-  }
-
-  // User has tenants - show main app immediately (no setTimeout delays)
-  if (step === 'ready') {
-    if (tenants.length > 0) {
-      return <>{children}</>;
+  // Log time from app mount to "ready" UI (first time step becomes 'ready')
+  useEffect(() => {
+    if (!DEBUG_PERF || !mountTimeRef.current || typeof performance === 'undefined') return;
+    if (step === 'ready') {
+      const dt = performance.now() - mountTimeRef.current;
+      console.log('[perf] onboarding ready in', Math.round(dt), 'ms');
     }
-    // If step is ready but no tenants, something went wrong - show choice
-    // This shouldn't happen, but handle gracefully
-    return <Navigate to="/onboarding" replace />;
-  }
+  }, [step]);
 
-  // Choice screen - new store vs existing store
-  if (step === 'choice') {
-    // Redirect to onboarding if not already there
-    if (location.pathname !== '/onboarding') {
-      return <Navigate to="/onboarding" replace />;
-    }
-    
-    return (
+  const renderOnboardingChoice = (isInitialLoading: boolean) =>
+    withTenantLoader(
       <div className="min-h-screen flex items-center justify-center px-4 py-8">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-2xl text-center">ברוכים הבאים ל-Stockly</CardTitle>
             <CardDescription className="text-center">
-              בחר את האפשרות המתאימה לך
+              {isInitialLoading ? 'טוען חנויות קיימות…' : 'בחר את האפשרות המתאימה לך'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -118,12 +120,15 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
                 className="w-full h-auto p-6 flex flex-col items-start gap-3 bg-primary border-2 border-primary"
                 size="lg"
                 variant="default"
+                disabled={isInitialLoading}
               >
                 <div className="flex items-center gap-3 w-full">
                   <Shield className="w-6 h-6" />
                   <div className="flex-1 text-right">
                     <div className="font-semibold text-lg">ניהול מערכת</div>
-                    <div className="text-sm opacity-90">גש לדף הניהול - צפה בכל החנויות והמשתמשים</div>
+                    <div className="text-sm opacity-90">
+                      גש לדף הניהול - צפה בכל החנויות והמשתמשים
+                    </div>
                   </div>
                 </div>
               </Button>
@@ -133,7 +138,8 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
               onClick={() => navigate('/create-tenant')}
               className="w-full h-auto p-6 flex flex-col items-start gap-3"
               size="lg"
-              variant={isSuperAdmin ? "outline" : "default"}
+              variant={isSuperAdmin ? 'outline' : 'default'}
+              disabled={isInitialLoading}
             >
               <div className="flex items-center gap-3 w-full">
                 <Building2 className="w-6 h-6" />
@@ -149,12 +155,15 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
               variant="outline"
               className="w-full h-auto p-6 flex flex-col items-start gap-3"
               size="lg"
+              disabled={isInitialLoading}
             >
               <div className="flex items-center gap-3 w-full">
                 <Store className="w-6 h-6" />
                 <div className="flex-1 text-right">
                   <div className="font-semibold text-lg">זה חנות קיימת</div>
-                  <div className="text-sm opacity-90">קבל הזמנה מבעל החנות כדי לקבל גישה</div>
+                  <div className="text-sm opacity-90">
+                    קבל הזמנה מבעל החנות כדי לקבל גישה
+                  </div>
                 </div>
               </div>
             </Button>
@@ -170,6 +179,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
                   await supabase.auth.signOut();
                   navigate('/login', { replace: true });
                 }}
+                disabled={isInitialLoading}
               >
                 החלף משתמש (יציאה והתחברות מחדש)
               </Button>
@@ -178,6 +188,48 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
         </Card>
       </div>
     );
+
+  // Handle specific routes
+  if (location.pathname === '/create-tenant') {
+    return withTenantLoader(<CreateTenant />);
+  }
+  if (location.pathname === '/no-access') {
+    return withTenantLoader(<NoAccess />);
+  }
+
+  // Super admin can access /admin even without tenants
+  if (isSuperAdmin === true && location.pathname === '/admin') {
+    return withTenantLoader(<>{children}</>);
+  }
+
+  // User has tenants - show main app immediately (no setTimeout delays)
+  if (step === 'ready') {
+    if (tenants.length > 0) {
+      return withTenantLoader(<>{children}</>);
+    }
+    // If step is ready but no tenants, something went wrong - show choice
+    // This shouldn't happen, but handle gracefully
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  // If we're still loading and user is on /onboarding, show the onboarding UI but in "loading" mode
+  if (step === 'loading' && isOnboardingRoute) {
+    return renderOnboardingChoice(true);
+  }
+
+  // Choice screen - new store vs existing store
+  if (step === 'choice') {
+    // Redirect to onboarding if not already there
+    if (location.pathname !== '/onboarding') {
+      return <Navigate to="/onboarding" replace />;
+    }
+
+    return renderOnboardingChoice(false);
+  }
+
+  // While still loading tenants and not on /onboarding, render the app (children) with a subtle loader
+  if (step === 'loading') {
+    return withTenantLoader(<>{children}</>);
   }
 
   // Default: redirect to onboarding

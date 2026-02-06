@@ -438,12 +438,52 @@ export const tenantsApi = {
     }),
 };
 
+// Simple perf-logging flag (no external libs)
+const DEBUG_PERF = import.meta.env.DEV && false;
+
 // Invites API
+type RawInvitesAcceptResponse = {
+  accepted?: number;
+  already_member?: number;
+  not_found?: number;
+  message?: string;
+  errors?: string[];
+};
+
 export const invitesApi = {
-  accept: (): Promise<{ accepted: number; already_member: number; not_found: number; message: string; errors?: string[] }> =>
-    apiRequest('/api/invites/accept', {
-      method: 'POST',
-    }),
+  /**
+   * Accept any pending invites for the current user.
+   *
+   * Returns a minimal `{ accepted: boolean }` shape so callers can decide
+   * whether to refetch tenants. This is derived from the backend response:
+   * - If `accepted > 0` -> accepted: true
+   * - Otherwise -> accepted: false
+   *
+   * Backward compatible: network / 404 errors are treated as "no invites",
+   * and surfaced as `accepted: false` without throwing.
+   */
+  accept: async (): Promise<{ accepted: boolean }> => {
+    if (DEBUG_PERF) console.time('invites:accept');
+    try {
+      let result: RawInvitesAcceptResponse | null = null;
+      try {
+        result = await apiRequest<RawInvitesAcceptResponse>('/api/invites/accept', {
+          method: 'POST',
+        });
+      } catch (error) {
+        // If server returns 404/No invites/etc., treat as "nothing accepted"
+        if (DEBUG_PERF) {
+          console.log('invitesApi.accept treated as no-op due to error:', error);
+        }
+        return { accepted: false };
+      }
+
+      const acceptedCount = typeof result?.accepted === 'number' ? result.accepted : 0;
+      return { accepted: acceptedCount > 0 };
+    } finally {
+      if (DEBUG_PERF) console.timeEnd('invites:accept');
+    }
+  },
 };
 
 // Admin API

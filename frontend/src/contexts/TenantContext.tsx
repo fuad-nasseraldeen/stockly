@@ -4,6 +4,9 @@ import { tenantsApi, setTenantIdForApi } from '../lib/api';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { supabase } from '../lib/supabase';
 
+// Simple flag to turn perf logs on/off without external libs
+const DEBUG_PERF = import.meta.env.DEV && false;
+
 export type Tenant = {
   id: string;
   name: string;
@@ -30,12 +33,23 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   // queryKey includes userId to prevent cross-user cache leaks
   const { data: tenants = [], isLoading, refetch } = useQuery({
     queryKey: ['tenants', userId],
-    queryFn: () => tenantsApi.list(),
+    // Wrap tenants fetch with console.time for lightweight instrumentation
+    queryFn: async () => {
+      if (DEBUG_PERF) console.time('tenants:fetch');
+      try {
+        return await tenantsApi.list();
+      } finally {
+        if (DEBUG_PERF) console.timeEnd('tenants:fetch');
+      }
+    },
     // Only fetch when user session exists
     enabled: !!userId,
     // Tenants are relatively stable; avoid re-fetching on every mount.
     // This improves post-login performance when revisiting the app.
-    staleTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // >= 60s as requested
+    refetchOnWindowFocus: false,
+    retry: 1,
+    keepPreviousData: true,
   });
   
   // CRITICAL: Listen to auth state changes to handle SIGNED_OUT and SIGNED_IN events
