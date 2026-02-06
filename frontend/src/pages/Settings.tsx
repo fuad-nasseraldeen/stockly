@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 import { supabase } from '../lib/supabase';
@@ -13,8 +14,10 @@ import { ColumnManager } from '../components/price-table/ColumnManager';
 import { getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
 import { saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
 import { useTableLayout } from '../hooks/useTableLayout';
+import { getTableLayoutProductsKey } from '../lib/table-layout-keys';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { data: settings, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
   const { currentTenant } = useTenant();
@@ -596,13 +599,24 @@ export default function Settings() {
         settings={appSettings}
         onSave={async (layout) => {
           setColumnLayout(layout);
+          // Optimistically update React Query cache so all tables pick up the new layout immediately
+          if (currentTenant?.id) {
+            const key = getTableLayoutProductsKey(currentTenant.id);
+            queryClient.setQueryData(key, layout);
+          }
           await saveLayout(layout);
           // Dispatch custom event to notify other pages
           window.dispatchEvent(new Event('priceTableLayoutChanged'));
+          // After saving columns, return user to the products page so they immediately see the new layout
+          navigate('/products');
         }}
         onReset={async () => {
           const defaultLayout = getDefaultLayout(appSettings);
           setColumnLayout(defaultLayout);
+           if (currentTenant?.id) {
+             const key = getTableLayoutProductsKey(currentTenant.id);
+             queryClient.setQueryData(key, defaultLayout);
+           }
           await resetLayout();
         }}
       />

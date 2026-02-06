@@ -41,6 +41,8 @@ export function useSuperAdmin(enabled = true) {
   // Get user email once on mount/route change
   // CRITICAL: Only fetch email when on /admin route
   useEffect(() => {
+    console.log('isAdminRoute', isAdminRoute);
+    console.log('enabled', enabled);
     if (enabled && isAdminRoute) {
       supabase.auth.getUser().then(({ data }) => {
         const email = data?.user?.email?.toLowerCase() || null;

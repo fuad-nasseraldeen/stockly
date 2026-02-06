@@ -153,7 +153,11 @@ export function ColumnManager({
     if (open) {
       setLocalLayout(currentLayout);
     }
-  }, [open, currentLayout]);
+    // NOTE: intentionally not depending on `currentLayout` here.
+    // While the dialog is open we want local edits (eye / arrows) to stay,
+    // even if parent re-renders with a new layout object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Ensure all available columns are in the order array when modal opens
   useEffect(() => {
@@ -223,14 +227,19 @@ export function ColumnManager({
   };
 
   const handleToggleVisibility = (columnId: ColumnId) => {
-    setLocalLayout((prev) => ({
-      ...prev,
-      visible: {
-        ...prev.visible,
-        [columnId]: !prev.visible[columnId],
-      },
-      // Do NOT modify order when toggling visibility
-    }));
+    setLocalLayout((prev) => {
+      // Treat "missing" as visible=true, so first click actually hides the column.
+      const isCurrentlyVisible = prev.visible[columnId] !== false;
+
+      return {
+        ...prev,
+        visible: {
+          ...prev.visible,
+          [columnId]: !isCurrentlyVisible,
+        },
+        // Do NOT modify order when toggling visibility
+      };
+    });
   };
 
   const handleMoveColumn = (columnId: ColumnId, direction: -1 | 1) => {

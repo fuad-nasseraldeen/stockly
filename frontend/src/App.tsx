@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './lib/supabase';
@@ -195,7 +196,6 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInitialSplash, setShowInitialSplash] = useState(true);
-  const [showPostAuthSplash, setShowPostAuthSplash] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -217,23 +217,10 @@ function App() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setShowInitialSplash(false);
-    }, 1500); // ~1.5s כדי לתת עוד קצת זמן לחוויה
+    }, 2000); // 2s – תואם לאנימציית הספלאש החדשה
 
     return () => window.clearTimeout(timeout);
   }, []);
-
-  // Splash אחרי לוגאין/רישום – בכל פעם ש-user הופך מ-null ל-user
-  useEffect(() => {
-    if (!user) return;
-
-    setShowPostAuthSplash(true);
-
-    const timeout = window.setTimeout(() => {
-      setShowPostAuthSplash(false);
-    }, 1500); // ~1.5s soft transition אחרי לוגאין/רישום
-
-    return () => window.clearTimeout(timeout);
-  }, [user]);
 
   const handleLogout = async () => {
     // CRITICAL: Sign out from Supabase first
@@ -258,14 +245,9 @@ function App() {
     return <SplashScreen mode="enter" />;
   }
 
-  // After first successful login/signup, briefly show a soft transition splash
-  if (showPostAuthSplash) {
-    return <SplashScreen mode="exit" />;
-  }
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-b from-background to-muted">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-primary/20 to-background">
         <div className="text-center space-y-2">
           <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm text-muted-foreground">טוען את המערכת...</p>
@@ -291,12 +273,23 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
 
   if (!user) {
     return (
-      <div className="min-h-screen">
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="*" element={<Navigate to="/login" />} />
-        </Routes>
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-primary/20 to-background">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="auth-shell"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+            className="w-full max-w-md px-4"
+          >
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="*" element={<Navigate to="/login" />} />
+            </Routes>
+          </motion.div>
+        </AnimatePresence>
       </div>
     );
   }
@@ -320,7 +313,7 @@ function AdminRouteGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Only redirect if check is complete and user is NOT super admin
-    if (!isLoading && isSuperAdmin !== true) {
+    if (!isLoading && isSuperAdmin === false) {
       // Redirect to home or no-access page
       navigate('/', { replace: true });
     }
@@ -338,10 +331,11 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
   const location = useLocation();
-  
+ 
   // Super admin can access /admin without a tenant
   const isAdminPage = location.pathname === '/admin';
-  const canAccess = currentTenant || (isSuperAdmin === true && isAdminPage);
+  console.log('isSuperAdmin', isSuperAdmin);
+  const canAccess = isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
   
   // Only show navigation if we have a tenant or if super admin accessing admin page
   if (!canAccess) {
@@ -349,7 +343,7 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
       <Navigation user={user} onLogout={onLogout} />
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="w-full max-w-6xl">

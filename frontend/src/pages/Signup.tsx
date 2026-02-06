@@ -39,7 +39,7 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-br from-background via-primary/5 to-background">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-transparent">
       <Card className="w-full max-w-md shadow-xl border-2 bg-card/95 backdrop-blur">
         <CardHeader>
           <CardTitle>הרשמה</CardTitle>

@@ -20,10 +20,9 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
-  const isAdminRoute = location.pathname === '/admin';
   const isOnboardingRoute = location.pathname === '/onboarding';
   // Only check super admin when on admin route (non-blocking)
-  const { data: isSuperAdmin } = useSuperAdmin(isAdminRoute);
+  const { data: isSuperAdmin } = useSuperAdmin(location.pathname === '/admin');
   const hasCheckedInvitesRef = useRef(false);
   const mountTimeRef = useRef<number | null>(null);
 
@@ -69,7 +68,6 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   }, [isOnboardingRoute, location.search, refetchTenants]);
 
   // Derive the current onboarding step purely from query state.
-  // Only block on tenants loading; super admin check is non-blocking.
   const step: OnboardingStep = (() => {
     // IMPORTANT: React Query's `isLoading` is only true when there's no cached data.
     // This means cached tenants from a previous session will be treated as "ready"

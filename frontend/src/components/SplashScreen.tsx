@@ -2,57 +2,55 @@ import { motion, useReducedMotion } from 'framer-motion';
 
 type SplashScreenProps = {
   /**
-   * How the splash should feel:
-   * - "enter": first time app opens – card נופל מלמעלה, מתייצב במרכז.
-   * - "exit": אחרי לוגאין/רישום – מופיע מלמטה, מרגיש כמו יציאה הפוכה.
+   * מסך פתיחה ראשוני בלבד.
+   * גדל מהמרכז על כל המסך ~2 שניות ואז מתכווץ לכיוון המרכז.
    */
-  mode?: 'enter' | 'exit';
+  mode?: 'enter';
 };
 
 export function SplashScreen({ mode = 'enter' }: SplashScreenProps) {
   const prefersReducedMotion = useReducedMotion();
 
-  const containerProps = prefersReducedMotion
-    ? {}
-    : mode === 'enter'
+  const animationProps = prefersReducedMotion
     ? {
-        initial: { opacity: 0, y: -40, scale: 0.96, rotateX: -8 },
-        animate: { opacity: 1, y: 0, scale: 1, rotateX: 0 },
-        transition: { duration: 0.6, ease: 'easeOut' },
+        initial: { opacity: 1 },
+        animate: { opacity: 1 },
       }
     : {
-        initial: { opacity: 0, y: 40, scale: 0.96, rotateX: 8 },
-        animate: { opacity: 1, y: 0, scale: 1, rotateX: 0 },
-        transition: { duration: 0.6, ease: 'easeOut' },
+        initial: { scale: 0.1, opacity: 0 },
+        animate: {
+          scale: [0.1, 1.05, 1, 0.75, 0.5],
+          opacity: [0, 1, 1, 1, 0],
+        },
+        transition: {
+          duration: 2,
+          ease: 'easeInOut',
+          times: [0, 0.35, 0.6, 0.8, 1],
+        },
       };
 
+  if (mode !== 'enter') {
+    // Future‑proof – כרגע אנחנו משתמשים רק ב-enter
+    // אבל לא שוברים קריאות קיימות אם יישארו.
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-primary/5 to-background">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-linear-to-br from-background via-primary/20 to-background">
       <motion.div
-        {...containerProps}
-        className="flex flex-col items-center justify-center gap-4 px-6 py-8 rounded-2xl bg-card/80 backdrop-blur border-2 border-border shadow-xl max-w-sm w-full"
+        {...animationProps}
+        className="relative flex flex-col items-center justify-center gap-4 rounded-3xl border-2 border-primary/40 bg-card/90 px-10 py-10 shadow-[0_0_120px_rgba(59,130,246,0.45)]"
         role="status"
         aria-label="Stockly נטען"
       >
-        <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
-          <span className="text-primary-foreground font-extrabold text-2xl">S</span>
+        <div className="h-20 w-20 rounded-3xl bg-primary flex items-center justify-center shadow-xl">
+          <span className="text-primary-foreground font-extrabold text-4xl">S</span>
         </div>
-        <div className="text-center space-y-1">
-          <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+        <div className="text-center space-y-1 mt-2">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-muted-foreground">
             STOCK MANAGEMENT
           </p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Stockly</h1>
-          <p className="text-sm text-muted-foreground">
-            ניהול מחירים חכם לפי ספק • מסך פתיחה
-          </p>
-        </div>
-        <div className="mt-2 flex flex-col items-center gap-2">
-          <div className="h-1.5 w-32 rounded-full bg-muted overflow-hidden">
-            <div className="h-full w-1/2 rounded-full bg-primary/80 animate-[pulse_1.1s_ease-in-out_infinite]" />
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            טוען את לוח המוצרים שלך...
-          </p>
+          <h1 className="text-4xl font-black tracking-tight text-foreground">Stockly</h1>
+          <p className="text-sm text-muted-foreground mt-1">ניהול מחירים חכם לפי ספק</p>
         </div>
       </motion.div>
     </div>
