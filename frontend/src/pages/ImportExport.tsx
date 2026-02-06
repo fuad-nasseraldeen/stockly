@@ -12,6 +12,17 @@ import { Upload, FileSpreadsheet, Trash2, AlertTriangle, Loader2 } from 'lucide-
 
 type ImportMode = 'merge' | 'overwrite';
 
+type ImportApplyStats = {
+  suppliersCreated?: number;
+  categoriesCreated?: number;
+  productsCreated?: number;
+  pricesInserted?: number;
+};
+
+type ImportApplyResult = {
+  stats?: ImportApplyStats | null;
+};
+
 export default function ImportExport() {
   const { currentTenant } = useTenant();
   const queryClient = useQueryClient();
@@ -80,8 +91,19 @@ export default function ImportExport() {
     setIsImporting(true);
     setImportProgress(1);
     try {
-      const result = await importApi.apply(file, mode, mode === 'overwrite' ? deleteConfirm : undefined);
-      alert(`ייבוא הושלם בהצלחה!\nספקים: ${result.stats?.suppliersCreated || 0}\nקטגוריות: ${result.stats?.categoriesCreated || 0}\nמוצרים: ${result.stats?.productsCreated || 0}\nמחירים: ${result.stats?.pricesInserted || 0}`);
+      const result = (await importApi.apply(
+        file,
+        mode,
+        mode === 'overwrite' ? deleteConfirm : undefined
+      )) as ImportApplyResult;
+
+      alert(
+        `ייבוא הושלם בהצלחה!\n` +
+          `ספקים: ${result.stats?.suppliersCreated || 0}\n` +
+          `קטגוריות: ${result.stats?.categoriesCreated || 0}\n` +
+          `מוצרים: ${result.stats?.productsCreated || 0}\n` +
+          `מחירים: ${result.stats?.pricesInserted || 0}`
+      );
 
       // לרענן נתונים רלוונטיים אחרי ייבוא
       await Promise.all([
