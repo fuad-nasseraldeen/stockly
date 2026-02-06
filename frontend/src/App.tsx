@@ -24,6 +24,7 @@ import EditProduct from './pages/EditProduct';
 import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
 import { OnboardingRouter } from './components/OnboardingRouter';
+import { SplashScreen } from './components/SplashScreen';
 
 function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   const location = useLocation();
@@ -193,6 +194,8 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const [showPostAuthSplash, setShowPostAuthSplash] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -209,6 +212,28 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Intro splash – בכל רענון מלא של האפליקציה
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setShowInitialSplash(false);
+    }, 1500); // ~1.5s כדי לתת עוד קצת זמן לחוויה
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  // Splash אחרי לוגאין/רישום – בכל פעם ש-user הופך מ-null ל-user
+  useEffect(() => {
+    if (!user) return;
+
+    setShowPostAuthSplash(true);
+
+    const timeout = window.setTimeout(() => {
+      setShowPostAuthSplash(false);
+    }, 1500); // ~1.5s soft transition אחרי לוגאין/רישום
+
+    return () => window.clearTimeout(timeout);
+  }, [user]);
 
   const handleLogout = async () => {
     // CRITICAL: Sign out from Supabase first
@@ -227,6 +252,16 @@ function App() {
     // Navigate to login page (replace: true to prevent back button issues)
     window.location.href = '/login';
   };
+
+  // Splash פתיחה – לפני שמגיעים בכלל למסכי לוגאין/רישום
+  if (showInitialSplash && !user) {
+    return <SplashScreen mode="enter" />;
+  }
+
+  // After first successful login/signup, briefly show a soft transition splash
+  if (showPostAuthSplash) {
+    return <SplashScreen mode="exit" />;
+  }
 
   if (loading) {
     return (

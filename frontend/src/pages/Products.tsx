@@ -23,6 +23,7 @@ import { useTableLayout } from '../hooks/useTableLayout';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
+import { ProductsSkeleton } from '../components/ProductsSkeleton';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -740,12 +741,7 @@ export default function Products() {
 
       {/* Products List */}
       {isLoading ? (
-        <Card className="shadow-md border-2">
-          <CardContent className="py-12 text-center">
-            <div className="inline-block h-8 w-8 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">טוען מוצרים...</p>
-          </CardContent>
-        </Card>
+        <ProductsSkeleton rows={10} />
       ) : !products || products.length === 0 ? (
         <Card className="shadow-md border-2 border-dashed">
           <CardContent className="py-16 text-center">
