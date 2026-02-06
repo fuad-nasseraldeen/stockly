@@ -31,10 +31,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   
   // CRITICAL: Tenants query runs ONLY when user session exists
   // queryKey includes userId to prevent cross-user cache leaks
-  const { data: tenants = [], isLoading, refetch } = useQuery({
+  const { data: tenants = [], isLoading, refetch } = useQuery<Tenant[], Error>({
     queryKey: ['tenants', userId],
     // Wrap tenants fetch with console.time for lightweight instrumentation
-    queryFn: async () => {
+    queryFn: async (): Promise<Tenant[]> => {
       if (DEBUG_PERF) console.time('tenants:fetch');
       try {
         return await tenantsApi.list();
@@ -49,7 +49,6 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60 * 1000, // >= 60s as requested
     refetchOnWindowFocus: false,
     retry: 1,
-    keepPreviousData: true,
   });
   
   // CRITICAL: Listen to auth state changes to handle SIGNED_OUT and SIGNED_IN events
