@@ -37,15 +37,10 @@ export type Product = {
   prices?: ProductPrice[];
   category?: Category;
   supplier?: Supplier;
-  summary?: {
-    min_current_cost_price: number;
-    last_price_update_at: string;
-  };
 };
 
 export type ProductPrice = {
   id: string;
-  product_id: string;
   supplier_id: string;
   cost_price: number;
   package_quantity?: number | null;
@@ -111,12 +106,36 @@ async function getAuthToken(): Promise<string | null> {
   return session?.access_token || null;
 }
 
-function getTenantId(): string | null {
-  const tenantId = localStorage.getItem('currentTenantId');
+// CRITICAL: Module-level variable to store current tenantId from TenantContext
+// This is the SINGLE SOURCE OF TRUTH for tenantId in API requests.
+// DO NOT read from localStorage directly - always use this variable.
+// TenantContext is responsible for updating this value.
+let currentTenantIdForApi: string | null = null;
+
+/**
+ * Set the current tenantId for API requests.
+ * This should ONLY be called by TenantContext when tenant changes.
+ * 
+ * @param tenantId - The tenant ID to use for API requests, or null to clear
+ */
+export function setTenantIdForApi(tenantId: string | null): void {
+  currentTenantIdForApi = tenantId;
   if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 getTenantId() called, returning:', tenantId);
+    console.log('🔍 setTenantIdForApi() called, setting:', tenantId);
   }
-  return tenantId;
+}
+
+/**
+ * Get the current tenantId for API requests.
+ * This reads from the module-level variable set by TenantContext, NOT from localStorage.
+ * 
+ * @returns The current tenant ID, or null if no tenant is selected
+ */
+function getTenantId(): string | null {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🔍 getTenantId() called, returning:', currentTenantIdForApi);
+  }
+  return currentTenantIdForApi;
 }
 
 export async function apiRequest<T>(
@@ -262,14 +281,19 @@ export const productsApi = {
     sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
     page?: number;
     pageSize?: number;
+    all?: boolean; // If true, fetch all products without pagination
   }): Promise<ProductsResponse> => {
     const queryParams = new URLSearchParams();
     if (params?.search) queryParams.append('search', params.search);
     if (params?.supplier_id) queryParams.append('supplier_id', params.supplier_id);
     if (params?.category_id) queryParams.append('category_id', params.category_id);
     if (params?.sort) queryParams.append('sort', params.sort);
-    if (params?.page) queryParams.append('page', String(params.page));
-    if (params?.pageSize) queryParams.append('pageSize', String(params.pageSize));
+    if (params?.all) {
+      queryParams.append('all', 'true');
+    } else {
+      if (params?.page) queryParams.append('page', String(params.page));
+      if (params?.pageSize) queryParams.append('pageSize', String(params.pageSize));
+    }
     return apiRequest<ProductsResponse>(`/api/products?${queryParams.toString()}`);
   },
   
@@ -359,9 +383,9 @@ export const settingsApi = {
       body: JSON.stringify(data),
     }),
   // User preferences API
-  getPreference: <T = any>(key: string): Promise<T | null> =>
+  getPreference: <T = unknown>(key: string): Promise<T | null> =>
     apiRequest<T | null>(`/api/settings/preferences/${key}`),
-  setPreference: <T = any>(key: string, value: T): Promise<T | null> =>
+  setPreference: <T = unknown>(key: string, value: T): Promise<T | null> =>
     apiRequest<T | null>(`/api/settings/preferences/${key}`, {
       method: 'PUT',
       body: JSON.stringify(value),
@@ -401,7 +425,7 @@ export const tenantsApi = {
       body: JSON.stringify(data),
     }),
   
-  invite: (tenantId: string, data: { email: string; role?: 'owner' | 'worker' }): Promise<any> =>
+  invite: (tenantId: string, data: { email: string; role?: 'owner' | 'worker' }): Promise<{ message?: string }> =>
     apiRequest(`/api/tenants/${tenantId}/invite`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -461,7 +485,7 @@ export type TenantWithUsers = {
 export type AuditLog = {
   id: string;
   action: string;
-  details: any;
+  details: unknown;
   created_at: string;
   profiles: {
     user_id: string;
@@ -522,7 +546,7 @@ export const adminApi = {
 
 // Import/Export API
 export const importApi = {
-  preview: async (file: File): Promise<any> => {
+  preview: async (file: File): Promise<unknown> => {
     const formData = new FormData();
     formData.append('file', file);
     const token = await getAuthToken();
@@ -543,10 +567,10 @@ export const importApi = {
       throw new Error(error.error || 'הבקשה נכשלה');
     }
     
-    return response.json();
+    return response.json() as Promise<unknown>;
   },
   
-  apply: async (file: File, mode: 'merge' | 'overwrite', confirmation?: string): Promise<any> => {
+  apply: async (file: File, mode: 'merge' | 'overwrite', confirmation?: string): Promise<unknown> => {
     const formData = new FormData();
     formData.append('file', file);
     if (confirmation) formData.append('confirmation', confirmation);
@@ -569,7 +593,7 @@ export const importApi = {
       throw new Error(error.error || 'הבקשה נכשלה');
     }
     
-    return response.json();
+    return response.json() as Promise<unknown>;
   },
 };
 
@@ -651,6 +675,19 @@ export const exportApi = {
     window.URL.revokeObjectURL(downloadUrl);
     document.body.removeChild(a);
   },
+};
+
+// Bootstrap API - fetches all essential data in one request
+export type BootstrapData = {
+  tenants: Tenant[];
+  settings: Settings | null;
+  suppliers: Supplier[];
+  categories: Category[];
+  tableLayoutProducts: unknown | null; // User preference for products table layout
+};
+
+export const bootstrapApi = {
+  get: (): Promise<BootstrapData> => apiRequest<BootstrapData>('/api/bootstrap'),
 };
 
 // NOTE: PDF generation is handled via external PDF service from the frontend.

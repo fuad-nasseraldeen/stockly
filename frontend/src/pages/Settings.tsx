@@ -11,7 +11,8 @@ import { useTenant } from '../hooks/useTenant';
 import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { ColumnManager } from '../components/price-table/ColumnManager';
 import { getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
-import { loadLayout, saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { useTableLayout } from '../hooks/useTableLayout';
 
 export default function Settings() {
   const { data: settings, isLoading } = useSettings();
@@ -93,25 +94,22 @@ export default function Settings() {
   const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
   const [layoutLoading, setLayoutLoading] = useState(true);
   
-  // Load layout from database on mount
+  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
+  const { data: savedLayout, isLoading: layoutLoadingFromQuery } = useTableLayout('productsTable');
+  
+  // Update column layout when saved layout or settings change
   useEffect(() => {
-    const loadLayoutData = async () => {
-      try {
-        setLayoutLoading(true);
-        const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
-        setColumnLayout(layout);
-      } catch (error) {
-        console.error('Failed to load column layout:', error);
-        // Fallback to default
-        setColumnLayout(getDefaultLayout(appSettings));
-      } finally {
-        setLayoutLoading(false);
-      }
-    };
-    
-    loadLayoutData();
-  }, []);
+    if (savedLayout !== undefined) {
+      const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
+      setColumnLayout(layout);
+      setLayoutLoading(false);
+    }
+  }, [savedLayout, useVat, useMargin, appSettings]);
+  
+  // Track loading state
+  useEffect(() => {
+    setLayoutLoading(layoutLoadingFromQuery);
+  }, [layoutLoadingFromQuery]);
   
   // Update layout when settings change
   useEffect(() => {
@@ -131,19 +129,14 @@ export default function Settings() {
   const isOwner = currentTenant?.role === 'owner';
 
   // Team management (members + invites)
+  // Only fetch when currentTenant is valid AND user is owner to prevent 403 errors
   const {
     data: members = [],
     isLoading: membersLoading,
   } = useQuery<TenantMember[]>({
     queryKey: ['tenantMembers', currentTenant?.id],
     queryFn: () => tenantApi.members(),
-    enabled: !!currentTenant && currentTenant.role === 'owner',
-  });
-  console.log('🔍 Settings - Members query:', {
-    currentTenant,
-    enabled: !!currentTenant && currentTenant?.role === 'owner',
-    members,
-    membersLoading,
+    enabled: !!currentTenant?.id && currentTenant.role === 'owner',
   });
   const {
     data: invites = [],
@@ -151,7 +144,7 @@ export default function Settings() {
   } = useQuery<TenantInvite[]>({
     queryKey: ['tenantInvites', currentTenant?.id],
     queryFn: () => tenantApi.invites(),
-    enabled: !!currentTenant && currentTenant.role === 'owner',
+    enabled: !!currentTenant?.id && currentTenant.role === 'owner',
   });
 
   const handleSaveVat = async (): Promise<void> => {

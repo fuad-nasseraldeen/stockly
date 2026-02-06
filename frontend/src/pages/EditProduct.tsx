@@ -16,7 +16,8 @@ import { ArrowRight, ArrowLeft, Plus, X, FileText } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
-import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { mergeWithDefaults } from '../lib/column-layout-storage';
+import { useTableLayout } from '../hooks/useTableLayout';
 import { netToGross } from '../lib/pricing-rules';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
@@ -72,42 +73,27 @@ export default function EditProduct() {
     global_margin_percent: settings?.global_margin_percent ?? undefined,
   };
   
-  // Load layout from database on mount
-  useEffect(() => {
-    const loadLayoutData = async () => {
-      try {
-        const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
-        setColumnLayout(layout);
-      } catch (error) {
-        console.error('Failed to load column layout:', error);
-        // Fallback to default
-        setColumnLayout(getDefaultLayout(appSettings));
-      }
-    };
-    
-    loadLayoutData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useVat, useMargin, vatPercent]);
+  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
+  const { data: savedLayout } = useTableLayout('priceHistoryTable');
   
-  // Listen for layout changes
+  // Update column layout when saved layout or settings change
   useEffect(() => {
-    const handleLayoutChange = async () => {
-      try {
-        const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
-        setColumnLayout(layout);
-      } catch (error) {
-        console.error('Failed to reload column layout:', error);
-      }
+    const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
+    setColumnLayout(layout);
+  }, [savedLayout, useVat, useMargin, vatPercent, appSettings]);
+  
+  // Listen for layout changes (when user saves layout in Settings page)
+  useEffect(() => {
+    const handleLayoutChange = () => {
+      // Layout will be updated via useTableLayout hook when cache is invalidated
+      // This event is just a signal to re-render
     };
     
     window.addEventListener('priceTableLayoutChanged', handleLayoutChange);
     return () => {
       window.removeEventListener('priceTableLayoutChanged', handleLayoutChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useVat, useMargin, vatPercent]);
+  }, []);
   
   // Use default layout while loading
   const effectiveLayout = columnLayout || getDefaultLayout(appSettings);

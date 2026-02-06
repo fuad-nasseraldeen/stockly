@@ -1,11 +1,58 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { performance } from 'perf_hooks';
+import { randomUUID } from 'crypto';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount, round2 } from '../lib/pricing.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
+
+/**
+ * PERF DEBUGGING (ONLY for GET /api/products)
+ *
+ * How to run:
+ * - Enable logs:
+ *   - Bash: `PERF_DEBUG=1 npm start`
+ *   - PowerShell: `$env:PERF_DEBUG = "1"; npm start`
+ * - Call endpoint (replace TOKEN + TENANT):
+ *   - Bash:
+ *     curl -H "Authorization: Bearer <TOKEN>" -H "x-tenant-id: <TENANT_ID>" \
+ *       "http://localhost:3001/api/products?sort=updated_desc&all=true"
+ *   - PowerShell:
+ *     curl.exe -H "Authorization: Bearer <TOKEN>" -H "x-tenant-id: <TENANT_ID>" `
+ *       "http://localhost:3001/api/products?sort=updated_desc&all=true"
+ *
+ * Notes:
+ * - Logs are gated behind PERF_DEBUG=1 (or "true").
+ * - Never logs payload contents; only counts and sizes.
+ * - Uses `x-request-id` if provided; otherwise generates one and sets it on the response.
+ */
+
+// Performance debugging flag
+const PERF_DEBUG = process.env.PERF_DEBUG === '1' || process.env.PERF_DEBUG === 'true';
+
+// Helper to log performance metrics
+function perfLog(correlationId: string, step: string, duration: number, metadata?: Record<string, any>) {
+  if (!PERF_DEBUG) return;
+  
+  const metaStr = metadata 
+    ? ' | ' + Object.entries(metadata)
+        .map(([k, v]) => {
+          // Avoid logging huge payloads - only counts/lengths
+          if (Array.isArray(v)) return `${k}=${v.length}`;
+          if (typeof v === 'object' && v !== null) {
+            const keys = Object.keys(v);
+            return `${k}=${keys.length}keys`;
+          }
+          return `${k}=${v}`;
+        })
+        .join(', ')
+    : '';
+  
+  console.log(`[PERF ${correlationId}] ${step}: ${duration.toFixed(2)}ms${metaStr}`);
+}
 
 // Cache removed - RPC function handles pagination and sorting in DB, making cache unnecessary
 
@@ -92,22 +139,98 @@ async function getCategoryDefaultMargin(tenantId: string, categoryId: string | n
 
 // Get all products
 router.get('/', requireAuth, requireTenant, async (req, res) => {
+  const t0 = performance.now();
+  const requestIdHeader = (req.headers['x-request-id'] ?? req.headers['x-requestid']) as string | undefined;
+  const requestId = (typeof requestIdHeader === 'string' && requestIdHeader.trim().length > 0)
+    ? requestIdHeader.trim()
+    : randomUUID();
+  res.setHeader('x-request-id', requestId);
+
+  // Perf state (so we can log a summary even on early returns via res.on('finish'))
+  const perfState = {
+    method: req.method,
+    path: req.path,
+    all: false as boolean,
+    page: 0 as number,
+    pageSize: 0 as number,
+    rowsCount: 0 as number,
+    totalCount: 0 as number,
+    payloadBytes: 0 as number,
+    supabaseMs: 0 as number, // Only time waiting for Supabase network calls (sum)
+    transformMs: 0 as number,
+    stringifyMs: 0 as number,
+    extraQueriesCount: 0 as number,
+    extraQueriesTotalMs: 0 as number,
+  };
+
+  // Always attach finish listener; but it logs only when PERF_DEBUG enabled.
+  res.on('finish', () => {
+    if (!PERF_DEBUG) return;
+    const totalMs = performance.now() - t0;
+    const payloadKB = perfState.payloadBytes > 0 ? perfState.payloadBytes / 1024 : 0;
+    console.log(
+      `[PERF ${requestId}] summary` +
+        ` | totalMs=${totalMs.toFixed(2)}` +
+        ` supabaseMs=${perfState.supabaseMs.toFixed(2)}` +
+        ` transformMs=${perfState.transformMs.toFixed(2)}` +
+        ` stringifyMs=${perfState.stringifyMs.toFixed(2)}` +
+        ` extraQueriesCount=${perfState.extraQueriesCount}` +
+        ` extraQueriesTotalMs=${perfState.extraQueriesTotalMs.toFixed(2)}` +
+        ` rowsCount=${perfState.rowsCount}` +
+        ` total=${perfState.totalCount}` +
+        ` payloadKB=${payloadKB.toFixed(2)}` +
+        ` all=${perfState.all}` +
+        ` page=${perfState.page}` +
+        ` pageSize=${perfState.pageSize}`
+    );
+  });
+
+  if (PERF_DEBUG) console.log(`[PERF ${requestId}] start`);
+
   try {
+    // after-auth/tenant-resolution (middleware already ran; measure handler entry overhead)
+    const tAfterAuth = performance.now();
     const tenant = (req as any).tenant;
+    perfLog(requestId, 'after_auth_tenant_resolution', tAfterAuth - t0, {
+      tenantId: tenant?.tenantId,
+    });
+
+    // Query building time
+    const queryBuildStart = performance.now();
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
     const supplierId = typeof req.query.supplier_id === 'string' ? req.query.supplier_id : undefined;
     const categoryId = typeof req.query.category_id === 'string' ? req.query.category_id : undefined;
     const sort = typeof req.query.sort === 'string' ? req.query.sort : 'updated_desc';
     
+    // Check if requesting all products (for export)
+    const all = req.query.all === 'true' || req.query.all === '1';
+    perfState.all = all;
+    
     // Pagination parameters
-    const page = Math.max(1, parseInt(typeof req.query.page === 'string' ? req.query.page : '1', 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(typeof req.query.pageSize === 'string' ? req.query.pageSize : '10', 10)));
+    // If all=true, fetch all products (use large pageSize, ignore page)
+    const page = all ? 1 : Math.max(1, parseInt(typeof req.query.page === 'string' ? req.query.page : '1', 10));
+    const pageSize = all 
+      ? 10000 // Large page size to get all products in one request
+      : Math.min(100, Math.max(1, parseInt(typeof req.query.pageSize === 'string' ? req.query.pageSize : '10', 10)));
+    // (offset used in RPC params)
     const offset = (page - 1) * pageSize;
+    perfState.page = page;
+    perfState.pageSize = pageSize;
 
     // Step 1: determine which product IDs match (fuzzy search when search term exists)
     // OPTIMIZED: Use RPC function to get paginated product IDs with total count
     // This pushes sorting and pagination to the database - MUCH faster!
     const searchNormalized = search && search.trim() ? normalizeName(search.trim()) : null;
+    
+    const queryBuildTime = performance.now() - queryBuildStart;
+    perfLog(requestId, 'after_params_buildQuery', queryBuildTime, {
+      all,
+      page,
+      pageSize,
+      hasSearch: !!search,
+      hasSupplierFilter: !!supplierId,
+      hasCategoryFilter: !!categoryId,
+    });
     
     // Log search params for debugging
     if (process.env.NODE_ENV === 'development') {
@@ -123,6 +246,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       });
     }
     
+    // RPC call timing
+    const rpcStart = performance.now();
     const { data: pageData, error: rpcError } = await supabase.rpc('products_list_page', {
       tenant_uuid: tenant.tenantId,
       search_text: searchNormalized,
@@ -131,6 +256,12 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       sort_text: sort,
       limit_results: pageSize,
       offset_results: (page - 1) * pageSize,
+    });
+    const rpcTime = performance.now() - rpcStart;
+    perfState.supabaseMs += rpcTime;
+    perfLog(requestId, 'after_supabase_call:rpc(products_list_page)', rpcTime, {
+      resultCount: pageData?.length || 0,
+      error: rpcError ? 'yes' : 'no',
     });
 
     if (rpcError) {
@@ -153,6 +284,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     if (!pageData || pageData.length === 0) {
+      perfState.rowsCount = 0;
+      perfState.totalCount = 0;
       return res.json({ 
         products: [], 
         total: 0, 
@@ -165,18 +298,34 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     const pageProductIds = pageData.map((r: any) => r.product_id);
     const totalCount = pageData[0]?.total_count ?? 0;
     const totalPages = Math.ceil(totalCount / pageSize);
+    perfState.totalCount = Number(totalCount) || 0;
+
+    // Track all extra queries (to detect N+1)
+    const extraQueriesStart = performance.now();
+    let extraQueriesCount = 0;
+    let extraQueriesTotalTime = 0;
 
     // Now load details ONLY for the products on this page
+    const productsQueryStart = performance.now();
     const { data: pageProducts, error: productsErr } = await supabase
       .from('products')
       .select('id,name,category_id,unit,sku,package_quantity,created_at,categories(id,name,default_margin_percent)')
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true)
       .in('id', pageProductIds);
+    const productsQueryTime = performance.now() - productsQueryStart;
+    extraQueriesCount++;
+    extraQueriesTotalTime += productsQueryTime;
+    perfState.supabaseMs += productsQueryTime;
+    perfLog(requestId, 'after_supabase_call:products', productsQueryTime, {
+      productIdsCount: pageProductIds.length,
+      productsReturned: pageProducts?.length || 0,
+    });
     
     if (productsErr) return res.status(500).json({ error: 'שגיאה בטעינת מוצרים' });
 
     if (!pageProducts || pageProducts.length === 0) {
+      perfState.rowsCount = 0;
       return res.json({ 
         products: [], 
         total: totalCount, 
@@ -185,9 +334,11 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       });
     }
 
-    // Load prices and summaries ONLY for page products
+    // Load prices ONLY for page products
+    const pricesQueryStart = performance.now();
     let currentQ = supabase
       .from('product_supplier_current_price')
+      // NOTE: product_id is needed here only for grouping; it will NOT be sent back in the JSON payload
       .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
       .in('product_id', pageProductIds);
@@ -195,10 +346,18 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     if (supplierId) currentQ = currentQ.eq('supplier_id', supplierId);
 
     const { data: currentRows, error: currentErr } = await currentQ;
+    const pricesQueryTime = performance.now() - pricesQueryStart;
+    extraQueriesCount++;
+    extraQueriesTotalTime += pricesQueryTime;
+    perfState.supabaseMs += pricesQueryTime;
+    perfLog(requestId, 'after_supabase_call:prices', pricesQueryTime, {
+      priceRowsReturned: currentRows?.length || 0,
+    });
     if (currentErr) return res.status(500).json({ error: 'שגיאה בטעינת מחירים עדכניים' });
 
     // Suppliers for the current rows (to show names)
     const supplierIds = Array.from(new Set((currentRows ?? []).map((r: any) => r.supplier_id)));
+    const suppliersQueryStart = performance.now();
     const { data: suppliers } =
       supplierIds.length > 0
         ? await supabase
@@ -208,26 +367,67 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
             .in('id', supplierIds)
             .eq('is_active', true)
         : { data: [] as any[] };
+    const suppliersQueryTime = performance.now() - suppliersQueryStart;
+    if (supplierIds.length > 0) {
+      extraQueriesCount++;
+      extraQueriesTotalTime += suppliersQueryTime;
+      perfState.supabaseMs += suppliersQueryTime;
+    }
+    perfLog(requestId, 'after_supabase_call:suppliers', suppliersQueryTime, {
+      supplierIdsCount: supplierIds.length,
+      suppliersReturned: suppliers?.length || 0,
+    });
     const supplierNameById = new Map((suppliers ?? []).map((s: any) => [s.id, s.name]));
 
-    // Summary view per product - ONLY for page products
-    const { data: summaries, error: sumErr } = await supabase
-      .from('product_price_summary')
-      .select('product_id,min_current_cost_price,min_current_sell_price,last_price_update_at')
-      .eq('tenant_id', tenant.tenantId)
-      .in('product_id', pageProductIds);
-    if (sumErr) return res.status(500).json({ error: 'שגיאה בטעינת סיכום מחירים' });
-    const summaryByProductId = new Map((summaries ?? []).map((s: any) => [s.product_id, s]));
+    const extraQueriesTime = performance.now() - extraQueriesStart;
+    perfState.extraQueriesCount = extraQueriesCount;
+    perfState.extraQueriesTotalMs = extraQueriesTotalTime;
+    perfLog(requestId, 'extraQueries', extraQueriesTime, {
+      queryCount: extraQueriesCount,
+      avgQueryTime: extraQueriesCount > 0 ? (extraQueriesTotalTime / extraQueriesCount).toFixed(2) : 0,
+    });
 
+    // Transform/mapping time
+    const transformStart = performance.now();
+    
     // Group current prices by product, sort by lowest cost first (default)
     const currentByProduct = new Map<string, any[]>();
     for (const row of currentRows ?? []) {
-      const list = currentByProduct.get(row.product_id) ?? [];
+      const {
+        product_id,
+        supplier_id,
+        cost_price,
+        discount_percent,
+        cost_price_after_discount,
+        margin_percent,
+        sell_price,
+        package_quantity,
+        created_at,
+      } = row as {
+        product_id: string;
+        supplier_id: string;
+        cost_price: number;
+        discount_percent: number | null;
+        cost_price_after_discount: number | null;
+        margin_percent: number | null;
+        sell_price: number;
+        package_quantity: number | null;
+        created_at: string;
+      };
+
+      const list = currentByProduct.get(product_id) ?? [];
       list.push({
-        ...row,
-        supplier_name: supplierNameById.get(row.supplier_id) ?? null,
+        supplier_id,
+        cost_price,
+        discount_percent,
+        cost_price_after_discount,
+        margin_percent,
+        sell_price,
+        package_quantity,
+        created_at,
+        supplier_name: supplierNameById.get(supplier_id) ?? null,
       });
-      currentByProduct.set(row.product_id, list);
+      currentByProduct.set(product_id, list);
     }
     for (const [pid, list] of currentByProduct.entries()) {
       list.sort((a, b) => Number(a.cost_price) - Number(b.cost_price));
@@ -240,7 +440,6 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       .map((id: string) => {
         const p = productById.get(id);
         if (!p) return null;
-        const summary = summaryByProductId.get(p.id) ?? null;
         return {
           id: p.id,
           name: p.name,
@@ -249,9 +448,8 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
           package_quantity: p.package_quantity ?? null,
           category: p.categories ?? null,
           prices: currentByProduct.get(p.id) ?? [],
-          summary,
         };
-      })
+      }) 
       .filter((p: any) => p !== null);
 
     // When filtering by supplier – hide products that don't have a price for that supplier
@@ -259,13 +457,37 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
       ? result.filter((p: any) => p.prices && p.prices.length > 0)
       : result;
 
-    return res.json({
+    const transformTime = performance.now() - transformStart;
+    perfState.transformMs = transformTime;
+    perfLog(requestId, 'after_transform_mapping', transformTime, {
+      resultCount: finalResult.length,
+      productsProcessed: pageProducts.length,
+    });
+    perfState.rowsCount = finalResult.length;
+
+    // JSON serialization time
+    const jsonResponse = {
       products: finalResult,  // Already paginated by RPC
       total: totalCount,
       page,
       totalPages,  // Already calculated above
-    });
+    };
+    if (PERF_DEBUG) {
+      const stringifyStart = performance.now();
+      const jsonString = JSON.stringify(jsonResponse);
+      const stringifyMs = performance.now() - stringifyStart;
+      perfState.stringifyMs = stringifyMs;
+      perfState.payloadBytes = jsonString.length;
+      perfLog(requestId, 'after_stringify', stringifyMs, {
+        payloadBytes: jsonString.length,
+        payloadKB: (jsonString.length / 1024).toFixed(2),
+      });
+    }
+
+    if (PERF_DEBUG) perfLog(requestId, 'sent', performance.now() - t0);
+    res.json(jsonResponse);
   } catch (error: any) {
+    if (PERF_DEBUG) perfLog(requestId, 'error', performance.now() - t0, { error: String(error) });
     res.status(500).json({ error: error.message });
   }
 });
@@ -292,7 +514,8 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
     // Add current prices per supplier + summary
     const { data: current } = await supabase
       .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      // NOTE: product_id is omitted intentionally (we already know `id` from the route param)
+      .select('supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', id);
 
@@ -312,14 +535,7 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
       .map((r: any) => ({ ...r, supplier_name: supplierNameById.get(r.supplier_id) ?? null }))
       .sort((a: any, b: any) => Number(a.cost_price) - Number(b.cost_price));
 
-    const { data: summary } = await supabase
-      .from('product_price_summary')
-      .select('product_id,min_current_cost_price,min_current_sell_price,last_price_update_at')
-      .eq('tenant_id', tenant.tenantId)
-      .eq('product_id', id)
-      .single();
-
-    res.json({ ...data, prices, summary: summary ?? null });
+    res.json({ ...data, prices });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

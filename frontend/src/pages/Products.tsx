@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProducts, useDeleteProduct, useProductPriceHistory } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useCategories } from '../hooks/useCategories';
@@ -14,18 +15,64 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { exportApi, productsApi } from '../lib/api';
+import { productsApi, type Product } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
-import { loadLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { mergeWithDefaults } from '../lib/column-layout-storage';
+import { useTableLayout } from '../hooks/useTableLayout';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
+function csvEscape(value: string | number | null | undefined): string {
+  const s = value === null || value === undefined ? '' : String(value);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+function downloadCsvFile(filename: string, csvUtf8: string): void {
+  const blob = new Blob([csvUtf8], { type: 'text/csv;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}
+
+// Derive per-product summary (min current cost + last update) from prices array
+function getProductDerivedSummary(product: Product) {
+  const prices = product.prices ?? [];
+  if (!prices.length) return null;
+
+  let minCost: number | null = null;
+  let lastUpdated: string | null = null;
+
+  for (const price of prices) {
+    const baseCost = (price.cost_price_after_discount ?? price.cost_price) as number | null;
+    if (typeof baseCost === 'number' && !Number.isNaN(baseCost)) {
+      if (minCost === null || baseCost < minCost) {
+        minCost = baseCost;
+      }
+    }
+
+    if (price.created_at) {
+      if (!lastUpdated || price.created_at > lastUpdated) {
+        lastUpdated = price.created_at;
+      }
+    }
+  }
+
+  if (minCost === null && !lastUpdated) return null;
+  return { minCost, lastUpdated };
+}
+
 export default function Products() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { currentTenant } = useTenant();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 350); // Debounce search input by 350ms
@@ -42,6 +89,9 @@ export default function Products() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfProgress, setPdfProgress] = useState(0);
   const [pdfStage, setPdfStage] = useState<'idle' | 'fetching' | 'generating' | 'downloading'>('idle');
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [excelProgress, setExcelProgress] = useState(0);
+  const [excelStage, setExcelStage] = useState<'idle' | 'fetching' | 'generating' | 'downloading'>('idle');
 
   const { data: productsData, isLoading } = useProducts({
     search: debouncedSearch || undefined,
@@ -93,47 +143,33 @@ export default function Products() {
   const [columnLayout, setColumnLayout] = useState<ReturnType<typeof getDefaultLayout> | null>(null);
   
   const vatPercent = settings?.vat_percent ?? 18;
-  const appSettings: SettingsType = {
+  const appSettings: SettingsType = useMemo(() => ({
     use_vat: useVat,
     use_margin: useMargin,
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
-  };
+  }), [useVat, useMargin, vatPercent, settings?.global_margin_percent]);
   
-  // Load layout from database on mount
-  useEffect(() => {
-    const loadLayoutData = async () => {
-      try {
-        const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
-        setColumnLayout(layout);
-      } catch (error) {
-        console.error('Failed to load column layout:', error);
-        setColumnLayout(getDefaultLayout(appSettings));
-      }
-    };
-    
-    loadLayoutData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
+  const { data: savedLayout } = useTableLayout('productsTable');
   
-  // Listen for layout changes
+  // Update column layout when saved layout or settings change
   useEffect(() => {
-    const handleLayoutChange = async () => {
-      try {
-        const saved = await loadLayout();
-        const layout = saved ? mergeWithDefaults(saved) : getDefaultLayout(appSettings);
-        setColumnLayout(layout);
-      } catch (error) {
-        console.error('Failed to reload column layout:', error);
-      }
+    const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
+    setColumnLayout(layout);
+  }, [savedLayout, appSettings]);
+  
+  // Listen for layout changes (when user saves layout in Settings page)
+  useEffect(() => {
+    const handleLayoutChange = () => {
+      // Layout will be updated via useTableLayout hook when cache is invalidated
+      // This event is just a signal to re-render
     };
     
     window.addEventListener('priceTableLayoutChanged', handleLayoutChange);
     return () => {
       window.removeEventListener('priceTableLayoutChanged', handleLayoutChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
@@ -166,16 +202,112 @@ export default function Products() {
   };
 
   const handleExport = async () => {
+    if (isExportingExcel) return;
+    let generatingIntervalId: number | undefined;
     try {
-      await exportApi.downloadFiltered({
+      setIsExportingExcel(true);
+      setExcelStage('fetching');
+      setExcelProgress(0);
+
+      const filterParams = {
         search: debouncedSearch || undefined,
         supplier_id: supplierFilter || undefined,
         category_id: categoryFilter || undefined,
         sort,
-      });
+      };
+
+      // Reuse same cache key as PDF ("all products" for these filters)
+      const allProductsCacheKey = ['products', { ...filterParams, all: true }] as const;
+      const cachedAllProducts = queryClient.getQueryData<{ products: Product[]; total: number }>(allProductsCacheKey);
+
+      let allProducts: Product[] = [];
+
+      if (cachedAllProducts?.products) {
+        allProducts = cachedAllProducts.products;
+        setExcelProgress(75);
+      } else if (productsData && productsData.total === products.length) {
+        // If first page contains all filtered results, use it (e.g., total=10, pageSize=12)
+        allProducts = products;
+        setExcelProgress(75);
+      } else {
+        setExcelProgress(10);
+        const response = await productsApi.list({ ...filterParams, all: true });
+        allProducts = response.products || [];
+        queryClient.setQueryData(allProductsCacheKey, { products: allProducts, total: response.total });
+        setExcelProgress(75);
+      }
+
+      if (!allProducts || allProducts.length === 0) {
+        alert('אין מוצרים לייצוא');
+        return;
+      }
+
+      // Generating stage (75–95)
+      setExcelStage('generating');
+      generatingIntervalId = window.setInterval(() => {
+        const startBase = 75;
+        const maxTarget = 95;
+        setExcelProgress((prev) => Math.min(Math.max(prev, startBase) + 1, maxTarget));
+      }, 250);
+
+      // Build CSV (match backend /api/export/filtered.csv headers)
+      const BOM = '\uFEFF';
+      let csv =
+        BOM +
+        'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+
+      for (const p of allProducts) {
+        const productName = p?.name ?? '';
+        const sku = p?.sku ?? '';
+        const packageQuantity = p?.package_quantity ?? '';
+        const categoryName = p?.category?.name ?? 'כללי';
+        const prices = Array.isArray(p?.prices) ? p.prices : [];
+
+        // Keep same semantics as backend: one row per supplier price
+        for (const price of prices) {
+          const supplierName = price?.supplier_name ?? '';
+          const costPrice = price?.cost_price ?? '';
+          const discountPercent = price?.discount_percent ?? 0;
+          const costPriceAfterDiscount = price?.cost_price_after_discount ?? '';
+          const marginPercent = price?.margin_percent ?? '';
+          const sellPrice = price?.sell_price ?? '';
+          const lastUpdated = price?.created_at ? new Date(price.created_at).toLocaleDateString('he-IL') : '';
+
+          csv +=
+            `${csvEscape(productName)},` +
+            `${csvEscape(sku)},` +
+            `${packageQuantity},` +
+            `${csvEscape(supplierName)},` +
+            `${costPrice},` +
+            `${discountPercent},` +
+            `${costPriceAfterDiscount},` +
+            `${marginPercent},` +
+            `${sellPrice},` +
+            `${csvEscape(categoryName)},` +
+            `${csvEscape(lastUpdated)}\n`;
+        }
+      }
+
+      // Download started
+      if (generatingIntervalId !== undefined) {
+        window.clearInterval(generatingIntervalId);
+      }
+      setExcelStage('downloading');
+      setExcelProgress(100);
+
+      downloadCsvFile('products_export.csv', csv);
     } catch (error) {
       console.error('Error exporting:', error);
       alert('שגיאה בייצוא הקובץ');
+    } finally {
+      window.setTimeout(() => {
+        if (generatingIntervalId !== undefined) {
+          window.clearInterval(generatingIntervalId);
+        }
+        setIsExportingExcel(false);
+        setExcelProgress(0);
+        setExcelStage('idle');
+      }, 400);
     }
   };
 
@@ -189,49 +321,53 @@ export default function Products() {
       setPdfStage('fetching');
       setPdfProgress(0);
 
-      // Fetch ALL products matching current filters (across all pages)
-      const allProducts: any[] = [];
-      let pageToFetch = 1;
-      const pageSizeForExport = 200; // larger page size for export
-      let totalProductsForExport = 0;
-      let totalPagesForExport = 0;
+      // Build filter params for cache lookup
+      const filterParams = {
+        search: debouncedSearch || undefined,
+        supplier_id: supplierFilter || undefined,
+        category_id: categoryFilter || undefined,
+        sort,
+      };
 
-      for (;;) {
-        const response = await productsApi.list({
-          search: debouncedSearch || undefined,
-          supplier_id: supplierFilter || undefined,
-          category_id: categoryFilter || undefined,
-          sort,
-          page: pageToFetch,
-          pageSize: pageSizeForExport,
-        });
+      // Check cache first: Look for "all products" query
+      const allProductsCacheKey = ['products', { ...filterParams, all: true }] as const;
+      const cachedAllProducts = queryClient.getQueryData<{ products: Product[]; total: number }>(allProductsCacheKey);
 
-        allProducts.push(...(response.products || []));
-        totalProductsForExport = response.total ?? totalProductsForExport ?? 0;
-        totalPagesForExport = response.totalPages ?? totalPagesForExport ?? 0;
+      let allProducts: Product[] = [];
 
-        // Real fetch progress: based on number of pages / products loaded
-        if (totalProductsForExport > 0) {
-          const loadedCount = allProducts.length;
-          const fetchProgress = Math.min(
-            75,
-            Math.round((loadedCount / totalProductsForExport) * 75)
-          );
-          setPdfProgress(fetchProgress);
-        } else if (totalPagesForExport > 0) {
-          const pagesLoaded = pageToFetch;
-          const fetchProgress = Math.min(
-            75,
-            Math.round((pagesLoaded / totalPagesForExport) * 75)
-          );
-          setPdfProgress(fetchProgress);
+      if (cachedAllProducts && cachedAllProducts.products) {
+        // Found cache of all products - use it!
+        console.log('[PDF] Using cached all products:', cachedAllProducts.products.length);
+        allProducts = cachedAllProducts.products;
+        setPdfProgress(75); // Skip to 75% since we have data
+      } else {
+        // No cache of all products - check if first page contains all products
+        // If total === products.length in first page, we have all products already!
+        if (productsData && productsData.total === products.length) {
+          // First page contains all products - use it!
+          console.log('[PDF] First page contains all products, using it:', products.length);
+          allProducts = products;
+          setPdfProgress(75); // Skip to 75% since we have data
+        } else {
+          // Need to fetch all products - single API call with all=true
+          console.log('[PDF] Fetching all products from API...');
+          setPdfProgress(10);
+          
+          const response = await productsApi.list({
+            ...filterParams,
+            all: true, // Fetch all products in one request
+          });
+
+          allProducts = response.products || [];
+          
+          // Cache the result for future use
+          queryClient.setQueryData(allProductsCacheKey, {
+            products: allProducts,
+            total: response.total,
+          });
+          
+          setPdfProgress(75);
         }
-
-        if (!response.totalPages || pageToFetch >= response.totalPages) {
-          break;
-        }
-
-        pageToFetch += 1;
       }
 
       if (!allProducts || allProducts.length === 0) {
@@ -248,8 +384,8 @@ export default function Products() {
         setPdfProgress((prev) => {
           // התחלה לפחות מ-75
           const current = Math.max(prev, startBase);
-          // צעד קטן קדימה
-          const next = current + 1.5;
+          // צעד קדימה - מספר שלם בלבד
+          const next = current + 1;
           return Math.min(next, maxTarget);
         });
       }, 250);
@@ -286,7 +422,7 @@ export default function Products() {
         }
 
         // One row per supplier price
-        return prices.map((price: any) =>
+        return prices.map((price) =>
           priceRowToExportValues({
             price,
             product: p,
@@ -364,10 +500,30 @@ export default function Products() {
               onClick={handleExport}
               variant="outline"
               size="lg"
-              className="shadow-md hover:shadow-lg"
+              className="shadow-md hover:shadow-lg min-w-[160px]"
+              disabled={isExportingExcel}
             >
               <Download className="w-4 h-4 ml-2" />
-              ייצא מוצרים
+              {isExportingExcel ? (
+                <span className="inline-flex items-center gap-1">
+                  <span>
+                    {excelStage === 'fetching'
+                      ? 'טוען מוצרים…'
+                      : excelStage === 'generating'
+                      ? 'מייצר קובץ…'
+                      : excelStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : 'מכין קובץ…'}
+                  </span>
+                  {excelStage !== 'downloading' && (
+                    <span className="inline-block w-10 text-right tabular-nums">
+                      {excelProgress}%
+                    </span>
+                  )}
+                </span>
+              ) : (
+                'ייצא מוצרים'
+              )}
             </Button>
 
             {/* PDF export */}
@@ -420,12 +576,45 @@ export default function Products() {
                 onClick={handleExport}
                 variant="outline"
                 size="default"
-                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2"
-                aria-label="ייצא מוצרים (Excel)"
-                title="ייצא מוצרים (Excel)"
+                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2 min-w-[120px]"
+                aria-label={
+                  isExportingExcel
+                    ? excelStage === 'fetching'
+                      ? `טוען מוצרים… ${excelProgress}%`
+                      : excelStage === 'generating'
+                      ? `מייצר קובץ… ${excelProgress}%`
+                      : excelStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : `מכין קובץ… ${excelProgress}%`
+                    : 'ייצא מוצרים (Excel)'
+                }
+                title={
+                  isExportingExcel
+                    ? excelStage === 'fetching'
+                      ? `טוען מוצרים… ${excelProgress}%`
+                      : excelStage === 'generating'
+                      ? `מייצר קובץ… ${excelProgress}%`
+                      : excelStage === 'downloading'
+                      ? 'מוריד קובץ…'
+                      : `מכין קובץ… ${excelProgress}%`
+                    : 'ייצא מוצרים (Excel)'
+                }
+                disabled={isExportingExcel}
               >
                 <Download className="w-4 h-4" />
-                <span className="text-sm">אקסל</span>
+                <span className="text-sm">
+                  {isExportingExcel ? (
+                    excelStage === 'downloading' ? (
+                      'מוריד...'
+                    ) : (
+                      <span className="inline-block w-10 text-center tabular-nums">
+                        {excelProgress}%
+                      </span>
+                    )
+                  ) : (
+                    'אקסל'
+                  )}
+                </span>
               </Button>
               <Button
                 onClick={handleDownloadPdf}
@@ -624,19 +813,25 @@ export default function Products() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {product.summary && (
+                  {getProductDerivedSummary(product) && (
+                    (() => {
+                      const summary = getProductDerivedSummary(product);
+                      if (!summary) return null;
+                      return (
                     <div className="flex flex-wrap gap-4 text-sm p-4 bg-linear-to-r from-primary/5 to-primary/10 rounded-lg border-2 border-primary/20 shadow-sm">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">מחיר נמוך ביותר:</span>
-                        <span className="font-semibold text-foreground">{formatPrice(Number(product.summary.min_current_cost_price))}</span>
+                        <span className="font-semibold text-foreground">{formatPrice(Number(summary.minCost ?? 0))}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">עודכן לאחרונה:</span>
-                        <span className="font-semibold text-foreground">{formatDate(product.summary.last_price_update_at)}</span>
+                        <span className="font-semibold text-foreground">{summary.lastUpdated ? formatDate(summary.lastUpdated) : '-'}</span>
                       </div>
                     </div>
+                      );
+                    })()
                   )}
 
                   {product.prices && product.prices.length > 0 ? (

@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { User } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './lib/supabase';
+import { setTenantIdForApi } from './lib/api';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
 import { Menu, X } from 'lucide-react';
@@ -9,6 +11,7 @@ import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
 import { TenantSwitcher } from './components/TenantSwitcher';
 import { useSuperAdmin } from './hooks/useSuperAdmin';
+import { useBootstrap } from './hooks/useBootstrap';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -190,6 +193,7 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -207,8 +211,21 @@ function App() {
   }, []);
 
   const handleLogout = async () => {
+    // CRITICAL: Sign out from Supabase first
     await supabase.auth.signOut();
+    
+    // CRITICAL: Clear tenantId from module-level variable and localStorage
+    // This prevents cross-tenant data leakage when switching users
+    setTenantIdForApi(null);
+    localStorage.removeItem('currentTenantId');
+    
+    // CRITICAL: Clear React Query cache to prevent cached tenant/admin data from leaking to next user
+    queryClient.clear();
+    
     setUser(null);
+    
+    // Navigate to login page (replace: true to prevent back button issues)
+    window.location.href = '/login';
   };
 
   if (loading) {
@@ -232,6 +249,11 @@ function App() {
 }
 
 function AppContent({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+  // Fetch bootstrap data once user is logged in
+  // Bootstrap will automatically use current tenant if selected (via x-tenant-id header)
+  // This seeds React Query cache so existing hooks can use cached data instantly
+  useBootstrap(!!user);
+
   if (!user) {
     return (
       <div className="min-h-screen">
@@ -249,6 +271,32 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
       <AppWithNavigation user={user} onLogout={onLogout} />
     </OnboardingRouter>
   );
+}
+
+/**
+ * AdminRouteGuard - Protects /admin route
+ * 
+ * CRITICAL SECURITY: If user is not super admin, redirects away from /admin
+ * This ensures normal users cannot access admin pages even if they navigate directly
+ */
+function AdminRouteGuard({ children }: { children: React.ReactNode }) {
+  const { data: isSuperAdmin, isLoading } = useSuperAdmin(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Only redirect if check is complete and user is NOT super admin
+    if (!isLoading && isSuperAdmin !== true) {
+      // Redirect to home or no-access page
+      navigate('/', { replace: true });
+    }
+  }, [isSuperAdmin, isLoading, navigate]);
+
+  // Show nothing while checking (or if not admin)
+  if (isLoading || isSuperAdmin !== true) {
+    return null;
+  }
+
+  return <>{children}</>;
 }
 
 function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -277,7 +325,14 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
             <Route path="/categories" element={<Categories />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/import-export" element={<ImportExport />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route 
+              path="/admin" 
+              element={
+                <AdminRouteGuard>
+                  <Admin />
+                </AdminRouteGuard>
+              } 
+            />
             <Route path="/settings" element={<Settings />} />
             <Route path="/" element={<Navigate to="/products" />} />
             <Route path="*" element={<Navigate to="/products" replace />} />

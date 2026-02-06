@@ -160,6 +160,16 @@ export default function NewProduct() {
     }
   };
 
+      // Normalize cost_price to the invariant of the system:
+      // אם מע\"מ פעיל (useVat=true), cost_price תמיד נשמר כ"כולל מע\"מ" (gross).
+      // אם המשתמש הזין מחיר ללא מע\"מ, נוסיף מע\"מ לפני השליחה לשרת.
+      const costPriceNumber = rawCost; // כבר Number(costPrice) מהחישובים למעלה
+      const costPriceToStore = useVat
+        ? costIncludesVat === 'with'
+          ? costPriceNumber
+          : costPriceNumber * (1 + vatPercent / 100)
+        : costPriceNumber;
+
   const handleBack = () => {
     if (step === 'price') {
       setStep('details');
@@ -176,15 +186,6 @@ export default function NewProduct() {
 
     try {
       setProductError(null);
-      // Normalize cost_price to the invariant of the system:
-      // אם מע\"מ פעיל (useVat=true), cost_price תמיד נשמר כ"כולל מע\"מ" (gross).
-      // אם המשתמש הזין מחיר ללא מע\"מ, נוסיף מע\"מ לפני השליחה לשרת.
-      const costPriceNumber = rawCost; // כבר Number(costPrice) מהחישובים למעלה
-      const costPriceToStore = useVat
-        ? costIncludesVat === 'with'
-          ? costPriceNumber
-          : costPriceNumber * (1 + vatPercent / 100)
-        : costPriceNumber;
 
       // Create product with first price (cost_price נשמר ככולל מע\"מ כאשר מע\"מ פעיל)
       await createProduct.mutateAsync({
@@ -439,7 +440,7 @@ export default function NewProduct() {
                       <div className="text-sm space-y-2 pr-6">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">מחיר מספק (קלט):</span>
-                          <span className="font-medium">{rawCost.toFixed(2)} ₪</span>
+                          <span className="font-medium">{costPriceToStore.toFixed(2)} ₪</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">מחיר עלות לפני מע&quot;מ (לחישוב):</span>

@@ -5,13 +5,20 @@ import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
+// CRITICAL: Protect ALL admin routes with requireAuth + requireSuperAdmin
+// This ensures NO admin endpoint is reachable without super admin privileges
+// Normal users will always get 403 for /api/admin/*
+router.use(requireAuth, requireSuperAdmin);
+
 // Check if current user is super admin
-router.get('/check', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.get('/check', async (req, res) => {
   res.json({ is_super_admin: true });
 });
 
 // Get all tenants with owners and members (super admin only)
-router.get('/tenants', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.get('/tenants', async (req, res) => {
   try {
     const user = (req as any).user;
 
@@ -142,7 +149,8 @@ router.get('/tenants', requireAuth, requireSuperAdmin, async (req, res) => {
 });
 
 // Get audit logs (super admin can see all, or filter by tenant_id)
-router.get('/audit-logs', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.get('/audit-logs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -199,7 +207,8 @@ router.get('/audit-logs', requireAuth, requireSuperAdmin, async (req, res) => {
 });
 
 // Block a user in a tenant
-router.post('/block-user', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.post('/block-user', async (req, res) => {
   try {
     const user = (req as any).user;
     const { membership_id } = z.object({
@@ -263,7 +272,8 @@ router.post('/block-user', requireAuth, requireSuperAdmin, async (req, res) => {
 });
 
 // Unblock a user in a tenant
-router.post('/unblock-user', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.post('/unblock-user', async (req, res) => {
   try {
     const user = (req as any).user;
     const { membership_id } = z.object({
@@ -317,7 +327,8 @@ router.post('/unblock-user', requireAuth, requireSuperAdmin, async (req, res) =>
 });
 
 // Remove user from tenant (delete membership)
-router.delete('/remove-user', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.delete('/remove-user', async (req, res) => {
   try {
     const user = (req as any).user;
     const { membership_id } = z.object({
@@ -368,7 +379,8 @@ router.delete('/remove-user', requireAuth, requireSuperAdmin, async (req, res) =
 });
 
 // Delete all data for a tenant (reset tenant data)
-router.post('/reset-tenant-data', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.post('/reset-tenant-data', async (req, res) => {
   try {
     const user = (req as any).user;
     const { tenant_id } = z.object({
@@ -441,7 +453,8 @@ router.post('/reset-tenant-data', requireAuth, requireSuperAdmin, async (req, re
 });
 
 // Delete entire tenant (tenant + all data + memberships)
-router.delete('/delete-tenant', requireAuth, requireSuperAdmin, async (req, res) => {
+// Note: requireSuperAdmin middleware is already applied to all routes via router.use()
+router.delete('/delete-tenant', async (req, res) => {
   try {
     const user = (req as any).user;
     const { tenant_id } = z.object({

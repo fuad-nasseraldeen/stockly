@@ -1,104 +1,66 @@
-import { useEffect, useState, useRef } from 'react';
 import { Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 import { useTenant } from '../hooks/useTenant';
-import { invitesApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';
+import { invitesApi } from '../lib/api';
 import NoAccess from '../pages/NoAccess';
 import CreateTenant from '../pages/CreateTenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Building2, Store, Loader2, Shield } from 'lucide-react';
 
-type OnboardingStep = 'loading' | 'checking' | 'choice' | 'no-access' | 'create' | 'ready';
+type OnboardingStep = 'loading' | 'choice' | 'ready';
 
 export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
-  const { data: isSuperAdmin, isLoading: checkingSuperAdmin } = useSuperAdmin();
-  const [step, setStep] = useState<OnboardingStep>('loading');
-  const [checkingInvites, setCheckingInvites] = useState(false);
+  const isAdminRoute = location.pathname === '/admin';
+  const isOnboardingRoute = location.pathname === '/onboarding';
+  // Only check super admin when on admin route (non-blocking)
+  const { data: isSuperAdmin } = useSuperAdmin(isAdminRoute);
   const hasCheckedInvitesRef = useRef(false);
 
-  // Debug logging for super admin check
+  // Only call invitesApi.accept when on /onboarding route (non-blocking, best-effort)
   useEffect(() => {
-    console.log('🔍 OnboardingRouter: Super Admin State:', {
-      isSuperAdmin,
-      checkingSuperAdmin,
-      type: typeof isSuperAdmin,
-      willShowButton: isSuperAdmin === true,
-    });
-  }, [isSuperAdmin, checkingSuperAdmin]);
+    if (!isOnboardingRoute || hasCheckedInvitesRef.current || isLoading) return;
 
-  // Step 1: Accept pending invites and fetch tenants (only once)
-  useEffect(() => {
-    if (isLoading) {
-      setStep('loading');
-      return;
-    }
-
-    if (hasCheckedInvitesRef.current) {
-      return;
-    }
-
-    const checkInvitesAndTenants = async () => {
-      if (hasCheckedInvitesRef.current) return;
-      
+    const checkInvites = async () => {
+      hasCheckedInvitesRef.current = true;
       try {
-        hasCheckedInvitesRef.current = true;
-        setCheckingInvites(true);
-        
-        // Step 1: Accept any pending invites (best-effort, ignore errors)
-        try {
-          await invitesApi.accept();
-        } catch (error: any) {
-          // Ignore 404 or other errors - endpoint might not exist or no invites
-          // Don't log 404 errors to reduce console noise
-          if (error?.message && !error.message.includes('404') && !error.message.includes('Not Found')) {
-            console.log('Error accepting invites:', error.message);
-          }
-        }
-
-        // Step 2: Refetch tenants after accepting invites
+        await invitesApi.accept();
+        // Only refetch tenants if an invite was actually accepted
         await refetchTenants();
       } catch (error) {
-        console.error('Error in onboarding check:', error);
-      } finally {
-        setCheckingInvites(false);
+        // Best-effort: ignore errors (404, network, etc.)
+        // Don't log 404 errors to reduce console noise
+        const errorMessage = error && typeof error === 'object' && 'message' in error ? String((error as { message?: string }).message) : '';
+        if (errorMessage && !errorMessage.includes('404') && !errorMessage.includes('Not Found')) {
+          console.log('Error accepting invites (non-blocking):', errorMessage);
+        }
       }
     };
 
-    checkInvitesAndTenants();
-  }, [isLoading, refetchTenants]);
+    checkInvites();
+  }, [isOnboardingRoute, isLoading, refetchTenants]);
 
-  // Step 2: Determine next step based on tenants
-  useEffect(() => {
-    if (isLoading || checkingInvites || checkingSuperAdmin) {
-      setStep('loading');
-      return;
-    }
+  // Derive the current onboarding step purely from query state.
+  // Only block on tenants loading; super admin check is non-blocking.
+  const step: OnboardingStep = (() => {
+    if (isLoading) return 'loading';
 
     // Super admin can access admin page even without tenants
-    if (isSuperAdmin === true && location.pathname === '/admin') {
-      setStep('ready');
-      return;
-    }
+    if (isSuperAdmin === true && location.pathname === '/admin') return 'ready';
 
-    if (tenants.length >= 1) {
-      // User has tenants - TenantContext will set currentTenant automatically
-      // Wait a bit for TenantContext to update currentTenant
-      setTimeout(() => {
-        setStep('ready');
-      }, 100);
-    } else if (tenants.length === 0 && step !== 'choice') {
-      // No tenants - show choice screen
-      setStep('choice');
-    }
-  }, [tenants, isLoading, checkingInvites, checkingSuperAdmin, isSuperAdmin, location.pathname, step]);
+    if (tenants.length >= 1) return 'ready';
 
-  // Show loading state
-  if (step === 'loading' || checkingInvites || checkingSuperAdmin) {
+    return 'choice';
+  })();
+
+  // Show loading state ONLY while we fetch tenants the first time.
+  // Do NOT block on checkingSuperAdmin (it's non-blocking and gated by enabled flag).
+  if (isLoading || step === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -122,15 +84,14 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // User has tenants - show main app
+  // User has tenants - show main app immediately (no setTimeout delays)
   if (step === 'ready') {
-    // If we have tenants but no currentTenant yet, TenantContext is still updating
-    // Wait a moment and show app anyway (TenantContext will set it)
     if (tenants.length > 0) {
       return <>{children}</>;
     }
     // If step is ready but no tenants, something went wrong - show choice
-    setStep('choice');
+    // This shouldn't happen, but handle gracefully
+    return <Navigate to="/onboarding" replace />;
   }
 
   // Choice screen - new store vs existing store

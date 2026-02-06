@@ -23,30 +23,20 @@ function getPreferenceKey(layoutKey: LayoutKey): string {
 }
 
 /**
- * Load layout from database (with localStorage fallback)
+ * Load layout from localStorage only (no API call).
+ * 
+ * CRITICAL: This function does NOT make API calls to prevent duplicate requests during boot.
+ * Table layout should come through bootstrap and be accessed via useTableLayout() hook.
+ * 
+ * This function is kept for backward compatibility and fallback scenarios.
+ * 
  * @param layoutKey - The layout key (e.g., 'productsTable', 'priceHistoryTable')
  */
 export async function loadLayout(layoutKey: LayoutKey = 'productsTable'): Promise<Partial<ColumnLayout> | null> {
-  const PREFERENCE_KEY = getPreferenceKey(layoutKey);
   const STORAGE_KEY = getStorageKey(layoutKey);
   
-  try {
-    // Try database first
-    const dbLayout = await settingsApi.getPreference<Partial<ColumnLayout>>(PREFERENCE_KEY);
-    if (dbLayout) {
-      // Also sync to localStorage as backup
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(dbLayout));
-      } catch {
-        // Ignore localStorage errors
-      }
-      return dbLayout;
-    }
-  } catch (error) {
-    console.warn(`Failed to load column layout (${layoutKey}) from database, trying localStorage:`, error);
-  }
-
-  // Fallback to localStorage
+  // Only use localStorage - no API call to prevent duplicate requests during boot
+  // Table layout comes through bootstrap and should be accessed via useTableLayout() hook
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;

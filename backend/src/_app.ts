@@ -12,6 +12,7 @@ import importRouter from './routes/import.js';
 import exportRouter from './routes/export.js';
 import resetRouter from './routes/reset.js';
 import adminRouter from './routes/admin.js';
+import bootstrapRouter from './routes/bootstrap.js';
 
 export function createApp() {
   const app = express();
@@ -58,6 +59,7 @@ export function createApp() {
   app.use('/api/export', exportRouter);
   app.use('/api/tenant/reset', resetRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/bootstrap', bootstrapRouter);
 
   // 404 handler for undefined routes
   app.use((req, res) => {
