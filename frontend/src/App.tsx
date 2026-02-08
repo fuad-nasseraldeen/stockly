@@ -217,7 +217,7 @@ function App() {
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setShowInitialSplash(false);
-    }, 2000); // 2s – תואם לאנימציית הספלאש החדשה
+    }, 3500); // 3.5s – תואם לאנימציית הספלאש החדשה (0.5s גדילה + 2s נשאר + 1s נעלם)
 
     return () => window.clearTimeout(timeout);
   }, []);
@@ -343,7 +343,11 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
+    <>
+    {showInitialSplash && (
+      <SplashScreen onDone={() => setShowInitialSplash(false)} />
+    )}
+        <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
       <Navigation user={user} onLogout={onLogout} />
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="w-full max-w-6xl">
@@ -369,6 +373,9 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
         </div>
       </main>
     </div>
+  </>
+
+
   );
 }
 
