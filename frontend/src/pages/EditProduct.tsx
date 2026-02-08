@@ -14,9 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ArrowRight, ArrowLeft, Plus, X, FileText, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
-import { mergeWithDefaults } from '../lib/column-layout-storage';
-import { useTableLayout } from '../hooks/useTableLayout';
+import type { Settings as SettingsType } from '../lib/column-resolver';
 import { netToGross } from '../lib/pricing-rules';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
@@ -96,9 +94,6 @@ export default function EditProduct() {
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
   };
-  
-  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
-  const { data: savedLayout } = useTableLayout('priceHistoryTable');
   
   // Listen for layout changes (when user saves layout in Settings page)
   useEffect(() => {

@@ -16,9 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { productsApi, type Product } from '../lib/api';
-import { getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
-import { mergeWithDefaults } from '../lib/column-layout-storage';
-import { useTableLayout } from '../hooks/useTableLayout';
+import type { Settings as SettingsType } from '../lib/column-resolver';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
@@ -162,9 +160,6 @@ export default function Products() {
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
   }), [useVat, useMargin, vatPercent, settings?.global_margin_percent]);
-  
-  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
-  const { data: savedLayout } = useTableLayout('productsTable');
   
   // Listen for layout changes (when user saves layout in Settings page)
   useEffect(() => {
