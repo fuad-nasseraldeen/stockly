@@ -242,7 +242,7 @@ function App() {
 
   // Splash פתיחה – לפני שמגיעים בכלל למסכי לוגאין/רישום
   if (showInitialSplash && !user) {
-    return <SplashScreen mode="enter" />;
+    return <SplashScreen onDone={() => setShowInitialSplash(false)} />;
   }
 
   if (loading) {
@@ -343,11 +343,7 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
   }
 
   return (
-    <>
-    {showInitialSplash && (
-      <SplashScreen onDone={() => setShowInitialSplash(false)} />
-    )}
-        <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
+    <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
       <Navigation user={user} onLogout={onLogout} />
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="w-full max-w-6xl">
@@ -373,9 +369,6 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
         </div>
       </main>
     </div>
-  </>
-
-
   );
 }
 
