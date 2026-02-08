@@ -280,7 +280,8 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
-              <Route path="*" element={<Navigate to="/login" />} />
+              <Route path="/" element={<Login />} />
+              <Route path="*" element={<Login />} />
             </Routes>
           </motion.div>
         </AnimatePresence>
