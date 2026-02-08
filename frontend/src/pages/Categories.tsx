@@ -184,7 +184,7 @@ export default function Categories() {
                           : '-'}
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -234,7 +234,7 @@ export default function Categories() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="categoryMargin">אחוז רווח ברירת מחדל</Label>
+              <Label htmlFor="categoryMargin">אחוז רווח</Label>
               <Input
                 id="categoryMargin"
                 type="number"

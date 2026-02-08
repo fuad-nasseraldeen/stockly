@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import React from 'react';
 import { useSuppliers, useCreateSupplier, useUpdateSupplier, useDeleteSupplier } from '../hooks/useSuppliers';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -6,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, ChevronDown } from 'lucide-react';
 
 type SupplierFormState = {
   id?: string;
@@ -22,6 +23,7 @@ export default function Suppliers() {
   const [form, setForm] = useState<SupplierFormState>({ name: '', phone: '', notes: '' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
 
   const { data: suppliers = [], isLoading } = useSuppliers();
   const createSupplier = useCreateSupplier();
@@ -165,45 +167,74 @@ export default function Suppliers() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
-                    <TableHead className="font-semibold">שם ספק</TableHead>
+                    <TableHead className="font-semibold">ספק</TableHead>
                     <TableHead className="font-semibold">טלפון</TableHead>
-                    <TableHead className="font-semibold">הערות</TableHead>
                     <TableHead className="font-semibold">פעולות</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSuppliers.map((s: any) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell>{s.phone || '-'}</TableCell>
-                      <TableCell>{s.notes || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEdit(s)}
-                            className="shadow-sm border-2"
-                          >
-                            <Edit className="w-4 h-4 ml-1" />
-                            ערוך
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              setSupplierToDelete({ id: s.id, name: s.name });
-                              setDeleteDialogOpen(true);
-                            }}
-                            className="shadow-sm border-2 border-destructive/20"
-                          >
-                            <Trash2 className="w-4 h-4 ml-1" />
-                            מחק
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredSuppliers.map((s: any) => {
+                    const isExpanded = expandedSupplierId === s.id;
+                    
+                    return (
+                      <React.Fragment key={s.id}>
+                        <TableRow 
+                          className="cursor-pointer hover:bg-muted/50 active:bg-muted border-b border-border touch-manipulation"
+                          onClick={() => setExpandedSupplierId(isExpanded ? null : s.id)}
+                        >
+                          <TableCell className="font-semibold">{s.name}</TableCell>
+                          <TableCell>{s.phone || '-'}</TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openEdit(s)}
+                                className="shadow-sm border-2"
+                              >
+                                <Edit className="w-4 h-4 ml-1" />
+                                ערוך
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  setSupplierToDelete({ id: s.id, name: s.name });
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="shadow-sm border-2 border-destructive/20"
+                              >
+                                <Trash2 className="w-4 h-4 ml-1" />
+                                מחק
+                              </Button>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <ChevronDown
+                              className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${
+                                isExpanded ? 'transform rotate-180' : ''
+                              }`}
+                            />
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow>
+                            <TableCell colSpan={4} className="p-0 border-b border-border">
+                              <div className="p-4 bg-muted/30">
+                                <div className="flex flex-col gap-2">
+                                  <span className="text-sm font-medium text-muted-foreground text-right">הערות</span>
+                                  <div className="w-full text-right">
+                                    <span className="text-sm text-foreground">{s.notes}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
