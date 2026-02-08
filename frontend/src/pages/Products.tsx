@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { productsApi, type Product } from '../lib/api';
-import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
+import { getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { mergeWithDefaults } from '../lib/column-layout-storage';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { downloadTablePdf } from '../lib/pdf-service';
@@ -155,9 +155,6 @@ export default function Products() {
   const useVat = settings?.use_vat === true; // Default to false if not set
   const useMargin = settings?.use_margin === true; // Default to false if not set
   
-  // Column layout management - loads from database
-  const [columnLayout, setColumnLayout] = useState<ReturnType<typeof getDefaultLayout> | null>(null);
-  
   const vatPercent = settings?.vat_percent ?? 18;
   const appSettings: SettingsType = useMemo(() => ({
     use_vat: useVat,
@@ -168,12 +165,6 @@ export default function Products() {
   
   // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
   const { data: savedLayout } = useTableLayout('productsTable');
-  
-  // Update column layout when saved layout or settings change
-  useEffect(() => {
-    const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
-    setColumnLayout(layout);
-  }, [savedLayout, appSettings]);
   
   // Listen for layout changes (when user saves layout in Settings page)
   useEffect(() => {

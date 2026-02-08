@@ -4,7 +4,7 @@ import { useProduct, useUpdateProduct, useAddProductPrice, useUpdateProductPrice
 import { useCategories } from '../hooks/useCategories';
 import { useSuppliers, useCreateSupplier } from '../hooks/useSuppliers';
 import { useSettings } from '../hooks/useSettings';
-import type { Supplier } from '../lib/api';
+import type { Supplier, ProductPrice } from '../lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ArrowRight, ArrowLeft, Plus, X, FileText, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
-import { getDefaultLayout, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
+import { getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { mergeWithDefaults } from '../lib/column-layout-storage';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { netToGross } from '../lib/pricing-rules';
@@ -85,9 +85,6 @@ export default function EditProduct() {
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
   
-  // Column layout management - loads from database (set in Settings page)
-  const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
-  
   const vatPercent = settings?.vat_percent ?? 18;
   const useMargin = settings?.use_margin === true;
   const useVat = settings?.use_vat === true;
@@ -102,12 +99,6 @@ export default function EditProduct() {
   
   // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
   const { data: savedLayout } = useTableLayout('priceHistoryTable');
-  
-  // Update column layout when saved layout or settings change
-  useEffect(() => {
-    const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
-    setColumnLayout(layout);
-  }, [savedLayout, useVat, useMargin, vatPercent, settings?.global_margin_percent]);
   
   // Listen for layout changes (when user saves layout in Settings page)
   useEffect(() => {
