@@ -122,8 +122,6 @@ export default function EditProduct() {
     };
   }, []);
   
-  // Use default layout while loading
-  const effectiveLayout = columnLayout || getDefaultLayout(appSettings);
 
   useEffect(() => {
     if (product) {
@@ -523,7 +521,7 @@ export default function EditProduct() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {currentPrices.map((price) => {
+                    {currentPrices.map((price: ProductPrice) => {
                       const supplier = suppliers.find(s => s.id === price.supplier_id);
                       const priceId = price.id || `${price.supplier_id}-${price.created_at}`;
                       const isExpanded = expandedPriceId === priceId;

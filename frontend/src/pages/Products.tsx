@@ -16,7 +16,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { productsApi, type Product } from '../lib/api';
-import { PriceTable } from '../components/price-table/PriceTable';
 import { resolveColumns, getDefaultLayout, type Settings as SettingsType } from '../lib/column-resolver';
 import { mergeWithDefaults } from '../lib/column-layout-storage';
 import { useTableLayout } from '../hooks/useTableLayout';
@@ -189,7 +188,6 @@ export default function Products() {
     };
   }, []);
   
-  const availableColumns = columnLayout ? resolveColumns(appSettings, columnLayout) : [];
 
   const closeHistory = () => {
     setHistoryOpen(false);
@@ -271,12 +269,11 @@ export default function Products() {
       const BOM = '\uFEFF';
       let csv =
         BOM +
-        'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+        'product_name,sku,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,category,last_updated\n';
 
       for (const p of allProducts) {
         const productName = p?.name ?? '';
         const sku = p?.sku ?? '';
-        const packageQuantity = p?.package_quantity ?? '';
         const categoryName = p?.category?.name ?? 'כללי';
         const prices = Array.isArray(p?.prices) ? p.prices : [];
 
@@ -289,17 +286,18 @@ export default function Products() {
           const marginPercent = price?.margin_percent ?? '';
           const sellPrice = price?.sell_price ?? '';
           const lastUpdated = price?.created_at ? new Date(price.created_at).toLocaleDateString('he-IL') : '';
+          const packageQty = price?.package_quantity ?? '';
 
           csv +=
             `${csvEscape(productName)},` +
             `${csvEscape(sku)},` +
-            `${packageQuantity},` +
             `${csvEscape(supplierName)},` +
             `${costPrice},` +
             `${discountPercent},` +
             `${costPriceAfterDiscount},` +
             `${marginPercent},` +
             `${sellPrice},` +
+            `${packageQty},` +
             `${csvEscape(categoryName)},` +
             `${csvEscape(lastUpdated)}\n`;
         }
@@ -796,12 +794,7 @@ export default function Products() {
                           <span className="px-2 py-1 bg-muted rounded-md border border-border/50">מק&quot;ט: {product.sku}</span>
                         </>
                       )}
-                      {product.package_quantity && Number(product.package_quantity) !== 1 && (
-                        <>
-                          <span>•</span>
-                          <span className="px-2 py-1 bg-muted rounded-md border border-border/50">כמות באריזה: {product.package_quantity}</span>
-                        </>
-                      )}
+                      {/* package_quantity is now per supplier (in price_entries), not per product */}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">

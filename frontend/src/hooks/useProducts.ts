@@ -91,7 +91,7 @@ export function useUpdateProduct() {
       // Return context for rollback
       return { previousProduct, previousProductsList };
     },
-    onError: (err, variables, context) => {
+    onError: (_err, variables, context) => {
       // Rollback on error
       if (context?.previousProduct) {
         queryClient.setQueryData(['product', variables.id], context.previousProduct);
