@@ -1,73 +1,181 @@
-# React + TypeScript + Vite
+# Stockly Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application for Stockly - מערכת ניהול מלאי ומחירים.
 
-Currently, two official plugins are available:
+## 🛠️ טכנולוגיות
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React** 18.2.0 - ספריית UI
+- **TypeScript** 5.9.3 - טיפוסים סטטיים
+- **Vite** 7.2.4 - Build tool ו-dev server
+- **React Router DOM** 6.21.0 - ניתוב (routing)
+- **React Query (@tanstack/react-query)** 5.90.19 - ניהול state ושרתים (caching, synchronization)
+- **Tailwind CSS** 4.0.0 - עיצוב utility-first
+- **Supabase JS** 2.91.0 - לקוח Supabase לאימות ומסד נתונים
+- **React Hook Form** 7.71.1 - ניהול טפסים
+- **Zod** 4.3.5 - ולידציה של סכמות
+- **Lucide React** 0.562.0 - ספריית אייקונים
+- **Framer Motion** 10.16.4 - אנימציות
+- **@dnd-kit** - Drag and drop לניהול עמודות בטבלאות
+- **class-variance-authority** 0.7.1 - ניהול variants של קומפוננטות
+- **clsx** & **tailwind-merge** - שילוב classes של Tailwind
 
-## React Compiler
+## 📁 מבנה הפרויקט
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+frontend/
+├── src/
+│   ├── App.tsx                 # רכיב ראשי + routing + OnboardingRouter
+│   ├── main.tsx                # נקודת כניסה
+│   ├── pages/                  # דפי האפליקציה
+│   │   ├── Login.tsx           # דף התחברות
+│   │   ├── Signup.tsx          # דף הרשמה
+│   │   ├── Products.tsx        # רשימת מוצרים + מחירים + חיפוש מתקדם
+│   │   ├── NewProduct.tsx      # הוספת מוצר חדש
+│   │   ├── EditProduct.tsx     # עריכת מוצר + הוספת מחירים
+│   │   ├── Categories.tsx      # ניהול קטגוריות
+│   │   ├── Suppliers.tsx       # ניהול ספקים
+│   │   ├── ImportExport.tsx    # ייבוא/ייצוא + איפוס נתונים
+│   │   ├── Settings.tsx        # הגדרות מערכת (מע״מ, פרופיל משתמש)
+│   │   ├── Admin.tsx           # דף ניהול מערכת (super admin בלבד)
+│   │   ├── CreateTenant.tsx   # יצירת חנות חדשה (tenant)
+│   │   └── NoAccess.tsx        # אין גישה לחנות קיימת / המתנה להזמנה
+│   ├── components/             # רכיבי UI
+│   │   ├── ui/                # רכיבי UI בסיסיים (Button, Card, Dialog, וכו')
+│   │   ├── OnboardingRouter.tsx  # ניתוב אוטומטי לפי מצב המשתמש
+│   │   ├── TenantSwitcher.tsx    # החלפת חנויות
+│   │   ├── PriceTable.tsx        # טבלת מחירים עם ניהול עמודות
+│   │   └── ...
+│   ├── contexts/              # React Contexts
+│   │   └── TenantContext.tsx  # ניהול tenant נוכחי
+│   ├── hooks/                 # React Query hooks + עזר
+│   │   ├── useProducts.ts     # hooks למוצרים
+│   │   ├── useCategories.ts   # hooks לקטגוריות
+│   │   ├── useSuppliers.ts    # hooks לספקים
+│   │   ├── useSettings.ts     # hooks להגדרות
+│   │   ├── useDebounce.ts     # דיבאונס לחיפושים
+│   │   ├── useSuperAdmin.ts   # בדיקת super admin status
+│   │   ├── useAdmin.ts        # hooks לניהול מערכת
+│   │   ├── useTenant.ts       # hook לניהול tenant
+│   │   ├── useBootstrap.ts    # hook לטעינה אופטימלית של נתונים
+│   │   └── useTableLayout.ts  # hook לניהול פריסת טבלאות
+│   └── lib/                   # ספריות עזר
+│       ├── api.ts             # API client
+│       ├── supabase.ts        # Supabase client
+│       ├── react-query.tsx    # React Query provider
+│       └── utils/             # פונקציות עזר
+├── package.json
+└── vite.config.ts
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🚀 התקנה והפעלה
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### התקנת תלויות
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+### משתני סביבה
+
+צור קובץ `.env`:
+
+```env
+VITE_API_URL=http://localhost:3001
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_public_key
+```
+
+### הפעלה בפיתוח
+
+```bash
+npm run dev
+```
+
+האפליקציה תהיה זמינה ב-http://localhost:5173
+
+### בנייה לייצור
+
+```bash
+npm run build
+```
+
+הקבצים הבנויים יהיו בתיקיית `dist/`
+
+### תצוגה מקדימה של build
+
+```bash
+npm run preview
+```
+
+### בדיקת lint
+
+```bash
+npm run lint
+```
+
+## 🎯 תכונות עיקריות
+
+### ניהול מוצרים
+- רשימת מוצרים עם pagination
+- חיפוש מתקדם (fuzzy search)
+- סינון לפי ספק וקטגוריה
+- מיון לפי מחיר ותאריך
+- עריכה והוספת מחירים
+- היסטוריית מחירים
+
+### ניהול ספקים וקטגוריות
+- CRUD מלא לספקים
+- CRUD מלא לקטגוריות
+- מניעת כפילויות
+
+### ייבוא/ייצוא
+- ייבוא מקבצי Excel/CSV
+- ייצוא נתונים
+- איפוס נתוני חנות
+
+### הגדרות
+- הגדרת מע״מ גלובלי
+- הגדרת מרווח גלובלי
+- אפשרות להפעיל/לכבות שימוש במרווח ומע״מ
+- פרופיל משתמש
+
+### ניהול מערכת (Super Admin)
+- צפייה בכל החנויות
+- ניהול משתמשים
+- חסימה/ביטול חסימה
+- איפוס נתונים
+- צפייה ב-audit logs
+
+### התאמה אישית
+- פריסת טבלאות מותאמת אישית
+- שמירת העדפות משתמש
+- עיצוב Mobile-First
+- תמיכה מלאה ב-RTL עברית
+
+## 🔧 פיתוח
+
+### הוספת דף חדש
+
+1. צור קובץ חדש ב-`src/pages/`
+2. הוסף route ב-`src/App.tsx`
+3. הוסף קישור בתפריט הניווט (אם נדרש)
+
+### הוספת hook חדש
+
+1. צור קובץ ב-`src/hooks/`
+2. השתמש ב-`@tanstack/react-query` לניהול state
+3. השתמש ב-`src/lib/api.ts` לקריאות API
+
+### הוספת קומפוננטה חדשה
+
+1. צור קובץ ב-`src/components/`
+2. השתמש ברכיבי UI מ-`src/components/ui/`
+3. הוסף טיפוסים TypeScript
+
+## 📚 משאבים נוספים
+
+- [README הראשי](../README.md) - מדריך כללי מקיף
+- [React Documentation](https://react.dev/)
+- [React Query Documentation](https://tanstack.com/query/latest)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [Vite Documentation](https://vite.dev/)

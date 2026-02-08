@@ -39,8 +39,14 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 ### 3️⃣ הגדרת מסד נתונים
 
 1. פתח **Supabase Dashboard** → **SQL Editor**
-2. הרץ את: `supabase/migrations/complete_schema.sql`
-3. (אופציונלי) הרץ גם: `supabase/migrations/002_views_settings.sql`
+2. הפעל את ה-extension הנדרש:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS pg_trgm;
+   ```
+3. הרץ את המיגרציות בסדר (לפי המספרים):
+   - התחל מ-`supabase/migrations/0001_schema.sql`
+   - המשך לפי הסדר: 0002, 0003, 0004... עד 0021
+   - ראה [supabase/README.md](../../supabase/README.md) לפרטים מלאים
 
 ### 4️⃣ הפעלת השרתים
 

@@ -158,33 +158,54 @@ VITE_SUPABASE_ANON_KEY=your_anon_public_key_here
 1. ב-Supabase Dashboard, לחץ על **SQL Editor** בתפריט השמאלי
 2. לחץ על **"New query"**
 
-### שלב 2: הרצת המיגרציה הבסיסית
+### שלב 2: הפעלת Extension
 
-1. פתח את הקובץ: `supabase/migrations/complete_schema.sql`
+לפני הרצת המיגרציות, הפעל את ה-extension הנדרש:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
+
+> ⚠️ **חשוב:** `pg_trgm` נדרש למיגרציה 0008 (fuzzy search)
+
+### שלב 3: הרצת המיגרציות
+
+1. פתח את הקובץ: `supabase/migrations/0001_schema.sql`
 2. העתק את כל התוכן
 3. הדבק ב-SQL Editor
 4. לחץ על **"Run"** (או Ctrl+Enter)
 
 המיגרציה תצור:
-- ✅ כל הטבלאות (profiles, categories, suppliers, products, price_entries, settings)
+- ✅ כל הטבלאות (profiles, tenants, memberships, categories, suppliers, products, price_entries, settings)
 - ✅ כל ה-Views (product_supplier_current_price, product_price_summary)
 - ✅ כל ה-RLS Policies
 - ✅ Triggers (auto-create profile, update name_norm)
 - ✅ קטגוריית ברירת מחדל "כללי"
 
-### שלב 3: הרצת מיגרציות נוספות (אם נדרש)
+### שלב 4: הרצת מיגרציות נוספות
 
-#### מיגרציה 2: Views ו-Settings
-```sql
--- הרץ את: supabase/migrations/002_views_settings.sql
-```
+הרץ את המיגרציות הנוספות **בסדר המספרים**:
+- `0002_rls_policies.sql` - RLS policies
+- `0003_migrate_existing_data.sql` - מיגרציה של נתונים קיימים (אופציונלי)
+- `0004_backfill_profiles.sql` - מילוי profiles (אופציונלי)
+- `0005_global_margin.sql` - מרווח גלובלי
+- `0006_Delete_reset_allDataBase.sql` - איפוס נתונים (אופציונלי)
+- `0007_add_search_indexes.sql` - indexes לחיפוש
+- `0008_fuzzy_product_search.sql` - fuzzy search (דורש pg_trgm)
+- `0009_user_management.sql` - ניהול משתמשים
+- `0010_super_admin.sql` - מערכת super admin
+- `0012_fix_memberships_display.sql` - תיקון תצוגת memberships
+- `0013_fix_super_admin.sql` - תיקון super admin
+- `0014_add_product_fields.sql` - שדות מוצר נוספים (SKU, הנחות)
+- `0015_add_use_margin_setting.sql` - הגדרת שימוש במרווח
+- `0016_add_use_vat_setting.sql` - הגדרת שימוש במע״מ
+- `0017_fix_min_price_calculation.sql` - תיקון חישוב מחיר מינימום
+- `0018_optimize_product_search.sql` - אופטימיזציה לחיפוש
+- `0019_change_default_margin_vat.sql` - שינוי ברירת מחדל
+- `0020_add_package_quantity_to_price_entries.sql` - כמות יחידות באריזה
+- `0021_add_user_preferences.sql` - העדפות משתמש
 
-#### מיגרציה 3: עדכון RLS Policies
-```sql
--- הרץ את: supabase/migrations/update_policies_RLS.sql
-```
-
-> 💡 **טיפ:** אם יש שגיאות, בדוק ב-Console של Supabase מה הבעיה. בדרך כלל זה אומר שטבלאות/views כבר קיימים.
+> 💡 **טיפ:** ראה [supabase/README.md](../../supabase/README.md) לפרטים מלאים על כל המיגרציות.
 
 ---
 

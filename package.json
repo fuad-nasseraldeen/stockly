@@ -1,0 +1,15 @@
+{
+  "name": "stockly",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:all",
+    "test:all": "node scripts/run-all-tests.js",
+    "test:frontend": "cd frontend && npm test -- --run",
+    "test:backend": "cd backend && npm test -- --run",
+    "test:coverage": "npm run test:coverage:frontend && npm run test:coverage:backend",
+    "test:coverage:frontend": "cd frontend && npm run test:coverage",
+    "test:coverage:backend": "cd backend && npm run test:coverage"
+  },
+  "devDependencies": {}
+}
