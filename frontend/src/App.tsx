@@ -214,13 +214,7 @@ function App() {
   }, []);
 
   // Intro splash – בכל רענון מלא של האפליקציה
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setShowInitialSplash(false);
-    }, 3500); // 3.5s – תואם לאנימציית הספלאש החדשה (0.5s גדילה + 2s נשאר + 1s נעלם)
-
-    return () => window.clearTimeout(timeout);
-  }, []);
+  // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
 
   const handleLogout = async () => {
     // CRITICAL: Sign out from Supabase first
