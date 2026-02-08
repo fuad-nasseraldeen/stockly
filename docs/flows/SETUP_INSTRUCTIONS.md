@@ -186,10 +186,10 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 הרץ את המיגרציות הנוספות **בסדר המספרים**:
 - `0002_rls_policies.sql` - RLS policies
-- `0003_migrate_existing_data.sql` - מיגרציה של נתונים קיימים (אופציונלי)
-- `0004_backfill_profiles.sql` - מילוי profiles (אופציונלי)
+- `0003_migrate_existing_data.sql` - מיגרציה של נתונים קיימים 
+- `0004_backfill_profiles.sql` - מילוי profiles 
 - `0005_global_margin.sql` - מרווח גלובלי
-- `0006_Delete_reset_allDataBase.sql` - איפוס נתונים (אופציונלי)
+- `0006_Delete_reset_allDataBase.sql` - איפוס נתונים 
 - `0007_add_search_indexes.sql` - indexes לחיפוש
 - `0008_fuzzy_product_search.sql` - fuzzy search (דורש pg_trgm)
 - `0009_user_management.sql` - ניהול משתמשים

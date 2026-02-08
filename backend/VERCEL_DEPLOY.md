@@ -43,7 +43,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 > ⚠️ **חשוב:** הוסף את המשתנים גם ל-**Production**, **Preview**, ו-**Development**.
 
-### 4. פריסה דרך CLI (אופציונלי)
+### 4. פריסה דרך CLI 
 
 ```bash
 cd backend

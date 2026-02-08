@@ -242,7 +242,7 @@ export default function Suppliers() {
                 id="supplierNotes"
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="הערות (אופציונלי)"
+                placeholder="הערות "
               />
             </div>
             {errorMessage && (

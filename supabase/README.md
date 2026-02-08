@@ -11,10 +11,10 @@
 ### מיגרציות בסיסיות (1-6)
 - **0001_schema.sql** - סכמה בסיסית (טבלאות, views, RLS, triggers)
 - **0002_rls_policies.sql** - RLS policies
-- **0003_migrate_existing_data.sql** - מיגרציה של נתונים קיימים (אופציונלי)
-- **0004_backfill_profiles.sql** - מילוי profiles (אופציונלי)
+- **0003_migrate_existing_data.sql** - מיגרציה של נתונים קיימים 
+- **0004_backfill_profiles.sql** - מילוי profiles 
 - **0005_global_margin.sql** - מרווח גלובלי
-- **0006_Delete_reset_allDataBase.sql** - איפוס נתונים (אופציונלי)
+- **0006_Delete_reset_allDataBase.sql** - איפוס נתונים 
 
 ### מיגרציות חיפוש ואופטימיזציה (7-8)
 - **0007_add_search_indexes.sql** - indexes לחיפוש מהיר

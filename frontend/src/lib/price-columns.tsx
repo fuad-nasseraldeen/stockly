@@ -9,6 +9,19 @@ import { Tooltip } from '../components/ui/tooltip';
 import { grossToNet, calculateProfitAmount } from './pricing-rules';
 import * as React from 'react';
 
+// Format cost price (including VAT) - 2 decimal places
+function formatCostPrice(num: number): string {
+  if (isNaN(num) || num === null || num === undefined) return '0';
+  return parseFloat(num.toFixed(2)).toString();
+}
+
+// Format unit price - 4 decimal places, removing trailing zeros
+function formatUnitPrice(num: number): string {
+  if (isNaN(num) || num === null || num === undefined) return '0';
+  // Use toFixed(4) to get up to 4 decimal places, then remove trailing zeros
+  return parseFloat(num.toFixed(4)).toString();
+}
+
 export type ColumnId =
   | 'supplier'
   | 'cost_gross'
@@ -44,6 +57,7 @@ export type ColumnDefinition = {
 };
 
 export type PriceData = {
+  id?: string; // Price entry ID (for edit/delete operations)
   cost_price: number; // Always gross (with VAT if VAT enabled)
   cost_price_after_discount?: number | null; // Always gross
   discount_percent?: number | null;
@@ -109,7 +123,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
       </div>
     ),
     renderCell: (price: PriceData) => (
-      <span>₪{Number(price.cost_price).toFixed(2)}</span>
+      <span>₪{formatCostPrice(Number(price.cost_price))}</span>
     ),
   },
 
@@ -123,7 +137,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
       const vatRate = (_settings.vat_percent || 18) / 100;
       const netPrice = grossToNet(Number(price.cost_price), vatRate);
-      return <span>₪{netPrice.toFixed(2)}</span>;
+      return <span>₪{formatCostPrice(netPrice)}</span>;
     },
   },
 
@@ -157,7 +171,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     ),
     renderCell: (price: PriceData) => {
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
-      return <span>₪{costAfterDiscount.toFixed(2)}</span>;
+      return <span>₪{formatCostPrice(costAfterDiscount)}</span>;
     },
   },
 
@@ -178,7 +192,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
       const vatRate = (_settings.vat_percent || 18) / 100;
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const netPrice = grossToNet(costAfterDiscount, vatRate);
-      return <span>₪{netPrice.toFixed(2)}</span>;
+      return <span>₪{formatCostPrice(netPrice)}</span>;
     },
   },
 
@@ -211,7 +225,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
       const packageQty = getPackageQuantity(price, _product);
       const cartonPrice = costAfterDiscount * packageQty;
       return (
-        <div className="font-semibold text-base">₪{cartonPrice.toFixed(2)}</div>
+        <div className="font-semibold text-base">₪{formatUnitPrice(cartonPrice)}</div>
       );
     },
   },
@@ -232,7 +246,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     renderCell: (price: PriceData) => {
       if (!price.sell_price) return <span>-</span>;
       return (
-        <span className="font-bold text-primary">₪{Number(price.sell_price).toFixed(2)}</span>
+        <span className="font-bold text-primary">₪{formatUnitPrice(Number(price.sell_price))}</span>
       );
     },
   },
@@ -247,7 +261,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     renderCell: (price: PriceData) => {
       if (!price.sell_price) return <span>-</span>;
       const profit = calculateProfitAmount(Number(price.sell_price), Number(price.cost_price_after_discount || price.cost_price));
-      return <span>₪{profit.toFixed(2)}</span>;
+      return <span>₪{formatCostPrice(profit)}</span>;
     },
   },
 

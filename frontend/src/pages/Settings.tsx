@@ -276,7 +276,7 @@ export default function Settings() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="globalMargin">אחוז רווח גלובלי (אופציונלי)</Label>
+              <Label htmlFor="globalMargin">אחוז רווח גלובלי </Label>
               <Input
                 id="globalMargin"
                 type="number"
@@ -556,7 +556,7 @@ export default function Settings() {
                 id="fullName"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder={fullName ? fullName : 'שם משתמש (אופציונלי)'}
+                placeholder={fullName ? fullName : 'שם משתמש '}
               />
             </div>
           </div>
@@ -568,7 +568,7 @@ export default function Settings() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="סיסמה חדשה (אופציונלי)"
+                placeholder="סיסמה חדשה "
                 className="pr-10"
               />
               <button

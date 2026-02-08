@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useProducts, useDeleteProduct, useProductPriceHistory } from '../hooks/useProducts';
@@ -13,7 +13,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { productsApi, type Product } from '../lib/api';
 import { PriceTable } from '../components/price-table/PriceTable';
@@ -24,6 +24,7 @@ import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { ProductsSkeleton } from '../components/ProductsSkeleton';
+import { grossToNet } from '../lib/pricing-rules';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -85,6 +86,7 @@ export default function Products() {
   const [historyProductId, setHistoryProductId] = useState<string | null>(null);
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [expandedPriceId, setExpandedPriceId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -127,6 +129,19 @@ export default function Products() {
     } catch (error) {
       console.error('Error deleting product:', error);
     }
+  };
+
+  // Format cost price (including VAT) - 2 decimal places
+  const formatCostPrice = (num: number): string => {
+    if (isNaN(num) || num === null || num === undefined) return '0';
+    return parseFloat(num.toFixed(2)).toString();
+  };
+
+  // Format unit price - 4 decimal places, removing trailing zeros
+  const formatUnitPrice = (num: number): string => {
+    if (isNaN(num) || num === null || num === undefined) return '0';
+    // Use toFixed(4) to get up to 4 decimal places, then remove trailing zeros
+    return parseFloat(num.toFixed(4)).toString();
   };
 
   const formatPrice = (price: number) => {
@@ -683,58 +698,64 @@ export default function Products() {
           <CardTitle className="text-xl font-bold">חיפוש וסינון</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">חיפוש</Label>
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="חיפוש לפי שם מוצר או מק&quot;ט..."
-                  value={search}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pr-10"
-                />
+          <div className="space-y-4">
+            {/* First row: Search and Sort */}
+            <div className="grid grid-cols-10 gap-4">
+              <div className="space-y-2 col-span-7">
+                <Label className="text-sm font-medium">חיפוש</Label>
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="חיפוש לפי שם מוצר או מק&quot;ט..."
+                    value={search}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pr-10"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 col-span-3">
+                <Label className="text-sm font-medium">מיון</Label>
+                <Select
+                  value={sort}
+                  onChange={(e) => handleSortChange(e.target.value as SortOption)}
+                >
+                  <option value="updated_desc">עודכן לאחרונה (חדש→ישן)</option>
+                  <option value="updated_asc">עודכן לאחרונה (ישן→חדש)</option>
+                  <option value="price_asc">מחיר (נמוך→גבוה)</option>
+                  <option value="price_desc">מחיר (גבוה→נמוך)</option>
+                </Select>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">ספק</Label>
-              <Select
-                value={supplierFilter}
-                onChange={(e) => handleSupplierFilterChange(e.target.value)}
-              >
-                <option value="">כל הספקים</option>
-                {suppliers?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">קטגוריה</Label>
-              <Select
-                value={categoryFilter}
-                onChange={(e) => handleCategoryFilterChange(e.target.value)}
-              >
-                <option value="">כל הקטגוריות</option>
-                {categories?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">מיון</Label>
-              <Select
-                value={sort}
-                onChange={(e) => handleSortChange(e.target.value as SortOption)}
-              >
-                <option value="updated_desc">עודכן לאחרונה (חדש→ישן)</option>
-                <option value="updated_asc">עודכן לאחרונה (ישן→חדש)</option>
-                <option value="price_asc">מחיר (נמוך→גבוה)</option>
-                <option value="price_desc">מחיר (גבוה→נמוך)</option>
-              </Select>
+            {/* Second row: Supplier and Category */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">ספק</Label>
+                <Select
+                  value={supplierFilter}
+                  onChange={(e) => handleSupplierFilterChange(e.target.value)}
+                >
+                  <option value="">כל הספקים</option>
+                  {suppliers?.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">קטגוריה</Label>
+                <Select
+                  value={categoryFilter}
+                  onChange={(e) => handleCategoryFilterChange(e.target.value)}
+                >
+                  <option value="">כל הקטגוריות</option>
+                  {categories?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -787,7 +808,7 @@ export default function Products() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`/products/${product.id}/edit`)}
+                      onClick={() => navigate(`/products/${product.id}/edit`, { state: { product } })}
                       className="shadow-sm border-2"
                     >
                       <Edit className="w-4 h-4 ml-1" />
@@ -834,30 +855,97 @@ export default function Products() {
                   {product.prices && product.prices.length > 0 ? (
                     <div>
                       <h4 className="text-base font-bold mb-4 text-foreground">מחירים לפי ספק (נמוך ראשון):</h4>
-                      <div className="overflow-x-auto rounded-lg border-2 border-border shadow-sm">
-                        {availableColumns.length > 0 ? (
-                          <PriceTable
-                            prices={product.prices}
-                            product={product}
-                            settings={appSettings}
-                            columns={availableColumns}
-                            renderActions={(price) => (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setHistoryProductId(product.id);
-                                  setHistorySupplierId(price.supplier_id);
-                                  setHistoryOpen(true);
-                                }}
-                              >
-                                היסטוריית מחירים
-                              </Button>
-                            )}
-                          />
-                        ) : (
-                          <div className="p-4 text-center text-muted-foreground">טוען תבנית עמודות...</div>
-                        )}
+                      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="border-b border-border">
+                              <TableHead className="font-semibold">ספק</TableHead>
+                              <TableHead className="font-semibold">מחיר עלות</TableHead>
+                              <TableHead className="font-semibold">מחיר לקרטון</TableHead>
+                              <TableHead className="w-12"></TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {product.prices.map((price) => {
+                              const priceId = `${product.id}-${price.supplier_id}-${price.created_at}`;
+                              const isExpanded = expandedPriceId === priceId;
+                              
+                              // Calculate values for display
+                              const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
+                              const packageQty = Number(price.package_quantity) || 1;
+                              const cartonPrice = costAfterDiscount * packageQty;
+                              const costPriceNet = useVat && costAfterDiscount > 0 && vatPercent > 0
+                                ? grossToNet(costAfterDiscount, vatPercent / 100)
+                                : costAfterDiscount;
+                              const costPriceBeforeDiscountNet = useVat && Number(price.cost_price) > 0 && vatPercent > 0
+                                ? grossToNet(Number(price.cost_price), vatPercent / 100)
+                                : Number(price.cost_price);
+                              
+                              // Prepare fields for accordion content (with labels)
+                              const fields = [
+                                { label: 'מחיר עלות כולל מע"מ', value: `₪${formatUnitPrice(Number(price.cost_price))}` },
+                                ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
+                                ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
+                                { label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                                ...(useVat ? [{ label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
+                                { label: 'כמות יחידות בקרטון', value: `${packageQty} יחידות` },
+                                ...(useMargin && price.sell_price ? [{ label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
+                                ...(useMargin && price.margin_percent ? [{ label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
+                              ];
+                              
+                              return (
+                                <React.Fragment key={priceId}>
+                                  <TableRow 
+                                    className="cursor-pointer hover:bg-muted/50 active:bg-muted border-b border-border touch-manipulation"
+                                    onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
+                                  >
+                                    <TableCell className="font-semibold">{price.supplier_name || 'לא ידוע'}</TableCell>
+                                    <TableCell>₪{formatUnitPrice(Number(price.cost_price))}</TableCell>
+                                    <TableCell className="text-primary font-medium">₪{formatCostPrice(cartonPrice)}</TableCell>
+                                    <TableCell>
+                                      <ChevronDown
+                                        className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${
+                                          isExpanded ? 'transform rotate-180' : ''
+                                        }`}
+                                      />
+                                    </TableCell>
+                                  </TableRow>
+                                  {isExpanded && (
+                                    <TableRow>
+                                      <TableCell colSpan={4} className="p-0 border-b border-border">
+                                        <div className="p-4 bg-muted/30">
+                                          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                                            {fields.map((field, idx) => (
+                                              <div key={idx} className="flex items-center gap-2 border-b border-border/50 pb-2">
+                                                <span className="text-sm font-medium text-muted-foreground">{field.label}</span>
+                                                <span className={`text-sm font-semibold ${field.highlight ? 'text-primary' : 'text-foreground'}`}>{field.value}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setHistoryProductId(product.id);
+                                                setHistorySupplierId(price.supplier_id);
+                                                setHistoryOpen(true);
+                                              }}
+                                            >
+                                              <FileText className="w-4 h-4 ml-1" />
+                                              היסטוריית מחירים
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
                       </div>
                     </div>
                   ) : (
@@ -1046,26 +1134,26 @@ export default function Products() {
                     return (
                       <TableRow key={row.id}>
                         <TableCell className="whitespace-nowrap">{formatDate(row.created_at)}</TableCell>
-                        <TableCell className="whitespace-nowrap">{formatPrice(costPriceWithVat)}</TableCell>
+                        <TableCell className="whitespace-nowrap">₪{formatCostPrice(costPriceWithVat)}</TableCell>
                         {useVat && (
-                          <TableCell className="whitespace-nowrap">{formatPrice(costPriceBeforeVat)}</TableCell>
+                          <TableCell className="whitespace-nowrap">₪{formatCostPrice(costPriceBeforeVat)}</TableCell>
                         )}
                         <TableCell className="whitespace-nowrap text-center">
                           {row.discount_percent && Number(row.discount_percent) > 0 
                             ? `${Number(row.discount_percent).toFixed(1)}%`
                             : '-'}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{formatPrice(costAfterDiscountWithVat)}</TableCell>
+                        <TableCell className="whitespace-nowrap">₪{formatCostPrice(costAfterDiscountWithVat)}</TableCell>
                         {useVat && (
-                          <TableCell className="whitespace-nowrap">{formatPrice(costAfterDiscountBeforeVat)}</TableCell>
+                          <TableCell className="whitespace-nowrap">₪{formatCostPrice(costAfterDiscountBeforeVat)}</TableCell>
                         )}
                         <TableCell className="whitespace-nowrap">{packageQty} יח`</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">
-                          <div>{formatPrice(cartonPrice)}</div>
+                          <div>₪{formatUnitPrice(cartonPrice)}</div>
                         </TableCell>
                         {useMargin && (
                           <TableCell className="font-bold text-primary whitespace-nowrap">
-                            {formatPrice(Number(row.sell_price))}
+                            ₪{formatUnitPrice(Number(row.sell_price))}
                           </TableCell>
                         )}
                       </TableRow>

@@ -28,7 +28,7 @@ export type Product = {
   category_id: string | null;
   unit: 'unit' | 'kg' | 'liter';
   sku?: string | null;
-  package_quantity?: number;
+  // package_quantity removed - it's now only in price_entries (supplier-specific)
   supplier_id: string;
   cost_price: number;
   margin_percent: number | null;
@@ -299,13 +299,13 @@ export const productsApi = {
   
   get: (id: string): Promise<Product> => apiRequest<Product>(`/api/products/${id}`),
   
-  create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; sku?: string | null; package_quantity?: number; supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number }) =>
+  create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; sku?: string | null; supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
     apiRequest('/api/products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   
-  update: (id: string, data: { name?: string; category_id?: string | null; unit?: 'unit' | 'kg' | 'liter'; sku?: string | null; package_quantity?: number }) =>
+  update: (id: string, data: { name?: string; category_id?: string | null; unit?: 'unit' | 'kg' | 'liter'; sku?: string | null }) =>
     apiRequest(`/api/products/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -316,10 +316,21 @@ export const productsApi = {
       method: 'DELETE',
     }),
   
-  addPrice: (id: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number }) =>
+  addPrice: (id: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
     apiRequest(`/api/products/${id}/prices`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  
+  updatePrice: (id: string, priceId: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
+    apiRequest(`/api/products/${id}/prices/${priceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  
+  deletePrice: (id: string, supplierId: string) =>
+    apiRequest(`/api/products/${id}/prices/supplier/${supplierId}`, {
+      method: 'DELETE',
     }),
   
   getPriceHistory: (id: string, supplier_id?: string): Promise<ProductPrice[]> => {

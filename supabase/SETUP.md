@@ -16,7 +16,7 @@
 -- 2. הרץ את 0002_rls_policies.sql
 -- העתק את כל התוכן מהקובץ והרץ
 
--- 3. (אופציונלי) אם יש לך נתונים קיימים, הרץ את 0003_migrate_existing_data.sql
+-- 3.  אם יש לך נתונים קיימים, הרץ את 0003_migrate_existing_data.sql
 ```
 
 ### אופציה B: דרך Supabase CLI

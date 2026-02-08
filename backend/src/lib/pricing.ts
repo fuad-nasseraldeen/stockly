@@ -2,10 +2,14 @@ export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+export function round4(n: number): number {
+  return Math.round((n + Number.EPSILON) * 10000) / 10000;
+}
+
 export function calcCostAfterDiscount(cost_price: number, discount_percent: number): number {
   if (discount_percent <= 0) return cost_price;
   const discountAmount = cost_price * (discount_percent / 100);
-  return round2(cost_price - discountAmount);
+  return round4(cost_price - discountAmount);
 }
 
 export function calcSellPrice(params: {

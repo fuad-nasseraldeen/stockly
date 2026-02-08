@@ -15,6 +15,7 @@ DROP VIEW IF EXISTS product_supplier_current_price CASCADE;
 
 CREATE VIEW product_supplier_current_price AS
 SELECT DISTINCT ON (pe.tenant_id, pe.product_id, pe.supplier_id)
+  pe.id,
   pe.tenant_id,
   pe.product_id,
   pe.supplier_id,

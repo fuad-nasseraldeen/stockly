@@ -17,6 +17,12 @@ CREATE INDEX IF NOT EXISTS idx_user_preferences_user_tenant_key
 -- Add RLS policies
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view their own preferences" ON user_preferences;
+DROP POLICY IF EXISTS "Users can insert their own preferences" ON user_preferences;
+DROP POLICY IF EXISTS "Users can update their own preferences" ON user_preferences;
+DROP POLICY IF EXISTS "Users can delete their own preferences" ON user_preferences;
+
 -- Users can only see their own preferences
 CREATE POLICY "Users can view their own preferences"
   ON user_preferences

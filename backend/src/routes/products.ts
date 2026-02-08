@@ -4,7 +4,7 @@ import { performance } from 'perf_hooks';
 import { randomUUID } from 'crypto';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
-import { calcSellPrice, calcCostAfterDiscount, round2 } from '../lib/pricing.js';
+import { calcSellPrice, calcCostAfterDiscount, round2, round4 } from '../lib/pricing.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
@@ -61,7 +61,7 @@ const productSchema = z.object({
   category_id: z.string().uuid().nullable().optional(),
   unit: z.enum(['unit', 'kg', 'liter']).optional(),
   sku: z.string().trim().optional().nullable(),
-  package_quantity: z.coerce.number().min(0.01, 'כמות באריזה חייבת להיות גדולה מ-0').optional(),
+  // package_quantity removed - it's now only in price_entries (supplier-specific)
 });
 
 const priceSchema = z.object({
@@ -309,7 +309,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     const productsQueryStart = performance.now();
     const { data: pageProducts, error: productsErr } = await supabase
       .from('products')
-      .select('id,name,category_id,unit,sku,package_quantity,created_at,categories(id,name,default_margin_percent)')
+      .select('id,name,category_id,unit,sku,created_at,categories(id,name,default_margin_percent)')
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true)
       .in('id', pageProductIds);
@@ -512,12 +512,23 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
 
     if (error) throw error;
     // Add current prices per supplier + summary
-    const { data: current } = await supabase
-      .from('product_supplier_current_price')
-      // NOTE: product_id is omitted intentionally (we already know `id` from the route param)
-      .select('supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+    // Get latest price entry for each supplier (with id for edit/delete)
+    const { data: priceEntries } = await supabase
+      .from('price_entries')
+      .select('id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
       .eq('tenant_id', tenant.tenantId)
-      .eq('product_id', id);
+      .eq('product_id', id)
+      .order('created_at', { ascending: false });
+    
+    // Get the latest price entry for each supplier
+    const latestBySupplier = new Map<string, any>();
+    (priceEntries ?? []).forEach((entry: any) => {
+      if (!latestBySupplier.has(entry.supplier_id)) {
+        latestBySupplier.set(entry.supplier_id, entry);
+      }
+    });
+    
+    const current = Array.from(latestBySupplier.values());
 
     const supplierIds = Array.from(new Set((current ?? []).map((r: any) => r.supplier_id)));
     const { data: suppliers } =
@@ -597,9 +608,9 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
         tenant_id: tenant.tenantId,
         product_id: productId,
         supplier_id,
-        cost_price: round2(cost_price),
+        cost_price: round4(cost_price),
         discount_percent: round2(discount_percent),
-        cost_price_after_discount: round2(cost_price_after_discount),
+        cost_price_after_discount: round4(cost_price_after_discount),
         margin_percent: round2(finalMargin),
         sell_price,
         package_quantity,
@@ -635,6 +646,145 @@ router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) =>
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: 'שגיאה בטעינת היסטוריית מחירים' });
     return res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update a price entry (creates a new entry to keep history)
+router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+    const user = (req as any).user;
+    const productId = req.params.id;
+    const priceId = req.params.priceId;
+    const parsed = priceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
+    }
+
+    // Validate product exists and active
+    const prodCheck = await supabase
+      .from('products')
+      .select('id,category_id')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', productId)
+      .eq('is_active', true)
+      .single();
+    if (prodCheck.error || !prodCheck.data) return res.status(404).json({ error: 'המוצר לא נמצא' });
+
+    // Validate price entry exists and belongs to this product and tenant
+    const priceCheck = await supabase
+      .from('price_entries')
+      .select('id,product_id,supplier_id')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('product_id', productId)
+      .eq('id', priceId)
+      .single();
+    if (priceCheck.error || !priceCheck.data) return res.status(404).json({ error: 'המחיר לא נמצא' });
+
+    const { supplier_id, cost_price } = parsed.data;
+
+    // Validate supplier exists and active
+    const supplierCheck = await supabase
+      .from('suppliers')
+      .select('id')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', supplier_id)
+      .eq('is_active', true)
+      .single();
+    if (supplierCheck.error) return res.status(400).json({ error: 'הספק שנבחר לא קיים או לא פעיל' });
+
+    const vat_percent = await getVatPercent(tenant.tenantId);
+    const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
+    const use_margin = await getUseMargin(tenant.tenantId);
+    const use_vat = await getUseVat(tenant.tenantId);
+    const discount_percent = parsed.data.discount_percent ?? 0;
+    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const sell_price = calcSellPrice({ 
+      cost_price, 
+      margin_percent: finalMargin, 
+      vat_percent,
+      cost_price_after_discount,
+      use_margin,
+      use_vat
+    });
+
+    const package_quantity = parsed.data.package_quantity ? round2(parsed.data.package_quantity) : null;
+    
+    // Create a new price entry (keeps history)
+    const { data, error } = await supabase
+      .from('price_entries')
+      .insert({
+        tenant_id: tenant.tenantId,
+        product_id: productId,
+        supplier_id,
+        cost_price: round4(cost_price),
+        discount_percent: round2(discount_percent),
+        cost_price_after_discount: round4(cost_price_after_discount),
+        margin_percent: round2(finalMargin),
+        sell_price,
+        package_quantity,
+        created_by: user.id,
+      })
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .single();
+
+    if (error) return res.status(400).json({ error: 'לא ניתן לעדכן מחיר. נסה שוב.' });
+    return res.status(200).json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete all price entries for a supplier-product combination
+router.delete('/:id/prices/supplier/:supplierId', requireAuth, requireTenant, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant;
+    const productId = req.params.id;
+    const supplierId = req.params.supplierId;
+
+    // Validate product exists and active
+    const prodCheck = await supabase
+      .from('products')
+      .select('id')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', productId)
+      .eq('is_active', true)
+      .single();
+    if (prodCheck.error || !prodCheck.data) return res.status(404).json({ error: 'המוצר לא נמצא' });
+
+    // Validate supplier exists and active
+    const supplierCheck = await supabase
+      .from('suppliers')
+      .select('id,name')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('id', supplierId)
+      .eq('is_active', true)
+      .single();
+    if (supplierCheck.error || !supplierCheck.data) return res.status(404).json({ error: 'הספק לא נמצא' });
+
+    // Count entries before deletion
+    const { count: countBefore } = await supabase
+      .from('price_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.tenantId)
+      .eq('product_id', productId)
+      .eq('supplier_id', supplierId);
+
+    // Delete all price entries for this supplier-product combination
+    const { error } = await supabase
+      .from('price_entries')
+      .delete()
+      .eq('tenant_id', tenant.tenantId)
+      .eq('product_id', productId)
+      .eq('supplier_id', supplierId);
+
+    if (error) return res.status(400).json({ error: 'לא ניתן למחוק מחירים. נסה שוב.' });
+    return res.status(200).json({ 
+      message: `כל המחירים של הספק "${supplierCheck.data.name}" נמחקו בהצלחה`,
+      deleted_count: countBefore || 0
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -732,11 +882,11 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
         category_id: effectiveCategoryId,
         unit: unit ?? 'unit',
         sku: parsedProduct.data.sku?.trim() || null,
-        package_quantity: parsedProduct.data.package_quantity ?? 1,
+        // package_quantity removed - it's now only in price_entries (supplier-specific)
         is_active: true,
         created_by: user.id,
       })
-      .select('id,name,category_id,unit,sku,package_quantity,created_at')
+      .select('id,name,category_id,unit,sku,created_at')
       .single();
 
     if (prodErr || !product) {
@@ -744,15 +894,17 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     // Then create price entry (history)
+    const package_quantity = parsedPrice.data.package_quantity ? round2(parsedPrice.data.package_quantity) : null;
     const { error: priceErr } = await supabase.from('price_entries').insert({
       tenant_id: tenant.tenantId,
       product_id: product.id,
       supplier_id,
-      cost_price: round2(cost_price),
+      cost_price: round4(cost_price),
       discount_percent: round2(discount_percent),
-      cost_price_after_discount: round2(cost_price_after_discount),
+      cost_price_after_discount: round4(cost_price_after_discount),
       margin_percent: round2(finalMargin),
       sell_price,
+      package_quantity,
       created_by: user.id,
     });
 
@@ -786,14 +938,14 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
     if (parsed.data.category_id !== undefined) patch.category_id = parsed.data.category_id ?? null;
     if (parsed.data.unit != null) patch.unit = parsed.data.unit;
     if (parsed.data.sku !== undefined) patch.sku = parsed.data.sku?.trim() || null;
-    if (parsed.data.package_quantity !== undefined) patch.package_quantity = parsed.data.package_quantity ?? 1;
+    // package_quantity removed - it's now only in price_entries (supplier-specific)
 
     const { data, error } = await supabase
       .from('products')
       .update(patch)
       .eq('tenant_id', tenant.tenantId)
       .eq('id', id)
-      .select('id,name,category_id,unit,sku,package_quantity,created_at')
+      .select('id,name,category_id,unit,sku,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לעדכן מוצר (ייתכן שיש כפילות בשם)' });
