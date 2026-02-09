@@ -21,8 +21,10 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
   const isOnboardingRoute = location.pathname === '/onboarding';
-  // Only check super admin when on admin route (non-blocking)
-  const { data: isSuperAdmin } = useSuperAdmin(location.pathname === '/admin');
+  const isAdminRoute = location.pathname === '/admin';
+  const isAdminContext = isAdminRoute || isOnboardingRoute;
+  // Check super admin both on /admin and on /onboarding (כדי שכפתור ניהול יופיע במסך האונבורדינג)
+  const { data: isSuperAdmin } = useSuperAdmin(isAdminContext);
   const hasCheckedInvitesRef = useRef(false);
   const mountTimeRef = useRef<number | null>(null);
 

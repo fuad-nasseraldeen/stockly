@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { adminApi } from '../lib/api';
@@ -34,36 +34,38 @@ import { supabase } from '../lib/supabase';
  */
 export function useSuperAdmin(enabled = true) {
   const location = useLocation();
-  const isAdminRoute = location.pathname === '/admin';
-  const queryClient = useQueryClient();
+  // Treat both /admin and /onboarding as "admin context" so we can:
+  // - Guard the /admin route itself
+  // - Show the super admin option on the onboarding screen
+  const isAdminContext = location.pathname === '/admin' || location.pathname === '/onboarding';
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Get user email once on mount/route change
-  // CRITICAL: Only fetch email when on /admin route
+  // CRITICAL: Only fetch email when in admin context (/admin or /onboarding)
   useEffect(() => {
-    console.log('isAdminRoute', isAdminRoute);
-    console.log('enabled', enabled);
-    if (enabled && isAdminRoute) {
-      supabase.auth.getUser().then(({ data }) => {
-        const email = data?.user?.email?.toLowerCase() || null;
-        setUserEmail(email);
-        // Invalidate any old cache entries for different emails
-        queryClient.removeQueries({ 
-          queryKey: ['super-admin'], 
-          exact: false 
-        });
-      });
-    }
-    // Note: We don't clear email when not on admin route to avoid cascading renders
-    // The query will be disabled anyway when isAdminRoute is false
-  }, [enabled, isAdminRoute, queryClient]);
+    if (!enabled || !isAdminContext) return;
+
+    let isMounted = true;
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (!isMounted) return;
+      const email = data?.user?.email?.toLowerCase() || null;
+      setUserEmail(email);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+    // Note: We don't clear email when not in admin context to avoid cascading renders
+    // The query will be disabled anyway when isAdminContext is false
+  }, [enabled, isAdminContext]);
   
   return useQuery({
     // CRITICAL: Include user email in queryKey to make it user-specific
     // This prevents cache leaks when switching users
     queryKey: ['super-admin', userEmail || 'unknown'],
-    // CRITICAL: Only enabled when pathname === '/admin' and email is loaded
-    enabled: enabled && isAdminRoute && userEmail !== null,
+    // CRITICAL: Only enabled when in admin context and email is loaded
+    enabled: enabled && isAdminContext && userEmail !== null,
     queryFn: async () => {
       // CRITICAL: If email !== 'fuad@owner.com', return false immediately
       // DO NOT call adminApi.checkSuperAdmin() for non-admin users
