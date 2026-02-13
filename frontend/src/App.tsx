@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from './lib/supabase';
+import { supabase } from './lib/supabaseClient';
 import { setTenantIdForApi } from './lib/api';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
@@ -24,6 +24,8 @@ import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
 import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import { OnboardingRouter } from './components/OnboardingRouter';
 import { SplashScreen } from './components/SplashScreen';
 
@@ -260,10 +262,16 @@ function App() {
 }
 
 function AppContent({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+  const location = useLocation();
+
   // Fetch bootstrap data once user is logged in
   // Bootstrap will automatically use current tenant if selected (via x-tenant-id header)
   // This seeds React Query cache so existing hooks can use cached data instantly
   useBootstrap(!!user);
+
+  if (location.pathname === '/reset-password') {
+    return <ResetPassword />;
+  }
 
   if (!user) {
     return (
@@ -280,6 +288,8 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/" element={<Login />} />
               <Route path="*" element={<Login />} />
             </Routes>

@@ -60,7 +60,7 @@ frontend/
 │   │   └── useTableLayout.ts  # hook לניהול פריסת טבלאות
 │   └── lib/                   # ספריות עזר
 │       ├── api.ts             # API client
-│       ├── supabase.ts        # Supabase client
+│       ├── supabaseClient.ts  # Supabase client
 │       ├── react-query.tsx    # React Query provider
 │       └── utils/             # פונקציות עזר
 ├── package.json
@@ -112,6 +112,26 @@ npm run preview
 ```bash
 npm run lint
 ```
+
+## 🔐 איפוס סיסמה (Forgot Password)
+
+### בדיקה ידנית
+
+1. עבור ל-`/forgot-password`
+2. הזן אימייל ולחץ על שליחת קישור איפוס
+3. בדוק את תיבת המייל
+4. לחץ על קישור האיפוס
+5. הגדר סיסמה חדשה ב-`/reset-password`
+6. התחבר מחדש דרך `/login`
+
+### הגדרה ב-Supabase Dashboard
+
+`Auth → URL Configuration`:
+
+- `Site URL` חייב להיות כתובת ה-frontend ב-production
+- `Redirect URLs` חייב לכלול:
+  - `http://localhost:5173/reset-password`
+  - `https://your-vercel-domain/reset-password`
 
 ## 🎯 תכונות עיקריות
 

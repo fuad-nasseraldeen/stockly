@@ -14,6 +14,44 @@ import resetRouter from './routes/reset.js';
 import adminRouter from './routes/admin.js';
 import bootstrapRouter from './routes/bootstrap.js';
 
+let hasLoggedDbHost = false;
+
+function parseHostFromUrl(rawUrl?: string): string | null {
+  if (!rawUrl) return null;
+
+  try {
+    return new URL(rawUrl).host || null;
+  } catch {
+    return null;
+  }
+}
+
+function getRuntimeDbHost(): { host: string; source: string } {
+  const candidates: Array<{ source: string; value: string | undefined }> = [
+    { source: 'DATABASE_URL', value: process.env.DATABASE_URL },
+    { source: 'SUPABASE_DB_URL', value: process.env.SUPABASE_DB_URL },
+    // Fallback: this is project URL (not direct Postgres host) but still identifies the project ref.
+    { source: 'SUPABASE_URL', value: process.env.SUPABASE_URL },
+  ];
+
+  for (const candidate of candidates) {
+    const host = parseHostFromUrl(candidate.value);
+    if (host) {
+      return { host, source: candidate.source };
+    }
+  }
+
+  return { host: 'unknown', source: 'none' };
+}
+
+function logDbHostOnce(): void {
+  if (hasLoggedDbHost) return;
+  hasLoggedDbHost = true;
+
+  const { host, source } = getRuntimeDbHost();
+  console.info(`[runtime-db] host=${host} source=${source}`);
+}
+
 export function createApp() {
   const app = express();
 
@@ -46,7 +84,10 @@ export function createApp() {
     version: '1.0.0'
   }));
 
-  app.get('/health', (req, res) => res.json({ status: 'ok' }));
+  app.get('/health', (req, res) => {
+    logDbHostOnce();
+    res.json({ status: 'ok' });
+  });
 
   // API Routes
   app.use('/api/tenants', tenantsRouter);

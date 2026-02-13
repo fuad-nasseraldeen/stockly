@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -80,6 +80,11 @@ export default function Login() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'מתחבר...' : 'התחבר'}
             </Button>
+            <div className="text-center text-sm">
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                שכחתי סיסמה?
+              </Link>
+            </div>
             <div className="text-center text-sm">
               <span className="text-muted-foreground">אין לך חשבון? </span>
               <Link to="/signup" className="text-primary hover:underline">
