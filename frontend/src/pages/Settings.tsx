@@ -103,7 +103,7 @@ export default function Settings() {
     [appSettings]
   );
   const defaultPinned = useMemo(
-    () => normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields),
+    () => normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 3), allFields),
     [allFields]
   );
   const [pinnedFieldIds, setPinnedFieldIds] = useState<PinnedFieldIds>(emptyPinnedFieldIds());
@@ -351,7 +351,7 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            בחר רק את 4 השדות שיוצגו למעלה בכרטיס מוצר. כל שדה אחר יופיע אוטומטית באזור החץ.
+            בחר את 3 השדות שיוצגו למעלה בכרטיס מוצר (אפשר גם להשאיר רק 2). כל שדה אחר יופיע אוטומטית באזור החץ.
           </p>
           <FieldLayoutEditor
             allFields={allFields}
@@ -375,7 +375,7 @@ export default function Settings() {
             }}
             onReset={async () => {
               if (!currentTenant?.id) return;
-              const resetPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields);
+              const resetPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 3), allFields);
               setPinnedFieldIds(resetPinned);
               setSavingFieldLayout(true);
               try {

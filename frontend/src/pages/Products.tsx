@@ -175,7 +175,7 @@ export default function Products() {
   );
   const mobileSummaryColumns = useMemo(() => {
     const parsedPinned = parsePinnedFieldIdsFromSavedLayout(savedLayout as unknown, allFields);
-    const defaultPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields);
+    const defaultPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 3), allFields);
     const pinned = parsedPinned.some((id) => !!id) ? parsedPinned : defaultPinned;
     const columnMap = new Map<string, (typeof availableColumns)[number]>(
       availableColumns.map((col) => [col.id, col])

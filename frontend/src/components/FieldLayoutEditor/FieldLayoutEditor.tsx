@@ -64,7 +64,7 @@ export function FieldLayoutEditor({
           onClearSlot={(slotIndex) => onChange(assignPinnedField(pinnedFieldIds, slotIndex, null))}
         />
         <p className="text-xs text-muted-foreground">
-          אפשר לבחור בין 2 ל־4 עמודות למעלה. כרגע נבחרו {selectedCount}/4.
+          אפשר לבחור בין 2 ל־3 עמודות למעלה. כרגע נבחרו {selectedCount}/3.
         </p>
         <div className="rounded-lg border p-3">
           <div className="mb-2 text-xs font-semibold text-muted-foreground">נבחר כרגע:</div>

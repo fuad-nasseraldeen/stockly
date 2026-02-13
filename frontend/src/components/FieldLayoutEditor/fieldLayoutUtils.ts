@@ -1,18 +1,18 @@
 import type { FieldOption, PinnedFieldIds } from './fieldLayoutTypes';
 
-export const PINNED_SLOTS_COUNT = 4;
+export const PINNED_SLOTS_COUNT = 3;
 
 function isFieldId(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function emptyPinnedFieldIds(): PinnedFieldIds {
-  return [null, null, null, null];
+  return [null, null, null];
 }
 
 export function normalizePinnedFieldIds(input: unknown, allFields: FieldOption[]): PinnedFieldIds {
   const validIds = new Set(allFields.map((field) => field.id));
-  const result: Array<string | null> = [null, null, null, null];
+  const result: Array<string | null> = [null, null, null];
 
   if (!Array.isArray(input)) {
     return result as PinnedFieldIds;
@@ -56,7 +56,7 @@ export function parsePinnedFieldIdsFromSavedLayout(
     const preferred = (legacy.order ?? []).filter(
       (id): id is string => isFieldId(id) && id !== 'actions' && visible[id] !== false
     );
-    return normalizePinnedFieldIds(preferred.slice(0, 4), allFields);
+    return normalizePinnedFieldIds(preferred.slice(0, 3), allFields);
   }
 
   return emptyPinnedFieldIds();

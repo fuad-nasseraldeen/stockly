@@ -4,4 +4,4 @@ export type FieldOption = {
 };
 
 export type PinnedFieldId = string | null;
-export type PinnedFieldIds = [PinnedFieldId, PinnedFieldId, PinnedFieldId, PinnedFieldId];
+export type PinnedFieldIds = [PinnedFieldId, PinnedFieldId, PinnedFieldId];
