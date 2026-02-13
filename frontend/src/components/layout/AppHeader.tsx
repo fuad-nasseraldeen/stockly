@@ -108,7 +108,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin }: AppHeaderProps) {
       </header>
 
       <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-[60] md:hidden">
           <div className="fixed inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
           <div className="fixed right-0 top-0 h-full w-[86vw] max-w-sm border-l border-border bg-background shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-4 py-4">
