@@ -114,7 +114,12 @@ export default function Products() {
   const { data: suppliers = [] } = useSuppliers();
   const { data: categories = [] } = useCategories();
   const { data: settings } = useSettings();
-  const { data: priceHistory = [], isLoading: historyLoading } = useProductPriceHistory(
+  const {
+    data: priceHistory = [],
+    isLoading: historyLoading,
+    isError: historyIsError,
+    error: historyError,
+  } = useProductPriceHistory(
     historyProductId || '',
     historySupplierId || undefined
   );
@@ -1071,6 +1076,10 @@ export default function Products() {
           {historyLoading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               טוען היסטוריית מחירים...
+            </div>
+          ) : historyIsError ? (
+            <div className="py-8 text-center text-sm text-destructive">
+              {historyError instanceof Error ? historyError.message : 'שגיאה בטעינת היסטוריית מחירים'}
             </div>
           ) : priceHistory.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">

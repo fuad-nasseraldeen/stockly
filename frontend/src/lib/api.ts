@@ -20,6 +20,7 @@ function resolveApiBaseUrl(): string {
 }
 
 export const API_URL = resolveApiBaseUrl();
+const API_TIMEOUT_MS = 20000;
 
 // Type definitions
 export type Product = {
@@ -174,10 +175,23 @@ export async function apiRequest<T>(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { skipTenantHeader: _, ...fetchOptions } = options || {};
   const url = API_URL ? `${API_URL}${endpoint}` : endpoint;
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('פג זמן ההמתנה לבקשה. בדוק חיבור/שרת ונסה שוב.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     // Handle 401 (Unauthorized) - token expired or invalid
@@ -211,10 +225,23 @@ export async function apiRequest<T>(
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { skipTenantHeader: _, ...retryFetchOptions } = options || {};
-        const retryResponse = await fetch(url, {
-          ...retryFetchOptions,
-          headers: retryHeaders,
-        });
+        const retryController = new AbortController();
+        const retryTimeoutId = window.setTimeout(() => retryController.abort(), API_TIMEOUT_MS);
+        let retryResponse: Response;
+        try {
+          retryResponse = await fetch(url, {
+            ...retryFetchOptions,
+            headers: retryHeaders,
+            signal: retryController.signal,
+          });
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('פג זמן ההמתנה לבקשה. בדוק חיבור/שרת ונסה שוב.');
+          }
+          throw error;
+        } finally {
+          window.clearTimeout(retryTimeoutId);
+        }
 
         if (!retryResponse.ok) {
           let errorMessage = 'הבקשה נכשלה';

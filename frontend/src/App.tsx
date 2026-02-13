@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@supabase/supabase-js';
@@ -6,13 +6,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './lib/supabaseClient';
 import { setTenantIdForApi } from './lib/api';
 import { Button } from './components/ui/button';
-import { Dialog } from './components/ui/dialog';
-import { Menu, X, Package, Truck, Tags, Settings as SettingsIcon, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
-import { TenantSwitcher } from './components/TenantSwitcher';
 import { useSuperAdmin } from './hooks/useSuperAdmin';
 import { useBootstrap } from './hooks/useBootstrap';
+import { AppHeader } from './components/layout/AppHeader';
+import { BottomTabs } from './components/layout/BottomTabs';
+import { FloatingActionButton } from './components/ui/FloatingActionButton';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -28,211 +29,6 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import { OnboardingRouter } from './components/OnboardingRouter';
 import { SplashScreen } from './components/SplashScreen';
-
-function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const location = useLocation();
-  const { currentTenant } = useTenant();
-  const { data: isSuperAdmin } = useSuperAdmin();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const navItems: Array<{ path: string; label: string }> = [
-    { path: '/products', label: 'מוצרים' },
-    { path: '/suppliers', label: 'ספקים' },
-    { path: '/categories', label: 'קטגוריות' },
-    { path: '/import-export', label: 'ייבוא' },
-    { path: '/settings', label: 'הגדרות' },
-  ];
-
-  const isActive = (path: string) => location.pathname === path;
-  return (
-    <>
-      <header className="sticky top-0 z-50 border-b-2 border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground font-bold text-sm">S</span>
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-foreground">Stockly</h1>
-                  <p className="text-[10px] text-muted-foreground leading-tight hidden sm:block">
-                    ניהול מחירים לפי ספק
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-              {/* Desktop Navigation */}
-              <nav className="hidden sm:flex items-center gap-1">
-                {navItems.map((item) => (
-                  <Button
-                    key={item.path}
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className={isActive(item.path) ? 'bg-accent' : ''}
-                  >
-                    <Link to={item.path} className="px-3 py-1.5 text-sm font-medium">
-                      {item.label}
-                    </Link>
-                  </Button>
-                ))}
-                {/* Super Admin Button - Desktop */}
-                {isSuperAdmin === true && (
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="sm"
-                    className={isActive('/admin') ? 'bg-accent' : ''}
-                  >
-                    <Link to="/admin" className="px-3 py-1.5 text-sm font-medium">
-                      ניהול מערכת
-                    </Link>
-                  </Button>
-                )}
-              </nav>
-              <div className="hidden sm:block h-6 w-px bg-border mx-1" />
-              <TenantSwitcher />
-              <div className="hidden sm:block h-6 w-px bg-border mx-1" />
-              <div className="flex items-center gap-2">
-                <span className="hidden sm:inline text-xs text-muted-foreground truncate max-w-[120px]">
-                  {user.email}
-                </span>
-                <Button variant="outline" size="sm" onClick={onLogout} className="text-xs">
-                  יציאה
-                </Button>
-              </div>
-              {/* Mobile Menu Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="sm:hidden"
-                onClick={() => setMobileMenuOpen(true)}
-                aria-label="תפריט"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Mobile Menu Dialog */}
-      <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <div className="fixed inset-0 z-50 sm:hidden">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed top-0 right-0 h-full w-[85vw] max-w-sm bg-background border-l-2 border-border shadow-xl">
-            <div className="flex items-center justify-between p-4 border-b-2 border-border">
-              <h2 className="text-lg font-bold">תפריט</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setMobileMenuOpen(false)}
-                aria-label="סגור"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <nav className="flex flex-col p-2 overflow-y-auto h-[calc(100vh-4rem)]">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`px-4 py-3 rounded-lg text-base font-medium transition-colors ${
-                    isActive(item.path)
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-muted text-foreground'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              {/* Super Admin Button - Mobile */}
-              {isSuperAdmin === true && (
-                <Link
-                  to="/admin"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`px-4 py-3 rounded-lg text-base font-medium transition-colors ${
-                    isActive('/admin')
-                      ? 'bg-accent text-accent-foreground'
-                      : 'hover:bg-muted text-foreground'
-                  }`}
-                >
-                  ניהול מערכת
-                </Link>
-              )}
-              <div className="border-t-2 border-border my-2" />
-              <div className="px-4 py-2 space-y-2">
-                {currentTenant && (
-                  <div className="p-2 bg-muted rounded-lg">
-                    <p className="text-xs font-medium">{currentTenant.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {currentTenant.role === 'owner' ? 'בעלים' : 'עובד'}
-                    </p>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground break-all">{user.email}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onLogout();
-                  }}
-                  className="w-full"
-                >
-                  יציאה
-                </Button>
-              </div>
-            </nav>
-          </div>
-        </div>
-      </Dialog>
-    </>
-  );
-}
-
-function MobileBottomTabs() {
-  const location = useLocation();
-  const tabs: Array<{ path: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { path: '/products', label: 'מוצרים', icon: Package },
-    { path: '/suppliers', label: 'ספקים', icon: Truck },
-    { path: '/categories', label: 'קטגוריות', icon: Tags },
-    { path: '/settings', label: 'הגדרות', icon: SettingsIcon },
-  ];
-
-  const isTabActive = (path: string) => {
-    if (path === '/products') {
-      return location.pathname === '/products' || location.pathname.startsWith('/products/');
-    }
-    return location.pathname === path || location.pathname.startsWith(`${path}/`);
-  };
-
-  return (
-    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
-      <div className="grid grid-cols-4">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const active = isTabActive(tab.path);
-          return (
-            <Link
-              key={tab.path}
-              to={tab.path}
-              className={`flex flex-col items-center justify-center gap-1 py-2 transition-colors ${
-                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="text-[11px] font-medium leading-none">{tab.label}</span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
-  );
-}
 
 function DarkModeWidget() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -410,7 +206,6 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
  
   // Super admin can access /admin without a tenant
   const isAdminPage = location.pathname === '/admin';
-  console.log('isSuperAdmin', isSuperAdmin);
   const canAccess = isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
   
   // Only show navigation if we have a tenant or if super admin accessing admin page
@@ -420,8 +215,8 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
 
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
-      <Navigation user={user} onLogout={onLogout} />
-      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-20 sm:pb-8">
+      <AppHeader user={user} onLogout={onLogout} isSuperAdmin={isSuperAdmin === true} />
+      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8">
         <div className="w-full max-w-6xl">
           <Routes>
             <Route path="/products" element={<Products />} />
@@ -445,7 +240,8 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
         </div>
       </main>
       <DarkModeWidget />
-      <MobileBottomTabs />
+      <BottomTabs />
+      <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
     </div>
   );
 }
