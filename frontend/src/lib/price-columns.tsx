@@ -111,15 +111,15 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
 
   cost_gross: {
     id: 'cost_gross',
-    headerLabel: 'מחיר עלות',
-    headerSubLabel: '(כולל מע"מ)',
-    tooltip: 'מחיר עלות כולל מע"מ',
+    headerLabel: 'מחיר אחרי מע"מ',
+    headerSubLabel: '(מחיר עלות כולל מע"מ)',
+    tooltip: 'מחיר אחרי מע"מ (מחיר עלות כולל מע"מ)',
     group: 'pricing',
     minWidth: 100,
     renderHeader: () => (
       <div className="flex items-center gap-1">
-        <span>מחיר עלות</span>
-        <Tooltip content="מחיר עלות כולל מע&quot;מ" />
+        <span>מחיר אחרי מע&quot;מ</span>
+        <Tooltip content="מחיר אחרי מע&quot;מ (מחיר עלות כולל מע&quot;מ)" />
       </div>
     ),
     renderCell: (price: PriceData) => (
@@ -159,7 +159,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
 
   cost_after_discount_gross: {
     id: 'cost_after_discount_gross',
-    headerLabel: 'מחיר לאחר הנחה',
+    headerLabel: 'מחיר לאחר הנחה (כולל מע"מ)',
     headerSubLabel: '(כולל מע"מ)',
     group: 'pricing',
     minWidth: 120,
@@ -177,7 +177,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
 
   cost_after_discount_net: {
     id: 'cost_after_discount_net',
-    headerLabel: 'מחיר לאחר הנחה',
+    headerLabel: 'מחיר לאחר הנחה (לפני מע"מ)',
     headerSubLabel: '(לפני מע"מ)',
     group: 'pricing',
     requires: { vat: true },

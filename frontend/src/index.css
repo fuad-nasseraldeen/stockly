@@ -76,7 +76,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-linear-to-br from-slate-50 via-blue-50/30 to-slate-50 text-foreground antialiased;
+    @apply bg-linear-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-foreground antialiased;
     font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
   }

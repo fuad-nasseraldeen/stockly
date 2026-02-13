@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
@@ -9,12 +9,13 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
-import { tenantsApi, tenantApi, type TenantMember, type TenantInvite } from '../lib/api';
-import { ColumnManager } from '../components/price-table/ColumnManager';
-import { getDefaultLayout, getAvailableColumns, type Settings as SettingsType, type ColumnLayout } from '../lib/column-resolver';
-import { saveLayout, resetLayout, mergeWithDefaults } from '../lib/column-layout-storage';
+import { tenantsApi, tenantApi, settingsApi, type TenantMember, type TenantInvite } from '../lib/api';
+import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { getTableLayoutProductsKey } from '../lib/table-layout-keys';
+import { FieldLayoutEditor } from '../components/FieldLayoutEditor/FieldLayoutEditor';
+import type { FieldOption, PinnedFieldIds } from '../components/FieldLayoutEditor/fieldLayoutTypes';
+import { emptyPinnedFieldIds, normalizePinnedFieldIds, parsePinnedFieldIdsFromSavedLayout } from '../components/FieldLayoutEditor/fieldLayoutUtils';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -84,50 +85,35 @@ export default function Settings() {
   const [savingVat, setSavingVat] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
+  const [savingFieldLayout, setSavingFieldLayout] = useState(false);
   
   // Column layout management - global for all products
-  const appSettings: SettingsType = {
+  const appSettings: SettingsType = useMemo(() => ({
     use_vat: useVat,
     use_margin: useMargin,
     vat_percent: settings?.vat_percent ?? undefined,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
-  };
+  }), [useVat, useMargin, settings?.vat_percent, settings?.global_margin_percent]);
   
-  const [columnLayout, setColumnLayout] = useState<ColumnLayout | null>(null);
-  const [layoutLoading, setLayoutLoading] = useState(true);
-  
-  // Load layout from React Query cache (seeded by bootstrap) - no separate API call during boot
-  const { data: savedLayout, isLoading: layoutLoadingFromQuery } = useTableLayout('productsTable');
-  
-  // Update column layout when saved layout or settings change
+  const { data: savedLayout, isLoading: layoutLoading } = useTableLayout('productsTable');
+  const allFields: FieldOption[] = useMemo(
+    () => getAvailableColumns(appSettings)
+      .filter((col) => col.id !== 'actions')
+      .map((col) => ({ id: col.id, label: col.headerLabel })),
+    [appSettings]
+  );
+  const defaultPinned = useMemo(
+    () => normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields),
+    [allFields]
+  );
+  const [pinnedFieldIds, setPinnedFieldIds] = useState<PinnedFieldIds>(emptyPinnedFieldIds());
+
   useEffect(() => {
-    if (savedLayout !== undefined) {
-      const layout = savedLayout ? mergeWithDefaults(savedLayout) : getDefaultLayout(appSettings);
-      setColumnLayout(layout);
-      setLayoutLoading(false);
-    }
-  }, [savedLayout, useVat, useMargin, appSettings]);
-  
-  // Track loading state
-  useEffect(() => {
-    setLayoutLoading(layoutLoadingFromQuery);
-  }, [layoutLoadingFromQuery]);
-  
-  // Update layout when settings change
-  useEffect(() => {
-    if (!columnLayout) return;
-    const defaultLayout = getDefaultLayout(appSettings);
-    setColumnLayout((prev: ColumnLayout | null) => prev ? {
-      ...defaultLayout,
-      order: prev.order,
-      visible: { ...defaultLayout.visible, ...prev.visible },
-    } : defaultLayout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useVat, useMargin]);
-  
-  // For the modal, we need ALL available columns (not filtered by visibility)
-  const allAvailableColumns = getAvailableColumns(appSettings);
+    if (savedLayout === undefined) return;
+    const parsed = parsePinnedFieldIdsFromSavedLayout(savedLayout as unknown, allFields);
+    const hasAnyPinned = parsed.some((id) => !!id);
+    setPinnedFieldIds(hasAnyPinned ? parsed : defaultPinned);
+  }, [savedLayout, allFields, defaultPinned]);
 
   const isOwner = currentTenant?.role === 'owner';
 
@@ -365,15 +351,44 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            הגדר את העמודות שיוצגו בטבלאות המחירים בכל המוצרים. התבנית תישמר ב-database ותחול על כל המוצרים במערכת.
+            בחר רק את 4 השדות שיוצגו למעלה בכרטיס מוצר. כל שדה אחר יופיע אוטומטית באזור החץ.
           </p>
-          <Button
-            variant="outline"
-            onClick={() => setColumnManagerOpen(true)}
-            disabled={layoutLoading || !columnLayout}
-          >
-            {layoutLoading ? 'טוען...' : 'ניהול עמודות'}
-          </Button>
+          <FieldLayoutEditor
+            allFields={allFields}
+            pinnedFieldIds={pinnedFieldIds}
+            onChange={setPinnedFieldIds}
+            loading={layoutLoading}
+            saving={savingFieldLayout}
+            onSave={async () => {
+              if (!currentTenant?.id) return;
+              try {
+                setSavingFieldLayout(true);
+                const payload = { pinnedFieldIds };
+                const key = getTableLayoutProductsKey(currentTenant.id);
+                queryClient.setQueryData(key, payload);
+                await settingsApi.setPreference('table_layout_productsTable', payload);
+                window.dispatchEvent(new Event('priceTableLayoutChanged'));
+                navigate('/products');
+              } finally {
+                setSavingFieldLayout(false);
+              }
+            }}
+            onReset={async () => {
+              if (!currentTenant?.id) return;
+              const resetPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields);
+              setPinnedFieldIds(resetPinned);
+              setSavingFieldLayout(true);
+              try {
+                const payload = { pinnedFieldIds: resetPinned };
+                const key = getTableLayoutProductsKey(currentTenant.id);
+                queryClient.setQueryData(key, payload);
+                await settingsApi.setPreference('table_layout_productsTable', payload);
+                window.dispatchEvent(new Event('priceTableLayoutChanged'));
+              } finally {
+                setSavingFieldLayout(false);
+              }
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -590,36 +605,6 @@ export default function Settings() {
         </CardContent>
       </Card>
 
-      {/* Column Manager Dialog */}
-      <ColumnManager
-        open={columnManagerOpen}
-        onOpenChange={setColumnManagerOpen}
-        currentLayout={columnLayout || getDefaultLayout(appSettings)}
-        availableColumns={allAvailableColumns}
-        settings={appSettings}
-        onSave={async (layout) => {
-          setColumnLayout(layout);
-          // Optimistically update React Query cache so all tables pick up the new layout immediately
-          if (currentTenant?.id) {
-            const key = getTableLayoutProductsKey(currentTenant.id);
-            queryClient.setQueryData(key, layout);
-          }
-          await saveLayout(layout);
-          // Dispatch custom event to notify other pages
-          window.dispatchEvent(new Event('priceTableLayoutChanged'));
-          // After saving columns, return user to the products page so they immediately see the new layout
-          navigate('/products');
-        }}
-        onReset={async () => {
-          const defaultLayout = getDefaultLayout(appSettings);
-          setColumnLayout(defaultLayout);
-           if (currentTenant?.id) {
-             const key = getTableLayoutProductsKey(currentTenant.id);
-             queryClient.setQueryData(key, defaultLayout);
-           }
-          await resetLayout();
-        }}
-      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { supabase } from './lib/supabaseClient';
 import { setTenantIdForApi } from './lib/api';
 import { Button } from './components/ui/button';
 import { Dialog } from './components/ui/dialog';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Package, Truck, Tags, Settings as SettingsIcon, Moon, Sun } from 'lucide-react';
 import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
 import { TenantSwitcher } from './components/TenantSwitcher';
@@ -194,6 +194,77 @@ function Navigation({ user, onLogout }: { user: User; onLogout: () => void }) {
   );
 }
 
+function MobileBottomTabs() {
+  const location = useLocation();
+  const tabs: Array<{ path: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+    { path: '/products', label: 'מוצרים', icon: Package },
+    { path: '/suppliers', label: 'ספקים', icon: Truck },
+    { path: '/categories', label: 'קטגוריות', icon: Tags },
+    { path: '/settings', label: 'הגדרות', icon: SettingsIcon },
+  ];
+
+  const isTabActive = (path: string) => {
+    if (path === '/products') {
+      return location.pathname === '/products' || location.pathname.startsWith('/products/');
+    }
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+
+  return (
+    <nav className="sm:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
+      <div className="grid grid-cols-4">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = isTabActive(tab.path);
+          return (
+            <Link
+              key={tab.path}
+              to={tab.path}
+              className={`flex flex-col items-center justify-center gap-1 py-2 transition-colors ${
+                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-[11px] font-medium leading-none">{tab.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function DarkModeWidget() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      return savedTheme;
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const isDark = theme === 'dark';
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      className="fixed z-50 left-4 sm:left-6 bottom-24 sm:bottom-6 h-11 w-11 rounded-full shadow-lg border-2 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80"
+      aria-label={isDark ? 'מעבר למצב בהיר' : 'מעבר למצב כהה'}
+      title={isDark ? 'Light Mode' : 'Dark Mode'}
+    >
+      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+    </Button>
+  );
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -350,7 +421,7 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
       <Navigation user={user} onLogout={onLogout} />
-      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-20 sm:pb-8">
         <div className="w-full max-w-6xl">
           <Routes>
             <Route path="/products" element={<Products />} />
@@ -373,6 +444,8 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
           </Routes>
         </div>
       </main>
+      <DarkModeWidget />
+      <MobileBottomTabs />
     </div>
   );
 }

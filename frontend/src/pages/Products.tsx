@@ -16,12 +16,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { productsApi, type Product } from '../lib/api';
-import type { Settings as SettingsType } from '../lib/column-resolver';
+import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { ProductsSkeleton } from '../components/ProductsSkeleton';
 import { grossToNet } from '../lib/pricing-rules';
+import { useTableLayout } from '../hooks/useTableLayout';
+import type { ColumnId } from '../lib/price-columns';
+import type { FieldOption } from '../components/FieldLayoutEditor/fieldLayoutTypes';
+import { normalizePinnedFieldIds, parsePinnedFieldIdsFromSavedLayout } from '../components/FieldLayoutEditor/fieldLayoutUtils';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -160,6 +164,26 @@ export default function Products() {
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
   }), [useVat, useMargin, vatPercent, settings?.global_margin_percent]);
+  const { data: savedLayout } = useTableLayout('productsTable');
+  const availableColumns = useMemo(
+    () => getAvailableColumns(appSettings).filter((col) => col.id !== 'actions'),
+    [appSettings]
+  );
+  const allFields: FieldOption[] = useMemo(
+    () => availableColumns.map((col) => ({ id: col.id, label: col.headerLabel })),
+    [availableColumns]
+  );
+  const mobileSummaryColumns = useMemo(() => {
+    const parsedPinned = parsePinnedFieldIdsFromSavedLayout(savedLayout as unknown, allFields);
+    const defaultPinned = normalizePinnedFieldIds(allFields.map((field) => field.id).slice(0, 4), allFields);
+    const pinned = parsedPinned.some((id) => !!id) ? parsedPinned : defaultPinned;
+    const columnMap = new Map<string, (typeof availableColumns)[number]>(
+      availableColumns.map((col) => [col.id, col])
+    );
+    return pinned
+      .map((id) => (id ? columnMap.get(String(id)) : null))
+      .filter((col): col is (typeof availableColumns)[number] => !!col);
+  }, [allFields, availableColumns, savedLayout]);
   
   // Listen for layout changes (when user saves layout in Settings page)
   useEffect(() => {
@@ -838,9 +862,11 @@ export default function Products() {
                         <Table>
                           <TableHeader>
                             <TableRow className="border-b border-border">
-                              <TableHead className="font-semibold">ספק</TableHead>
-                              <TableHead className="font-semibold">מחיר עלות</TableHead>
-                              <TableHead className="font-semibold">מחיר לקרטון</TableHead>
+                              {mobileSummaryColumns.map((col) => (
+                                <TableHead key={col.id} className="font-semibold">
+                                  {col.headerLabel}
+                                </TableHead>
+                              ))}
                               <TableHead className="w-12"></TableHead>
                             </TableRow>
                           </TableHeader>
@@ -860,17 +886,22 @@ export default function Products() {
                                 ? grossToNet(Number(price.cost_price), vatPercent / 100)
                                 : Number(price.cost_price);
                               
-                              // Prepare fields for accordion content (with labels)
+                              const mobileSummaryColumnIds = new Set<ColumnId>(
+                                mobileSummaryColumns.map((col) => col.id)
+                              );
                               const fields = [
-                                { label: 'מחיר עלות כולל מע"מ', value: `₪${formatUnitPrice(Number(price.cost_price))}` },
-                                ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
-                                ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
-                                { label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
-                                ...(useVat ? [{ label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
-                                { label: 'כמות יחידות בקרטון', value: `${packageQty} יחידות` },
-                                ...(useMargin && price.sell_price ? [{ label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
-                                ...(useMargin && price.margin_percent ? [{ label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
-                              ];
+                                { id: 'supplier' as ColumnId, label: 'ספק', value: price.supplier_name || 'לא ידוע' },
+                                { id: 'cost_gross' as ColumnId, label: 'מחיר אחרי מע"מ', value: `₪${formatUnitPrice(Number(price.cost_price))}` },
+                                ...(useVat ? [{ id: 'cost_net' as ColumnId, label: 'מחיר לפני מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
+                                ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ id: 'discount' as ColumnId, label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
+                                { id: 'cost_after_discount_gross' as ColumnId, label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                                ...(useVat ? [{ id: 'cost_after_discount_net' as ColumnId, label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
+                                { id: 'quantity_per_carton' as ColumnId, label: 'כמות יחידות בקרטון', value: `${packageQty} יחידות` },
+                                { id: 'carton_price' as ColumnId, label: 'מחיר לקרטון', value: `₪${formatCostPrice(cartonPrice)}` },
+                                ...(useMargin && price.sell_price ? [{ id: 'sell_price' as ColumnId, label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
+                                ...(useMargin && price.margin_percent ? [{ id: 'profit_percent' as ColumnId, label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
+                                { id: 'date' as ColumnId, label: 'תאריך עדכון', value: formatDate(price.created_at) },
+                              ].filter((field) => !mobileSummaryColumnIds.has(field.id));
                               
                               return (
                                 <React.Fragment key={priceId}>
@@ -878,9 +909,11 @@ export default function Products() {
                                     className="cursor-pointer hover:bg-muted/50 active:bg-muted border-b border-border touch-manipulation"
                                     onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
                                   >
-                                    <TableCell className="font-semibold">{price.supplier_name || 'לא ידוע'}</TableCell>
-                                    <TableCell>₪{formatUnitPrice(Number(price.cost_price))}</TableCell>
-                                    <TableCell className="text-primary font-medium">₪{formatCostPrice(cartonPrice)}</TableCell>
+                                    {mobileSummaryColumns.map((col) => (
+                                      <TableCell key={col.id} className={col.id === 'supplier' ? 'font-semibold' : undefined}>
+                                        {col.renderCell(price as any, product as any, appSettings as any)}
+                                      </TableCell>
+                                    ))}
                                     <TableCell>
                                       <ChevronDown
                                         className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${
@@ -891,7 +924,7 @@ export default function Products() {
                                   </TableRow>
                                   {isExpanded && (
                                     <TableRow>
-                                      <TableCell colSpan={4} className="p-0 border-b border-border">
+                                      <TableCell colSpan={mobileSummaryColumns.length + 1} className="p-0 border-b border-border">
                                         <div className="p-4 bg-muted/30">
                                           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                                             {fields.map((field, idx) => (
