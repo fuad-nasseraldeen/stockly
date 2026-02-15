@@ -11,6 +11,8 @@ type AppHeaderProps = {
   user: User;
   onLogout: () => void;
   isSuperAdmin: boolean;
+  isDark: boolean;
+  onToggleTheme: () => void;
 };
 
 const navItems: Array<{ path: string; label: string }> = [
@@ -21,7 +23,7 @@ const navItems: Array<{ path: string; label: string }> = [
   { path: '/settings', label: 'הגדרות' },
 ];
 
-export function AppHeader({ user, onLogout, isSuperAdmin }: AppHeaderProps) {
+export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme }: AppHeaderProps) {
   const location = useLocation();
   const { currentTenant } = useTenant();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -81,6 +83,24 @@ export function AppHeader({ user, onLogout, isSuperAdmin }: AppHeaderProps) {
             </nav>
 
             <div className="flex items-center gap-1 sm:gap-2">
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className={`relative hidden h-10 w-[84px] items-center rounded-full border px-1 text-[11px] font-semibold transition-colors md:inline-flex ${
+                  isDark
+                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                    : 'border-border/70 bg-muted/70 text-muted-foreground'
+                }`}
+                aria-label={isDark ? 'מצב לילה מופעל - לחץ לכיבוי' : 'מצב לילה כבוי - לחץ להפעלה'}
+                title={isDark ? 'Dark mode: ON' : 'Dark mode: OFF'}
+              >
+                <span className={`absolute ${isDark ? 'left-3' : 'right-3'}`}>{isDark ? 'ON' : 'OFF'}</span>
+                <span
+                  className={`h-8 w-8 rounded-full border bg-background shadow-sm transition-transform ${
+                    isDark ? 'translate-x-0' : '-translate-x-10'
+                  }`}
+                />
+              </button>
               <TenantSwitcher />
               <span className="hidden max-w-[150px] truncate text-xs text-muted-foreground lg:inline">
                 {user.email}
@@ -152,6 +172,23 @@ export function AppHeader({ user, onLogout, isSuperAdmin }: AppHeaderProps) {
 
               <div className="my-2 border-t border-border" />
               <div className="space-y-2 px-4 py-2">
+                <button
+                  type="button"
+                  onClick={onToggleTheme}
+                  className={`relative flex h-11 w-full items-center rounded-full border px-2 text-sm font-semibold transition-colors ${
+                    isDark
+                      ? 'border-blue-500/60 bg-blue-500/15 text-blue-700 dark:text-blue-300'
+                      : 'border-border bg-muted/70 text-foreground'
+                  }`}
+                  aria-label={isDark ? 'מצב לילה מופעל - לחץ לכיבוי' : 'מצב לילה כבוי - לחץ להפעלה'}
+                >
+                  <span className="mx-3">{isDark ? 'מצב לילה ON' : 'מצב לילה OFF'}</span>
+                  <span
+                    className={`h-7 w-7 rounded-full border bg-background shadow-sm transition-transform ${
+                      isDark ? 'translate-x-0' : '-translate-x-9'
+                    }`}
+                  />
+                </button>
                 {currentTenant && (
                   <div className="rounded-lg bg-muted p-2">
                     <p className="text-xs font-medium">{currentTenant.name}</p>

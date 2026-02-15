@@ -5,8 +5,6 @@ import { User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './lib/supabaseClient';
 import { setTenantIdForApi } from './lib/api';
-import { Button } from './components/ui/button';
-import { Moon, Sun } from 'lucide-react';
 import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
 import { useSuperAdmin } from './hooks/useSuperAdmin';
@@ -30,7 +28,10 @@ import ResetPassword from './pages/ResetPassword';
 import { OnboardingRouter } from './components/OnboardingRouter';
 import { SplashScreen } from './components/SplashScreen';
 
-function DarkModeWidget() {
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showInitialSplash, setShowInitialSplash] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light' || savedTheme === 'dark') {
@@ -38,33 +39,6 @@ function DarkModeWidget() {
     }
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  const isDark = theme === 'dark';
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon"
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="fixed z-50 left-4 sm:left-6 bottom-24 sm:bottom-6 h-11 w-11 rounded-full shadow-lg border-2 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80"
-      aria-label={isDark ? 'מעבר למצב בהיר' : 'מעבר למצב כהה'}
-      title={isDark ? 'Light Mode' : 'Dark Mode'}
-    >
-      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-    </Button>
-  );
-}
-
-function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showInitialSplash, setShowInitialSplash] = useState(true);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -81,6 +55,11 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Intro splash – בכל רענון מלא של האפליקציה
   // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
@@ -122,13 +101,28 @@ function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
-        <AppContent user={user} onLogout={handleLogout} />
+        <AppContent
+          user={user}
+          onLogout={handleLogout}
+          theme={theme}
+          onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+        />
       </TenantProvider>
     </BrowserRouter>
   );
 }
 
-function AppContent({ user, onLogout }: { user: User | null; onLogout: () => void }) {
+function AppContent({
+  user,
+  onLogout,
+  theme,
+  onToggleTheme,
+}: {
+  user: User | null;
+  onLogout: () => void;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
+}) {
   const location = useLocation();
 
   // Fetch bootstrap data once user is logged in
@@ -168,7 +162,7 @@ function AppContent({ user, onLogout }: { user: User | null; onLogout: () => voi
 
   return (
     <OnboardingRouter>
-      <AppWithNavigation user={user} onLogout={onLogout} />
+      <AppWithNavigation user={user} onLogout={onLogout} theme={theme} onToggleTheme={onToggleTheme} />
     </OnboardingRouter>
   );
 }
@@ -199,7 +193,17 @@ function AdminRouteGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => void }) {
+function AppWithNavigation({
+  user,
+  onLogout,
+  theme,
+  onToggleTheme,
+}: {
+  user: User;
+  onLogout: () => void;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
+}) {
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
   const location = useLocation();
@@ -215,7 +219,13 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
 
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
-      <AppHeader user={user} onLogout={onLogout} isSuperAdmin={isSuperAdmin === true} />
+      <AppHeader
+        user={user}
+        onLogout={onLogout}
+        isSuperAdmin={isSuperAdmin === true}
+        isDark={theme === 'dark'}
+        onToggleTheme={onToggleTheme}
+      />
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8">
         <div className="w-full max-w-6xl">
           <Routes>
@@ -239,7 +249,6 @@ function AppWithNavigation({ user, onLogout }: { user: User; onLogout: () => voi
           </Routes>
         </div>
       </main>
-      <DarkModeWidget />
       <BottomTabs />
       <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
     </div>

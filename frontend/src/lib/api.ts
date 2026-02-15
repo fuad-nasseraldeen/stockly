@@ -622,57 +622,151 @@ export const adminApi = {
     }),
 };
 
+export type ImportMapping = Record<string, number | null>;
+
+export type ImportPreviewResponse = {
+  sheets: Array<{ name: string; index: number }>;
+  selectedSheet: number;
+  hasHeader: boolean;
+  columns: Array<{ index: number; letter: string; headerValue: string }>;
+  sampleRows: Array<Array<string | number | null>>;
+  suggestedMapping: ImportMapping;
+};
+
+export type ImportValidateResponse = {
+  fieldErrors: string[];
+  rowErrors: Array<{ row: number; message: string }>;
+  normalizedPreview: Array<Record<string, unknown>>;
+  statsEstimate: {
+    totalInputRows: number;
+    mappedRows: number;
+    skippedRows: number;
+    uniqueSuppliers: number;
+    uniqueCategories: number;
+    uniqueProducts: number;
+  };
+};
+
+export type ImportApplyResponse = {
+  success: boolean;
+  stats: {
+    suppliersCreated: number;
+    categoriesCreated: number;
+    productsCreated: number;
+    pricesInserted: number;
+    pricesSkipped: number;
+    byCategory?: Record<string, { total: number }>;
+  };
+  rowErrors?: Array<{ row: number; message: string }>;
+};
+
+export type SavedImportMapping = {
+  id: string;
+  name: string;
+  mapping_json: ImportMapping;
+  created_at: string;
+  updated_at: string;
+};
+
+async function importRequest<T>(url: string, formData: FormData): Promise<T> {
+  const token = await getAuthToken();
+  const tenantId = getTenantId();
+
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (tenantId) headers['x-tenant-id'] = tenantId;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
+    throw new Error(error.error || 'הבקשה נכשלה');
+  }
+
+  return response.json() as Promise<T>;
+}
+
 // Import/Export API
 export const importApi = {
-  preview: async (file: File): Promise<unknown> => {
+  preview: async (
+    file: File,
+    options?: { sheetIndex?: number; hasHeader?: boolean },
+  ): Promise<ImportPreviewResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    const token = await getAuthToken();
-    const tenantId = getTenantId();
-    
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (tenantId) headers['x-tenant-id'] = tenantId;
-    
-    const response = await fetch(`${API_URL}/api/import/preview`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
-      throw new Error(error.error || 'הבקשה נכשלה');
-    }
-    
-    return response.json() as Promise<unknown>;
+    if (typeof options?.sheetIndex === 'number') formData.append('sheetIndex', String(options.sheetIndex));
+    if (typeof options?.hasHeader === 'boolean') formData.append('hasHeader', String(options.hasHeader));
+    return importRequest<ImportPreviewResponse>(`${API_URL}/api/import/preview`, formData);
   },
-  
-  apply: async (file: File, mode: 'merge' | 'overwrite', confirmation?: string): Promise<unknown> => {
+
+  validateMapping: async (
+    file: File,
+    payload: {
+      sheetIndex: number;
+      hasHeader: boolean;
+      mapping: ImportMapping;
+      ignoredRows?: number[];
+      manualSupplierName?: string;
+      manualValuesByRow?: Record<number, Record<string, string>>;
+    },
+  ): Promise<ImportValidateResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    if (confirmation) formData.append('confirmation', confirmation);
-    
-    const token = await getAuthToken();
-    const tenantId = getTenantId();
-    
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (tenantId) headers['x-tenant-id'] = tenantId;
-    
-    const response = await fetch(`${API_URL}/api/import/apply?mode=${mode}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'שגיאה לא ידועה' }));
-      throw new Error(error.error || 'הבקשה נכשלה');
+    formData.append('sheetIndex', String(payload.sheetIndex));
+    formData.append('hasHeader', String(payload.hasHeader));
+    formData.append('mapping', JSON.stringify(payload.mapping));
+    if (Array.isArray(payload.ignoredRows) && payload.ignoredRows.length > 0) {
+      formData.append('ignoredRows', JSON.stringify(payload.ignoredRows));
     }
-    
-    return response.json() as Promise<unknown>;
+    if (payload.manualSupplierName && payload.manualSupplierName.trim()) {
+      formData.append('manualSupplierName', payload.manualSupplierName.trim());
+    }
+    if (payload.manualValuesByRow && Object.keys(payload.manualValuesByRow).length > 0) {
+      formData.append('manualValuesByRow', JSON.stringify(payload.manualValuesByRow));
+    }
+    return importRequest<ImportValidateResponse>(`${API_URL}/api/import/validate-mapping`, formData);
   },
+
+  apply: async (
+    file: File,
+    payload: {
+      mode: 'merge' | 'overwrite';
+      sheetIndex: number;
+      hasHeader: boolean;
+      mapping: ImportMapping;
+      ignoredRows?: number[];
+      manualSupplierName?: string;
+      manualValuesByRow?: Record<number, Record<string, string>>;
+    },
+  ): Promise<ImportApplyResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('sheetIndex', String(payload.sheetIndex));
+    formData.append('hasHeader', String(payload.hasHeader));
+    formData.append('mapping', JSON.stringify(payload.mapping));
+    if (Array.isArray(payload.ignoredRows) && payload.ignoredRows.length > 0) {
+      formData.append('ignoredRows', JSON.stringify(payload.ignoredRows));
+    }
+    if (payload.manualSupplierName && payload.manualSupplierName.trim()) {
+      formData.append('manualSupplierName', payload.manualSupplierName.trim());
+    }
+    if (payload.manualValuesByRow && Object.keys(payload.manualValuesByRow).length > 0) {
+      formData.append('manualValuesByRow', JSON.stringify(payload.manualValuesByRow));
+    }
+    return importRequest<ImportApplyResponse>(`${API_URL}/api/import/apply?mode=${payload.mode}`, formData);
+  },
+
+  listMappings: (): Promise<{ mappings: SavedImportMapping[] }> => apiRequest('/api/import/mappings'),
+
+  saveMapping: (name: string, mapping: ImportMapping): Promise<{ mapping: SavedImportMapping }> =>
+    apiRequest('/api/import/mappings', {
+      method: 'POST',
+      body: JSON.stringify({ name, mapping }),
+    }),
 };
 
 export const exportApi = {
