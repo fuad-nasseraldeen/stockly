@@ -6,7 +6,16 @@ import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount } from '../lib/pricing.js';
-import { extractPdfTablesWithTextract } from '../import/extractors/pdfExtractor.js';
+
+type PdfExtractorModule = typeof import('../import/extractors/pdfExtractor.js');
+let pdfExtractorModulePromise: Promise<PdfExtractorModule> | null = null;
+
+async function loadPdfExtractorModule(): Promise<PdfExtractorModule> {
+  if (!pdfExtractorModulePromise) {
+    pdfExtractorModulePromise = import('../import/extractors/pdfExtractor.js');
+  }
+  return pdfExtractorModulePromise;
+}
 
 const router = Router();
 const MAX_IMPORT_FILE_BYTES = 15 * 1024 * 1024;
@@ -851,6 +860,13 @@ async function resolveSourceRows(
     }
     const pageFrom = parsePositiveInt(body?.pageFrom);
     const pageTo = parsePositiveInt(body?.pageTo);
+    let extractPdfTablesWithTextract: PdfExtractorModule['extractPdfTablesWithTextract'];
+    try {
+      ({ extractPdfTablesWithTextract } = await loadPdfExtractorModule());
+    } catch (error) {
+      console.error('Failed to load PDF extractor module:', error);
+      throw new Error('PDF import is temporarily unavailable on server');
+    }
     const extracted = await extractPdfTablesWithTextract(file.buffer, {
       pageFrom,
       pageTo,
