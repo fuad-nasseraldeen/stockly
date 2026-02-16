@@ -14,11 +14,13 @@
     "test:integration": "vitest run --dir tests/integration"
   },
   "dependencies": {
+    "@aws-sdk/client-textract": "^3.990.0",
     "@supabase/supabase-js": "^2.91.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^2.4.5",
     "xlsx": "^0.18.5",
     "zod": "^4.3.5"
   },

@@ -39,7 +39,7 @@ router.get('/current.csv', requireAuth, requireTenant, async (req, res) => {
 
     // Format CSV with UTF-8 BOM for Excel Hebrew support
     const BOM = '\uFEFF';
-    let csv = BOM + 'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+    let csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
 
     for (const price of prices || []) {
       const product = price.products as any;
@@ -57,7 +57,7 @@ router.get('/current.csv', requireAuth, requireTenant, async (req, res) => {
       const sellPrice = price.sell_price || '';
       const lastUpdated = new Date(price.created_at).toLocaleDateString('he-IL');
 
-      csv += `"${productName}","${sku}",${packageQuantity},"${supplierName}",${costPrice},${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${categoryName}","${lastUpdated}"\n`;
+      csv += `"${productName}","${sku}",${costPrice},${packageQuantity},"${supplierName}",${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${categoryName}","${lastUpdated}"\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -101,7 +101,7 @@ router.get('/history.csv', requireAuth, requireTenant, async (req, res) => {
 
     // Format CSV with UTF-8 BOM for Excel Hebrew support
     const BOM = '\uFEFF';
-    let csv = BOM + 'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,created_at,category\n';
+    let csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,תאריך יצירה,קטגוריה\n';
 
     for (const entry of entries || []) {
       const product = entry.products as any;
@@ -119,7 +119,7 @@ router.get('/history.csv', requireAuth, requireTenant, async (req, res) => {
       const sellPrice = entry.sell_price || '';
       const createdAt = new Date(entry.created_at).toISOString();
 
-      csv += `"${productName}","${sku}",${packageQuantity},"${supplierName}",${costPrice},${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${createdAt}","${categoryName}"\n`;
+      csv += `"${productName}","${sku}",${costPrice},${packageQuantity},"${supplierName}",${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${createdAt}","${categoryName}"\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -162,7 +162,7 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
       } else {
         // No results, return empty CSV
         const BOM = '\uFEFF';
-        const csv = BOM + 'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+        const csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', 'attachment; filename="products_export.csv"');
         return res.send(csv);
@@ -207,7 +207,7 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
 
     if (!products || products.length === 0) {
       const BOM = '\uFEFF';
-      const csv = BOM + 'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+      const csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="products_export.csv"');
       return res.send(csv);
@@ -251,7 +251,7 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
 
     // Format CSV with UTF-8 BOM for Excel Hebrew support
     const BOM = '\uFEFF';
-    let csv = BOM + 'product_name,sku,package_quantity,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,category,last_updated\n';
+    let csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
 
     for (const price of prices || []) {
       const product = price.products as any;
@@ -269,7 +269,7 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
       const sellPrice = price.sell_price || '';
       const lastUpdated = new Date(price.created_at).toLocaleDateString('he-IL');
 
-      csv += `"${productName}","${sku}",${packageQuantity},"${supplierName}",${costPrice},${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${categoryName}","${lastUpdated}"\n`;
+      csv += `"${productName}","${sku}",${costPrice},${packageQuantity},"${supplierName}",${discountPercent},${costPriceAfterDiscount},${marginPercent},${sellPrice},"${categoryName}","${lastUpdated}"\n`;
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

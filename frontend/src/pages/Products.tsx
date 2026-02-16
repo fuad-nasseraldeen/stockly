@@ -280,11 +280,11 @@ export default function Products() {
         setExcelProgress((prev) => Math.min(Math.max(prev, startBase) + 1, maxTarget));
       }, 250);
 
-      // Build CSV (match backend /api/export/filtered.csv headers)
+      // Build CSV with Hebrew headers for Excel export
       const BOM = '\uFEFF';
       let csv =
         BOM +
-        'product_name,sku,supplier,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,category,last_updated\n';
+        'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
 
       for (const p of allProducts) {
         const productName = p?.name ?? '';
@@ -306,13 +306,13 @@ export default function Products() {
           csv +=
             `${csvEscape(productName)},` +
             `${csvEscape(sku)},` +
-            `${csvEscape(supplierName)},` +
             `${costPrice},` +
+            `${packageQty},` +
+            `${csvEscape(supplierName)},` +
             `${discountPercent},` +
             `${costPriceAfterDiscount},` +
             `${marginPercent},` +
             `${sellPrice},` +
-            `${packageQty},` +
             `${csvEscape(categoryName)},` +
             `${csvEscape(lastUpdated)}\n`;
         }
@@ -714,7 +714,7 @@ export default function Products() {
           <div className="space-y-4">
             {/* First row: Search and Sort */}
             <div className="grid grid-cols-10 gap-4">
-              <div className="space-y-2 col-span-7">
+              <div className="space-y-2 col-span-6">
                 <Label className="text-sm font-medium">חיפוש</Label>
                 <div className="relative">
                   <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -726,16 +726,16 @@ export default function Products() {
                   />
                 </div>
               </div>
-              <div className="space-y-2 col-span-3">
-                <Label className="text-sm font-medium">מיון</Label>
+              <div className="space-y-2 col-span-4">
+                <Label className="text-sm font-medium">מיין לפי</Label>
                 <Select
                   value={sort}
                   onChange={(e) => handleSortChange(e.target.value as SortOption)}
                 >
-                  <option value="updated_desc">עודכן לאחרונה (חדש→ישן)</option>
-                  <option value="updated_asc">עודכן לאחרונה (ישן→חדש)</option>
-                  <option value="price_asc">מחיר (נמוך→גבוה)</option>
-                  <option value="price_desc">מחיר (גבוה→נמוך)</option>
+                  <option value="updated_desc">עודכן: חדש→ישן</option>
+                  <option value="updated_asc">עודכן: ישן→חדש</option>
+                  <option value="price_asc">מחיר: נמוך→גבוה</option>
+                  <option value="price_desc">מחיר: גבוה→נמוך</option>
                 </Select>
               </div>
             </div>
@@ -1051,7 +1051,6 @@ export default function Products() {
                     const rowObjects = (priceHistory || []).map((price) =>
                       priceRowToExportValues({ price, product, settings: appSettings, columnKeys })
                     );
-
                     await downloadTablePdf({
                       storeName: currentTenant?.name || 'Stockly',
                       title: 'היסטוריית מחירים',

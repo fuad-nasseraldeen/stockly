@@ -623,17 +623,34 @@ export const adminApi = {
 };
 
 export type ImportMapping = Record<string, number | null>;
+export type ImportSourceType = 'excel' | 'pdf';
 
-export type ImportPreviewResponse = {
-  sheets: Array<{ name: string; index: number }>;
-  selectedSheet: number;
-  hasHeader: boolean;
+export type ImportPreviewTable = {
+  tableIndex: number;
+  pageStart: number;
+  pageEnd: number;
   columns: Array<{ index: number; letter: string; headerValue: string }>;
   sampleRows: Array<Array<string | number | null>>;
   suggestedMapping: ImportMapping;
 };
 
+export type ImportPreviewResponse = {
+  sourceType: ImportSourceType;
+  sheets: Array<{ name: string; index: number }>;
+  selectedSheet: number;
+  selectedTableIndex?: number;
+  tables?: ImportPreviewTable[];
+  hasHeader: boolean;
+  columns: Array<{ index: number; letter: string; headerValue: string }>;
+  sampleRows: Array<Array<string | number | null>>;
+  suggestedMapping: ImportMapping;
+  warnings?: string[];
+};
+
 export type ImportValidateResponse = {
+  sourceType?: ImportSourceType;
+  selectedSheet?: number;
+  selectedTableIndex?: number;
   fieldErrors: string[];
   rowErrors: Array<{ row: number; message: string }>;
   normalizedPreview: Array<Record<string, unknown>>;
@@ -664,6 +681,8 @@ export type SavedImportMapping = {
   id: string;
   name: string;
   mapping_json: ImportMapping;
+  source_type?: ImportSourceType;
+  template_key?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -694,12 +713,23 @@ async function importRequest<T>(url: string, formData: FormData): Promise<T> {
 export const importApi = {
   preview: async (
     file: File,
-    options?: { sheetIndex?: number; hasHeader?: boolean },
+    options?: {
+      sourceType?: ImportSourceType;
+      sheetIndex?: number;
+      tableIndex?: number;
+      hasHeader?: boolean;
+      pageFrom?: number;
+      pageTo?: number;
+    },
   ): Promise<ImportPreviewResponse> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (options?.sourceType) formData.append('sourceType', options.sourceType);
     if (typeof options?.sheetIndex === 'number') formData.append('sheetIndex', String(options.sheetIndex));
+    if (typeof options?.tableIndex === 'number') formData.append('tableIndex', String(options.tableIndex));
     if (typeof options?.hasHeader === 'boolean') formData.append('hasHeader', String(options.hasHeader));
+    if (typeof options?.pageFrom === 'number') formData.append('pageFrom', String(options.pageFrom));
+    if (typeof options?.pageTo === 'number') formData.append('pageTo', String(options.pageTo));
     return importRequest<ImportPreviewResponse>(`${API_URL}/api/import/preview`, formData);
   },
 
@@ -707,6 +737,8 @@ export const importApi = {
     file: File,
     payload: {
       sheetIndex: number;
+      sourceType?: ImportSourceType;
+      tableIndex?: number;
       hasHeader: boolean;
       mapping: ImportMapping;
       ignoredRows?: number[];
@@ -716,7 +748,9 @@ export const importApi = {
   ): Promise<ImportValidateResponse> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (payload.sourceType) formData.append('sourceType', payload.sourceType);
     formData.append('sheetIndex', String(payload.sheetIndex));
+    if (typeof payload.tableIndex === 'number') formData.append('tableIndex', String(payload.tableIndex));
     formData.append('hasHeader', String(payload.hasHeader));
     formData.append('mapping', JSON.stringify(payload.mapping));
     if (Array.isArray(payload.ignoredRows) && payload.ignoredRows.length > 0) {
@@ -736,6 +770,8 @@ export const importApi = {
     payload: {
       mode: 'merge' | 'overwrite';
       sheetIndex: number;
+      sourceType?: ImportSourceType;
+      tableIndex?: number;
       hasHeader: boolean;
       mapping: ImportMapping;
       ignoredRows?: number[];
@@ -745,7 +781,9 @@ export const importApi = {
   ): Promise<ImportApplyResponse> => {
     const formData = new FormData();
     formData.append('file', file);
+    if (payload.sourceType) formData.append('sourceType', payload.sourceType);
     formData.append('sheetIndex', String(payload.sheetIndex));
+    if (typeof payload.tableIndex === 'number') formData.append('tableIndex', String(payload.tableIndex));
     formData.append('hasHeader', String(payload.hasHeader));
     formData.append('mapping', JSON.stringify(payload.mapping));
     if (Array.isArray(payload.ignoredRows) && payload.ignoredRows.length > 0) {
@@ -760,12 +798,22 @@ export const importApi = {
     return importRequest<ImportApplyResponse>(`${API_URL}/api/import/apply?mode=${payload.mode}`, formData);
   },
 
-  listMappings: (): Promise<{ mappings: SavedImportMapping[] }> => apiRequest('/api/import/mappings'),
+  listMappings: (params?: { source_type?: ImportSourceType; template_key?: string }): Promise<{ mappings: SavedImportMapping[] }> => {
+    const qp = new URLSearchParams();
+    if (params?.source_type) qp.append('source_type', params.source_type);
+    if (params?.template_key) qp.append('template_key', params.template_key);
+    const suffix = qp.toString() ? `?${qp.toString()}` : '';
+    return apiRequest(`/api/import/mappings${suffix}`);
+  },
 
-  saveMapping: (name: string, mapping: ImportMapping): Promise<{ mapping: SavedImportMapping }> =>
+  saveMapping: (
+    name: string,
+    mapping: ImportMapping,
+    options?: { source_type?: ImportSourceType; template_key?: string },
+  ): Promise<{ mapping: SavedImportMapping }> =>
     apiRequest('/api/import/mappings', {
       method: 'POST',
-      body: JSON.stringify({ name, mapping }),
+      body: JSON.stringify({ name, mapping, source_type: options?.source_type, template_key: options?.template_key }),
     }),
 };
 

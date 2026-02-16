@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useProduct, useUpdateProduct, useAddProductPrice, useUpdateProductPrice, useDeleteProductPrice, useProductPriceHistory } from '../hooks/useProducts';
 import { useCategories } from '../hooks/useCategories';
@@ -82,6 +82,7 @@ export default function EditProduct() {
   const [newPricePackageQuantity, setNewPricePackageQuantity] = useState('');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
+  const didInitFormFromProduct = useRef(false);
   
   const vatPercent = settings?.vat_percent ?? 18;
   const useMargin = settings?.use_margin === true;
@@ -110,13 +111,20 @@ export default function EditProduct() {
   
 
   useEffect(() => {
-    if (product) {
-      setName(product.name ?? '');
-      setCategoryId(product.category?.id ?? '');
-      setUnit((product.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
-      setSku((product as any).sku ?? '');
-      // package_quantity removed - it's now only in price_entries (supplier-specific)
-    }
+    // If route changes to another product id without unmounting, allow re-hydration once.
+    didInitFormFromProduct.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    // Hydrate edit form only once after product arrives.
+    // Otherwise background refetches can override in-progress user edits.
+    if (!product || didInitFormFromProduct.current) return;
+    setName(product.name ?? '');
+    setCategoryId(product.category?.id ?? '');
+    setUnit((product.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
+    setSku((product as any).sku ?? '');
+    didInitFormFromProduct.current = true;
+    // package_quantity removed - it's now only in price_entries (supplier-specific)
   }, [product]);
 
   const handleSave = (): void => {

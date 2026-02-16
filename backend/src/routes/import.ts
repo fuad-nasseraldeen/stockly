@@ -6,11 +6,20 @@ import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount } from '../lib/pricing.js';
+import { extractPdfTablesWithTextract } from '../import/extractors/pdfExtractor.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_IMPORT_FILE_BYTES = 15 * 1024 * 1024;
+const MAX_PDF_PREVIEW_PAGES = 10;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMPORT_FILE_BYTES,
+  },
+});
 
 const importModeSchema = z.enum(['merge', 'overwrite']);
+const importSourceTypeSchema = z.enum(['excel', 'pdf']);
 
 type MappingValue = number | null;
 type Mapping = Record<string, MappingValue>;
@@ -36,6 +45,8 @@ interface RowError {
 const mappingSaveSchema = z.object({
   name: z.string().trim().min(1).max(120),
   mapping: z.record(z.string(), z.union([z.number().int().min(0), z.null()])),
+  source_type: z.enum(['excel', 'pdf']).optional(),
+  template_key: z.string().trim().max(255).optional(),
 });
 
 const IMPORT_MAPPINGS_PREF_KEY = 'import_saved_mappings_v1';
@@ -44,6 +55,8 @@ type SavedImportMappingRow = {
   id: string;
   name: string;
   mapping_json: Mapping;
+  source_type?: 'excel' | 'pdf';
+  template_key?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -63,6 +76,14 @@ function sanitizeSavedMappings(raw: unknown): SavedImportMappingRow[] {
       const mapping_json = candidate.mapping_json && typeof candidate.mapping_json === 'object'
         ? (candidate.mapping_json as Mapping)
         : {};
+      const source_type =
+        candidate.source_type === 'pdf' || candidate.source_type === 'excel'
+          ? (candidate.source_type as 'excel' | 'pdf')
+          : 'excel';
+      const template_key =
+        typeof candidate.template_key === 'string' && candidate.template_key.trim()
+          ? candidate.template_key.trim()
+          : null;
       const created_at = typeof candidate.created_at === 'string' ? candidate.created_at : '';
       const updated_at = typeof candidate.updated_at === 'string' ? candidate.updated_at : '';
 
@@ -71,6 +92,8 @@ function sanitizeSavedMappings(raw: unknown): SavedImportMappingRow[] {
         id,
         name,
         mapping_json,
+        source_type,
+        template_key,
         created_at: created_at || new Date().toISOString(),
         updated_at: updated_at || new Date().toISOString(),
       } as SavedImportMappingRow;
@@ -107,10 +130,14 @@ async function saveMappingToPreferences(
   tenantId: string,
   name: string,
   mapping: Mapping,
+  sourceType: 'excel' | 'pdf' = 'excel',
+  templateKey?: string,
 ): Promise<SavedImportMappingRow> {
   const now = new Date().toISOString();
   const current = await loadMappingsFromPreferences(userId, tenantId);
-  const existingIndex = current.findIndex((m) => m.name === name);
+  const existingIndex = current.findIndex(
+    (m) => m.name === name && (m.source_type || 'excel') === sourceType && (m.template_key || '') === (templateKey || ''),
+  );
 
   let nextSaved: SavedImportMappingRow;
   if (existingIndex >= 0) {
@@ -118,6 +145,8 @@ async function saveMappingToPreferences(
     nextSaved = {
       ...existing,
       mapping_json: mapping,
+      source_type: sourceType,
+      template_key: templateKey || null,
       updated_at: now,
     };
     current[existingIndex] = nextSaved;
@@ -126,6 +155,8 @@ async function saveMappingToPreferences(
       id: createMappingId(),
       name,
       mapping_json: mapping,
+      source_type: sourceType,
+      template_key: templateKey || null,
       created_at: now,
       updated_at: now,
     };
@@ -156,8 +187,13 @@ function normKey(name: string): string {
   return (name || '').trim().toLowerCase();
 }
 
-function productKey(nameNorm: string, categoryId: string): string {
-  return `${nameNorm}||${categoryId}`;
+function skuKey(sku?: string | null): string {
+  return (sku || '').trim().toLowerCase();
+}
+
+function productKey(nameNorm: string, categoryId: string, sku?: string | null): string {
+  const skuNorm = skuKey(sku);
+  return `${nameNorm}||${categoryId}||${skuNorm}`;
 }
 
 function chunk<T>(array: T[], size: number): T[][] {
@@ -166,6 +202,80 @@ function chunk<T>(array: T[], size: number): T[][] {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
+}
+
+const importRateBuckets = new Map<string, number[]>();
+
+function guardImportRateLimit(req: any, limit: number, windowMs: number): string | null {
+  const tenantId = req?.tenant?.tenantId || 'unknown-tenant';
+  const userId = req?.user?.id || 'unknown-user';
+  const routeKey = req?.route?.path || req?.path || 'unknown-route';
+  const key = `${tenantId}:${userId}:${routeKey}`;
+  const now = Date.now();
+  const from = now - windowMs;
+  const prev = importRateBuckets.get(key) || [];
+  const recent = prev.filter((t) => t >= from);
+  if (recent.length >= limit) {
+    return 'יותר מדי בקשות בזמן קצר. נסה שוב בעוד כמה שניות.';
+  }
+  recent.push(now);
+  importRateBuckets.set(key, recent);
+  return null;
+}
+
+function toUserImportError(error: unknown): { status: number; message: string } {
+  const message = error instanceof Error ? error.message : String(error || '');
+  const raw = String(message || '');
+
+  if (raw.includes('Missing AWS_REGION')) {
+    return { status: 400, message: 'Missing AWS_REGION' };
+  }
+  if (raw.includes('sourceType=pdf דורש קובץ PDF חוקי')) {
+    return { status: 400, message: 'sourceType=pdf requires a valid PDF file' };
+  }
+  if (raw.includes('sourceType=excel לא יכול לקבל PDF')) {
+    return { status: 400, message: 'sourceType=excel cannot accept a PDF file' };
+  }
+
+  if (raw.includes('AccessDeniedException') || raw.includes('textract:AnalyzeDocument')) {
+    return {
+      status: 400,
+      message: 'אין הרשאה ל-AWS Textract. יש להוסיף הרשאת textract:AnalyzeDocument למשתמש/Role של השרת.',
+    };
+  }
+  if (
+    raw.includes('UnsupportedDocumentException') ||
+    raw.includes('unsupported document format') ||
+    raw.includes('ה-PDF לא נתמך על ידי AWS Textract')
+  ) {
+    return {
+      status: 400,
+      message: raw.includes('אבחון:')
+        ? raw
+        : 'ה-PDF לא נתמך על ידי Textract בפורמט הנוכחי. נסה לשמור מחדש (Print to PDF) או לפצל לעמודים בודדים.',
+    };
+  }
+
+  if (
+    raw.includes('sourceType=pdf') ||
+    raw.includes('לא נמצאו טבלאות') ||
+    raw.includes('טווח עמודים גדול מדי') ||
+    raw.includes('לא נמצאו גיליונות בקובץ')
+  ) {
+    return { status: 400, message: raw };
+  }
+
+  return { status: 500, message: 'שגיאת שרת בתהליך הייבוא' };
+}
+
+function hasPdfMagicBytes(buffer: Buffer): boolean {
+  if (!buffer || buffer.length < 4) return false;
+  return (
+    buffer[0] === 0x25 && // %
+    buffer[1] === 0x50 && // P
+    buffer[2] === 0x44 && // D
+    buffer[3] === 0x46 // F
+  );
 }
 
 function columnLetter(index: number): string {
@@ -239,6 +349,24 @@ function parseBooleanFlag(raw: unknown, defaultValue: boolean): boolean {
 function parseSheetIndex(raw: unknown, sheetCount: number): number {
   const n = Number(raw ?? 0);
   if (!Number.isFinite(n) || n < 0 || n >= sheetCount) return 0;
+  return Math.floor(n);
+}
+
+function parseTableIndex(raw: unknown, tableCount: number): number {
+  const n = Number(raw ?? 0);
+  if (!Number.isFinite(n) || n < 0 || n >= tableCount) return 0;
+  return Math.floor(n);
+}
+
+function parseSourceType(raw: unknown): 'excel' | 'pdf' {
+  const parsed = importSourceTypeSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  return 'excel';
+}
+
+function parsePositiveInt(raw: unknown): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
   return Math.floor(n);
 }
 
@@ -579,19 +707,19 @@ function normalizeRowsWithMapping(
     const manualText = (fieldKey: string): string => String(manualRow[fieldKey] ?? '').trim();
     const manualNumber = (fieldKey: string): number | null => parseNumberSmart(manualText(fieldKey));
 
-    const productName = toCellString(row, productCol) || manualText('product_name');
+    const productName = manualText('product_name') || toCellString(row, productCol);
     if (!productName) {
       rowErrors.push({ row: visualRow, message: 'שם מוצר חסר - שורה דולגה' });
       continue;
     }
 
-    const sku = toCellString(row, skuCol) || manualText('sku') || undefined;
-    const barcode = toCellString(row, barcodeCol) || manualText('barcode') || undefined;
-    const category = toCellString(row, categoryCol) || manualText('category') || 'כללי';
-    const packageQtyRaw = toCellNumber(row, packageQtyCol);
-    const sharedDiscountRaw = toCellNumber(row, sharedDiscountCol) ?? manualNumber('discount_percent');
-    const sharedVatRaw = toCellNumber(row, sharedVatCol) ?? manualNumber('vat');
-    const sharedCurrency = toCellString(row, sharedCurrencyCol) || manualText('currency') || undefined;
+    const sku = manualText('sku') || toCellString(row, skuCol) || undefined;
+    const barcode = manualText('barcode') || toCellString(row, barcodeCol) || undefined;
+    const category = manualText('category') || toCellString(row, categoryCol) || 'כללי';
+    const packageQtyRaw = manualNumber('package_quantity') ?? toCellNumber(row, packageQtyCol);
+    const sharedDiscountRaw = manualNumber('discount_percent') ?? toCellNumber(row, sharedDiscountCol);
+    const sharedVatRaw = manualNumber('vat') ?? toCellNumber(row, sharedVatCol);
+    const sharedCurrency = manualText('currency') || toCellString(row, sharedCurrencyCol) || undefined;
 
     let packageQty: number | undefined;
     const effectivePackageQtyRaw = packageQtyRaw ?? manualNumber('package_quantity');
@@ -614,8 +742,8 @@ function normalizeRowsWithMapping(
 
       if (pair.priceCol === null && !manualPriceForPair) continue;
 
-      const supplier = toCellString(row, pair.supplierCol) || manualSupplierForPair || manualSupplier;
-      const priceRaw = toCellString(row, pair.priceCol) || manualPriceForPair;
+      const supplier = manualSupplierForPair || manualSupplier || toCellString(row, pair.supplierCol);
+      const priceRaw = manualPriceForPair || toCellString(row, pair.priceCol);
 
       // fallback rule: partial pair -> skip this pair only
       if (!priceRaw) continue;
@@ -630,15 +758,15 @@ function normalizeRowsWithMapping(
         continue;
       }
 
-      const pairDiscountRaw = toCellNumber(row, pair.discountCol) ?? manualDiscountForPair;
+      const pairDiscountRaw = manualDiscountForPair ?? toCellNumber(row, pair.discountCol);
       const discountPercent = pairDiscountRaw ?? sharedDiscountRaw ?? 0;
       if (discountPercent < 0 || discountPercent > 100) {
         rowErrors.push({ row: visualRow, message: `אחוז הנחה לא תקין בזוג #${pair.index}` });
         continue;
       }
 
-      const pairVat = toCellNumber(row, pair.vatCol) ?? manualVatForPair ?? sharedVatRaw ?? undefined;
-      const pairCurrency = toCellString(row, pair.currencyCol) || manualCurrencyForPair || sharedCurrency;
+      const pairVat = manualVatForPair ?? toCellNumber(row, pair.vatCol) ?? sharedVatRaw ?? undefined;
+      const pairCurrency = manualCurrencyForPair || toCellString(row, pair.currencyCol) || sharedCurrency;
 
       normalizedRows.push({
         product_name: productName,
@@ -682,70 +810,162 @@ function normalizeRowsWithMapping(
 function dedupeLastRowWins(rows: ImportRow[]): ImportRow[] {
   const seen = new Map<string, ImportRow>();
   for (const row of rows) {
-    const key = `${normalizeName(row.product_name)}|${normKey(row.supplier)}|${normKey(row.category || 'כללי')}`;
+    const key =
+      `${normalizeName(row.product_name)}|` +
+      `${normKey(row.supplier)}|` +
+      `${normKey(row.category || 'כללי')}|` +
+      `${skuKey(row.sku)}|` +
+      `${skuKey(row.barcode)}`;
     seen.set(key, row);
   }
   return Array.from(seen.values());
 }
 
-router.post('/preview', requireAuth, requireTenant, upload.single('file'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ error: 'לא הועלה קובץ' });
+type SourceRowsResult = {
+  sourceType: 'excel' | 'pdf';
+  rows: unknown[][];
+  selectedSheet?: number;
+  selectedTableIndex?: number;
+  sheets?: Array<{ name: string; index: number }>;
+  pdfTables?: Array<{
+    tableIndex: number;
+    pageStart: number;
+    pageEnd: number;
+    columns: Array<{ index: number; letter: string; headerValue: string }>;
+    sampleRows: Array<Array<string | number | null>>;
+    suggestedMapping: Mapping;
+  }>;
+  warnings?: string[];
+};
 
-    const workbook = readWorkbook(file.buffer);
-    if (!workbook.SheetNames.length) {
-      return res.status(400).json({ error: 'לא נמצאו גיליונות בקובץ' });
+async function resolveSourceRows(
+  file: Express.Multer.File,
+  body: any,
+): Promise<SourceRowsResult> {
+  const sourceType = parseSourceType(body?.sourceType);
+  const isPdfBytes = hasPdfMagicBytes(file.buffer);
+
+  if (sourceType === 'pdf') {
+    if (!isPdfBytes) {
+      throw new Error('sourceType=pdf דורש קובץ PDF חוקי');
+    }
+    const pageFrom = parsePositiveInt(body?.pageFrom);
+    const pageTo = parsePositiveInt(body?.pageTo);
+    const extracted = await extractPdfTablesWithTextract(file.buffer, {
+      pageFrom,
+      pageTo,
+      maxPages: MAX_PDF_PREVIEW_PAGES,
+    });
+    if (!extracted.tables.length) {
+      throw new Error('לא נמצאו טבלאות ב-PDF. נסה טווח עמודים אחר או קובץ אחר.');
     }
 
-    const selectedSheet = parseSheetIndex(req.body?.sheetIndex, workbook.SheetNames.length);
-    const hasHeader = parseBooleanFlag(req.body?.hasHeader, true);
+    const hasHeader = parseBooleanFlag(body?.hasHeader, true);
+    const selectedTableIndex = parseTableIndex(body?.tableIndex, extracted.tables.length);
+    const selectedTable = extracted.tables[selectedTableIndex];
+    const rows = selectedTable.rows;
 
-    const rows = rowsFromSheet(workbook, selectedSheet);
+    const pdfTables = extracted.tables.map((table) => {
+      const columns = buildColumns(table.rows, hasHeader);
+      const sampleRows = table.rows.slice(0, 50).map((row) =>
+        Array.from({ length: columns.length }).map((_, idx) => row[idx] ?? ''),
+      );
+      return {
+        tableIndex: table.tableIndex,
+        pageStart: table.pageStart,
+        pageEnd: table.pageEnd,
+        columns,
+        sampleRows,
+        suggestedMapping: suggestMapping(columns),
+      };
+    });
+
+    return {
+      sourceType,
+      rows,
+      selectedTableIndex,
+      pdfTables,
+      warnings: extracted.warnings,
+    };
+  }
+
+  if (isPdfBytes) {
+    throw new Error('sourceType=excel לא יכול לקבל PDF');
+  }
+
+  const workbook = readWorkbook(file.buffer);
+  if (!workbook.SheetNames.length) {
+    throw new Error('לא נמצאו גיליונות בקובץ');
+  }
+
+  const selectedSheet = parseSheetIndex(body?.sheetIndex, workbook.SheetNames.length);
+  const rows = rowsFromSheet(workbook, selectedSheet);
+  const sheets = workbook.SheetNames.map((name, index) => ({ name, index }));
+  return {
+    sourceType,
+    rows,
+    selectedSheet,
+    sheets,
+  };
+}
+
+router.post('/preview', requireAuth, requireTenant, upload.single('file'), async (req, res) => {
+  try {
+    const rateLimited = guardImportRateLimit(req, 20, 60_000);
+    if (rateLimited) return res.status(429).json({ error: rateLimited });
+
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'לא הועלה קובץ' });
+    const source = await resolveSourceRows(file, req.body);
+    const hasHeader = parseBooleanFlag(req.body?.hasHeader, true);
+    const rows = source.rows;
     const columns = buildColumns(rows, hasHeader);
 
     const sampleRows = rows.slice(0, 50).map((row) =>
       Array.from({ length: columns.length }).map((_, idx) => row[idx] ?? ''),
     );
-
-    const sheets = workbook.SheetNames.map((name, index) => ({ name, index }));
     const suggestedMapping = suggestMapping(columns);
 
     return res.json({
-      sheets,
-      selectedSheet,
+      sourceType: source.sourceType,
+      sheets: source.sheets || [],
+      selectedSheet: source.selectedSheet ?? 0,
+      selectedTableIndex: source.selectedTableIndex ?? 0,
+      tables: source.pdfTables || [],
       hasHeader,
       columns,
       sampleRows,
       suggestedMapping,
+      warnings: source.warnings || [],
     });
   } catch (error) {
     console.error('Import preview error:', error);
-    return res.status(500).json({ error: 'שגיאת שרת בתצוגה מקדימה' });
+    const normalized = toUserImportError(error);
+    return res.status(normalized.status).json({ error: normalized.message });
   }
 });
 
 router.post('/validate-mapping', requireAuth, requireTenant, upload.single('file'), async (req, res) => {
   try {
+    const rateLimited = guardImportRateLimit(req, 30, 60_000);
+    if (rateLimited) return res.status(429).json({ error: rateLimited });
+
     const file = req.file;
     if (!file) return res.status(400).json({ error: 'לא הועלה קובץ' });
-
-    const workbook = readWorkbook(file.buffer);
-    if (!workbook.SheetNames.length) {
-      return res.status(400).json({ error: 'לא נמצאו גיליונות בקובץ' });
-    }
-
-    const sheetIndex = parseSheetIndex(req.body?.sheetIndex, workbook.SheetNames.length);
+    const source = await resolveSourceRows(file, req.body);
     const hasHeader = parseBooleanFlag(req.body?.hasHeader, true);
     const mapping = parseMapping(req.body?.mapping);
     const ignoredRows = parseIgnoredRows(req.body?.ignoredRows);
     const manualSupplierName = parseManualSupplierName(req.body?.manualSupplierName);
     const manualValuesByRow = parseManualValuesByRow(req.body?.manualValuesByRow);
 
-    const rows = filterIgnoredRows(rowsFromSheet(workbook, sheetIndex), ignoredRows);
+    const rows = filterIgnoredRows(source.rows, ignoredRows);
     const normalized = normalizeRowsWithMapping(rows, hasHeader, mapping, { manualSupplierName, manualValuesByRow });
 
     return res.json({
+      sourceType: source.sourceType,
+      selectedTableIndex: source.selectedTableIndex ?? 0,
+      selectedSheet: source.selectedSheet ?? 0,
       fieldErrors: normalized.fieldErrors,
       rowErrors: normalized.rowErrors.slice(0, 50),
       normalizedPreview: normalized.rows.slice(0, 100),
@@ -753,7 +973,8 @@ router.post('/validate-mapping', requireAuth, requireTenant, upload.single('file
     });
   } catch (error) {
     console.error('Validate mapping error:', error);
-    return res.status(500).json({ error: 'שגיאת שרת בבדיקת מיפוי' });
+    const normalized = toUserImportError(error);
+    return res.status(normalized.status).json({ error: normalized.message });
   }
 });
 
@@ -761,15 +982,39 @@ router.get('/mappings', requireAuth, requireTenant, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const user = (req as any).user;
-    const { data, error } = await supabase
+    const sourceTypeRaw = typeof req.query?.source_type === 'string' ? req.query.source_type : undefined;
+    const sourceTypeFilter = sourceTypeRaw ? parseSourceType(sourceTypeRaw) : undefined;
+    const templateKeyFilter = typeof req.query?.template_key === 'string' ? req.query.template_key.trim() : '';
+
+    let query = supabase
       .from('import_mappings')
-      .select('id,name,mapping_json,created_at,updated_at')
+      .select('id,name,mapping_json,source_type,template_key,created_at,updated_at')
       .eq('tenant_id', tenant.tenantId)
       .order('updated_at', { ascending: false });
+    if (sourceTypeFilter) {
+      query = query.eq('source_type', sourceTypeFilter);
+    }
+    if (templateKeyFilter) {
+      query = query.eq('template_key', templateKeyFilter);
+    }
+    let { data, error } = await query;
+
+    // Backward compatibility: table exists but new columns not yet migrated.
+    if (error && String(error.message || '').includes('source_type')) {
+      const legacy = await supabase
+        .from('import_mappings')
+        .select('id,name,mapping_json,created_at,updated_at')
+        .eq('tenant_id', tenant.tenantId)
+        .order('updated_at', { ascending: false });
+      data = (legacy.data || []).map((row: any) => ({ ...row, source_type: 'excel', template_key: null }));
+      error = legacy.error;
+    }
 
     if (error) {
       if (isMissingImportMappingsTable(error)) {
-        const fallbackMappings = await loadMappingsFromPreferences(user.id, tenant.tenantId);
+        const fallbackMappings = (await loadMappingsFromPreferences(user.id, tenant.tenantId))
+          .filter((m) => (sourceTypeFilter ? (m.source_type || 'excel') === sourceTypeFilter : true))
+          .filter((m) => (templateKeyFilter ? (m.template_key || '') === templateKeyFilter : true));
         return res.json({ mappings: fallbackMappings });
       }
       console.error('Load mappings error:', error);
@@ -793,6 +1038,8 @@ router.post('/mappings', requireAuth, requireTenant, async (req, res) => {
       tenant_id: tenant.tenantId,
       name: parsed.name,
       mapping_json: parsed.mapping,
+      source_type: parsed.source_type || 'excel',
+      template_key: parsed.template_key || null,
       created_by: user.id,
       updated_at: new Date().toISOString(),
     };
@@ -804,8 +1051,35 @@ router.post('/mappings', requireAuth, requireTenant, async (req, res) => {
       .single();
 
     if (error) {
+      // Backward compatibility: table exists but new columns not yet migrated.
+      if (String(error.message || '').includes('source_type') || String(error.message || '').includes('template_key')) {
+        const legacy = await supabase
+          .from('import_mappings')
+          .upsert(
+            {
+              tenant_id: tenant.tenantId,
+              name: parsed.name,
+              mapping_json: parsed.mapping,
+              created_by: user.id,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'tenant_id,name' },
+          )
+          .select('id,name,mapping_json,created_at,updated_at')
+          .single();
+        if (!legacy.error && legacy.data) {
+          return res.json({ mapping: { ...legacy.data, source_type: 'excel', template_key: null } });
+        }
+      }
       if (isMissingImportMappingsTable(error)) {
-        const fallbackSaved = await saveMappingToPreferences(user.id, tenant.tenantId, parsed.name, parsed.mapping);
+        const fallbackSaved = await saveMappingToPreferences(
+          user.id,
+          tenant.tenantId,
+          parsed.name,
+          parsed.mapping,
+          parsed.source_type || 'excel',
+          parsed.template_key,
+        );
         return res.json({ mapping: fallbackSaved });
       }
       console.error('Save mapping error:', error);
@@ -824,6 +1098,9 @@ router.post('/mappings', requireAuth, requireTenant, async (req, res) => {
 
 router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (req, res) => {
   try {
+    const rateLimited = guardImportRateLimit(req, 20, 60_000);
+    if (rateLimited) return res.status(429).json({ error: rateLimited });
+
     const tenant = (req as any).tenant;
     const user = (req as any).user;
     const mode = importModeSchema.parse(req.query.mode || 'merge');
@@ -833,19 +1110,14 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       return res.status(400).json({ error: 'לא הועלה קובץ' });
     }
 
-    const workbook = readWorkbook(file.buffer);
-    if (!workbook.SheetNames.length) {
-      return res.status(400).json({ error: 'לא נמצאו גיליונות בקובץ' });
-    }
-
-    const sheetIndex = parseSheetIndex(req.body?.sheetIndex, workbook.SheetNames.length);
+    const source = await resolveSourceRows(file, req.body);
     const hasHeader = parseBooleanFlag(req.body?.hasHeader, true);
     const mapping = parseMapping(req.body?.mapping);
     const ignoredRows = parseIgnoredRows(req.body?.ignoredRows);
     const manualSupplierName = parseManualSupplierName(req.body?.manualSupplierName);
     const manualValuesByRow = parseManualValuesByRow(req.body?.manualValuesByRow);
 
-    const rowsRaw = filterIgnoredRows(rowsFromSheet(workbook, sheetIndex), ignoredRows);
+    const rowsRaw = filterIgnoredRows(source.rows, ignoredRows);
     const normalized = normalizeRowsWithMapping(rowsRaw, hasHeader, mapping, { manualSupplierName, manualValuesByRow });
 
     if (normalized.fieldErrors.length) {
@@ -997,7 +1269,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     ] = await Promise.all([
       supabase.from('suppliers').select('id,name').eq('tenant_id', tenant.tenantId).eq('is_active', true),
       supabase.from('categories').select('id,name').eq('tenant_id', tenant.tenantId).eq('is_active', true),
-      supabase.from('products').select('id,name_norm,category_id,name').eq('tenant_id', tenant.tenantId).eq('is_active', true),
+      supabase.from('products').select('id,name_norm,category_id,name,sku').eq('tenant_id', tenant.tenantId).eq('is_active', true),
     ]);
 
     if (supErr) console.error('Error preloading suppliers:', supErr);
@@ -1018,7 +1290,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
 
     const productIdByKey = new Map<string, string>();
     for (const p of (existingProducts || [])) {
-      productIdByKey.set(productKey(p.name_norm, p.category_id), p.id);
+      productIdByKey.set(productKey(p.name_norm, p.category_id, p.sku || null), p.id);
     }
 
     // 5) Create missing suppliers
@@ -1103,7 +1375,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
 
     for (const p of productsNeeded) {
       const catId = categoryIdByName.get(normKey(p.categoryName)) || defaultCategoryId;
-      const key = productKey(p.nameNorm, catId);
+      const key = productKey(p.nameNorm, catId, p.sku || null);
       if (!desiredProducts.has(key)) {
         desiredProducts.set(key, { ...p, categoryId: catId, categoryName: p.categoryName });
       } else {
@@ -1132,13 +1404,13 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
         const { data: inserted, error } = await supabase
           .from('products')
           .insert(part)
-          .select('id,name_norm,category_id');
+          .select('id,name_norm,category_id,sku');
         if (error) {
           console.error('Bulk product insert failed:', error);
           continue;
         }
         for (const p of (inserted || [])) {
-          productIdByKey.set(productKey(p.name_norm, p.category_id), p.id);
+          productIdByKey.set(productKey(p.name_norm, p.category_id, p.sku || null), p.id);
           stats.productsCreated++;
         }
       }
@@ -1164,7 +1436,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       const categoryName = (r.category && r.category.trim()) ? r.category.trim() : 'כללי';
       const categoryId = categoryIdByName.get(normKey(categoryName)) || defaultCategoryId;
       const nameNorm = normalizeName(r.product_name);
-      const pId = productIdByKey.get(productKey(nameNorm, categoryId));
+      const pId = productIdByKey.get(productKey(nameNorm, categoryId, r.sku || null));
       if (!pId) { stats.pricesSkipped++; continue; }
 
       const discountPercent = r.discount_percent ?? 0;

@@ -137,6 +137,9 @@ PORT=3001
 FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_secret_key
+AWS_REGION=eu-west-1
+AWS_ACCESS_KEY_ID=your_aws_access_key_id
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
 ```
 
 **יצירת קובץ `frontend/.env`:**
@@ -150,6 +153,8 @@ VITE_SUPABASE_ANON_KEY=your_anon_public_key
 > - אל תעלה את קבצי ה-.env ל-Git!
 > - `SUPABASE_SERVICE_ROLE_KEY` הוא סודי - השתמש בו רק ב-backend
 > - `VITE_` קידומת נדרשת למשתנים ב-frontend (Vite)
+> - ייבוא PDF עם Textract דורש גם: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+> - ב-IAM חייבת להיות הרשאה: `textract:AnalyzeDocument`
 
 ### 5. הגדרת מסד הנתונים
 
