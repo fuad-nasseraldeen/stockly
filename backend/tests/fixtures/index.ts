@@ -76,6 +76,7 @@ export const mockSettings = {
   global_margin_percent: 30,
   use_margin: true,
   use_vat: true,
+  decimal_precision: 2,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   created_by: mockUser.id,

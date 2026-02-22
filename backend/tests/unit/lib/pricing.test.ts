@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcSellPrice, calcCostAfterDiscount, round2 } from '../../../src/lib/pricing';
+import { calcSellPrice, calcCostAfterDiscount, round2, roundToPrecision, clampDecimalPrecision } from '../../../src/lib/pricing';
 
 describe('pricing utilities', () => {
   describe('round2', () => {
@@ -7,6 +7,22 @@ describe('pricing utilities', () => {
       expect(round2(10.123456)).toBe(10.12);
       expect(round2(10.125)).toBe(10.13);
       expect(round2(10.124)).toBe(10.12);
+    });
+  });
+
+  describe('roundToPrecision', () => {
+    it('rounds by provided precision', () => {
+      expect(roundToPrecision(1.4759, 2)).toBe(1.48);
+      expect(roundToPrecision(1.4759, 3)).toBe(1.476);
+      expect(roundToPrecision(1.4759, 4)).toBe(1.4759);
+    });
+  });
+
+  describe('clampDecimalPrecision', () => {
+    it('clamps values to valid range 0..8', () => {
+      expect(clampDecimalPrecision(-2, 2)).toBe(0);
+      expect(clampDecimalPrecision(12, 2)).toBe(8);
+      expect(clampDecimalPrecision('x', 2)).toBe(2);
     });
   });
 
@@ -20,6 +36,11 @@ describe('pricing utilities', () => {
     it('should handle zero or negative discount', () => {
       expect(calcCostAfterDiscount(100, 0)).toBe(100);
       expect(calcCostAfterDiscount(100, -5)).toBe(100);
+    });
+
+    it('should honor custom decimal precision', () => {
+      expect(calcCostAfterDiscount(1.9999, 12.5, 2)).toBe(1.75);
+      expect(calcCostAfterDiscount(1.9999, 12.5, 4)).toBe(1.7499);
     });
   });
 
@@ -94,6 +115,23 @@ describe('pricing utilities', () => {
       });
       // Net = 118 / 1.18 = 100, + 30% = 130, + 18% = 153.4
       expect(result).toBe(153.4);
+    });
+
+    it('should honor precision parameter in output', () => {
+      const p2 = calcSellPrice({
+        cost_price: 1.4759,
+        margin_percent: 7.5,
+        vat_percent: 18,
+        precision: 2,
+      });
+      const p4 = calcSellPrice({
+        cost_price: 1.4759,
+        margin_percent: 7.5,
+        vat_percent: 18,
+        precision: 4,
+      });
+      expect(p2).toBe(roundToPrecision(p4, 2));
+      expect(p4).not.toBe(p2);
     });
   });
 });

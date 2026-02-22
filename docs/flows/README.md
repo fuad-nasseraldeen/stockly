@@ -1,69 +1,25 @@
-# תיעוד זרימות (Flows Documentation)
+# Flows Documentation
 
-תיקייה זו מכילה תיעוד מפורט של הזרימות העיקריות באפליקציה Stockly.
+מסמכי ה-flow המסונכרנים לפרויקט.
 
-## קבצים
+## קבצים מרכזיים
 
-### 1. [זרימת קריאת מוצרים](./01-products-flow.md)
-מתאר את הזרימה המלאה של קריאת מוצרים מהפרונטאנד ועד הבקאנד, כולל:
-- חיפוש (fuzzy search + ILIKE)
-- סינון לפי ספק וקטגוריה
-- מיון (server-side)
-- Pagination
-- Caching
+- `01-products-flow.md` - טעינה/חיפוש/סינון/מיון מוצרים
+- `02-authentication-flow.md` - התחברות, session, auth middleware
+- `03-tenant-flow.md` - tenant context, invites, tenant switching
+- `04-component-flows.md` - ה-flowים העדכניים במסכים כולל Import/Export
 
-### 2. [זרימת אימות והתחברות](./02-authentication-flow.md)
-מתאר את הזרימה המלאה של התחברות משתמש ואימות:
-- התחברות עם Supabase Auth
-- בדיקת סשן
-- שליחת token ל-API
-- אימות בבקאנד
-- Refresh token אוטומטי
+## מה עודכן בסבב הנוכחי
 
-### 3. [זרימת טננטים](./03-tenant-flow.md)
-מתאר את הזרימה המלאה של ניהול טננטים (חנויות):
-- TenantContext
-- שליחת tenant ID ל-API
-- אימות tenant בבקאנד
-- החלפת טננט
-- יצירת טננט חדש
-- הזמנות (invites)
+- זרימת ImportExport עודכנה למצב הנוכחי בקוד:
+  - Excel multi-sheet merge כברירת מחדל
+  - preview paging
+  - manual global values לכל הקובץ
+  - supplier fallback precedence מתוקן
+  - supplier-only continuation rows (excel)
 
-### 4. [פלווים עיקריים בקומפוננטות](./04-component-flows.md)
-מתאר את הפלווים העיקריים בקומפוננטות השונות:
-- Products Page
-- NewProduct / EditProduct
-- Categories / Suppliers
-- Settings
-- ImportExport
-- Admin
-- Navigation
-- TenantSwitcher
-- OnboardingRouter
+## איך להשתמש בתיעוד
 
-## איך להשתמש
-
-1. **להבנת זרימה ספציפית:** פתח את הקובץ הרלוונטי
-2. **להבנת ארכיטקטורה כללית:** קרא את כל הקבצים לפי הסדר
-3. **לפיתוח תכונה חדשה:** בדוק את הזרימות הקיימות כדי להבין את הדפוסים
-
-## מבנה כללי
-
-כל קובץ מכיל:
-- **סקירה כללית** - מה הזרימה עושה
-- **שלבים מפורטים** - כל שלב עם קוד ודוגמאות
-- **דיאגרמות** - זרימה ויזואלית
-- **סיכום** - נקודות עיקריות
-
-## עדכון התיעוד
-
-כשמוסיפים תכונה חדשה או משנים זרימה קיימת:
-1. עדכן את הקובץ הרלוונטי
-2. הוסף דוגמאות קוד אם צריך
-3. עדכן את ה-README הזה אם יש קובץ חדש
-
-## קישורים נוספים
-
-- [README הראשי](../../README.md) - סקירה כללית של הפרויקט
-- [SETUP_INSTRUCTIONS.md](../../SETUP_INSTRUCTIONS.md) - הוראות התקנה
-- [QUICK_START.md](../../QUICK_START.md) - התחלה מהירה
+1. להתחיל ב-`04-component-flows.md` כדי להבין התנהגות מסכים.
+2. להצליב עם `docs/TEST_FLOWS.md` לפני כתיבת טסטים.
+3. לשינויי DB להצליב עם `supabase/README.md`.

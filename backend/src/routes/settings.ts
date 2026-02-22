@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
-import { calcSellPrice, calcCostAfterDiscount } from '../lib/pricing.js';
+import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
 
 const router = Router();
 
@@ -19,12 +19,12 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
   const tenant = (req as any).tenant;
   const { data, error } = await supabase
     .from('settings')
-    .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,updated_at')
+    .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,decimal_precision,updated_at')
     .eq('tenant_id', tenant.tenantId)
     .single();
 
   if (error) return res.status(500).json({ error: 'שגיאה בטעינת הגדרות' });
-  return res.json(data);
+  return res.json(data ? { ...data, use_vat: true, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
 });
 
 const updateSchema = z.object({
@@ -47,6 +47,13 @@ const updateSchema = z.object({
     .coerce
     .boolean()
     .optional(),
+  decimal_precision: z
+    .coerce
+    .number()
+    .int('דיוק עשרוני חייב להיות מספר שלם')
+    .min(0, 'דיוק עשרוני חייב להיות 0 או יותר')
+    .max(8, 'דיוק עשרוני לא יכול להיות מעל 8')
+    .optional(),
 });
 
 router.put('/', requireAuth, requireTenant, async (req, res) => {
@@ -57,7 +64,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
   }
 
-  const { vat_percent, global_margin_percent, use_margin, use_vat } = parsed.data;
+  const { vat_percent, global_margin_percent, use_margin, decimal_precision } = parsed.data;
 
   const patch: Record<string, unknown> = {
     vat_percent,
@@ -69,15 +76,17 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
   if (use_margin !== undefined) {
     patch.use_margin = use_margin;
   }
-  if (use_vat !== undefined) {
-    patch.use_vat = use_vat;
+  if (decimal_precision !== undefined) {
+    patch.decimal_precision = clampDecimalPrecision(decimal_precision);
   }
+  // use_vat is deprecated for runtime behavior, keep it forced to true.
+  patch.use_vat = true;
 
   const { data, error } = await supabase
     .from('settings')
     .update(patch)
     .eq('tenant_id', tenant.tenantId)
-    .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,updated_at')
+    .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,decimal_precision,updated_at')
     .single();
 
   if (error || !data) return res.status(400).json({ error: 'לא ניתן לעדכן הגדרות' });
@@ -86,9 +95,10 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
   // FAST VERSION: Bulk operations instead of one-by-one inserts
   try {
     const newVat = Number(data.vat_percent);
-    const newMargin = Number(data.global_margin_percent ?? global_margin_percent ?? 30);
+    const newMargin = Number(data.global_margin_percent ?? global_margin_percent ?? 0);
     const newUseMargin = data.use_margin === true; // Default to false if not set
-    const newUseVat = data.use_vat === true; // Default to false if not set
+    const newUseVat = true;
+    const decimalPrecision = clampDecimalPrecision((data as any).decimal_precision, 2);
 
     // Get current price per product+supplier
     const { data: currentRows, error: currentErr } = await supabase
@@ -133,9 +143,9 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
         if (!Number.isFinite(cost) || cost < 0) continue;
 
         const discountPercent = Number(row.discount_percent ?? 0);
-        const costAfterDiscount = row.cost_price_after_discount 
+        const costAfterDiscount = row.cost_price_after_discount
           ? Number(row.cost_price_after_discount)
-          : calcCostAfterDiscount(cost, discountPercent);
+          : calcCostAfterDiscount(cost, discountPercent, decimalPrecision);
 
         // Recalculate sell price with new settings
         const sellPrice = calcSellPrice({
@@ -145,6 +155,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
           cost_price_after_discount: costAfterDiscount,
           use_margin: newUseMargin,
           use_vat: newUseVat,
+          precision: decimalPrecision,
         });
 
         // Check if price actually changed
@@ -164,9 +175,9 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
             product_id: row.product_id,
             supplier_id: row.supplier_id,
             cost_price: cost,
-            discount_percent: discountPercent,
+            discount_percent: roundToPrecision(discountPercent, decimalPrecision),
             cost_price_after_discount: costAfterDiscount,
-            margin_percent: newMargin,
+            margin_percent: roundToPrecision(newMargin, decimalPrecision),
             sell_price: sellPrice,
             created_by: user.id,
           });
@@ -192,7 +203,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     // לא מפילים את הבקשה – ההגדרות עודכנו, רק הרה-חישוב נכשל
   }
 
-  return res.json(data);
+  return res.json(data ? { ...data, use_vat: true, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
 });
 
 // User preferences endpoints

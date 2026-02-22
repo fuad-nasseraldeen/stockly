@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTenant } from '../hooks/useTenant';
 import { useCategories } from '../hooks/useCategories';
@@ -27,6 +27,7 @@ import { Loader2, RotateCcw, Upload, X } from 'lucide-react';
 
 type WizardStep = 1 | 2 | 3 | 4;
 type ImportMode = 'merge' | 'overwrite';
+type LoadingPhase = 'preview' | 'validate' | 'apply';
 const SELECT_NONE_VALUE = '__none__';
 
 type MappingField = {
@@ -46,7 +47,12 @@ const baseFields: MappingField[] = [
   { key: 'sku', label: 'מק"ט', shortLabel: 'מק"ט', help: 'אופציונלי' },
   { key: 'barcode', label: 'ברקוד', shortLabel: 'ברקוד', help: 'אופציונלי' },
   { key: 'category', label: 'קטגוריה', shortLabel: 'קטגוריה', help: 'ברירת מחדל: כללי' },
-  { key: 'package_quantity', label: 'כמות בקרטון', shortLabel: 'כמות בקרטון', help: 'מספר חיובי או ריק' },
+  { key: 'pricing_unit', label: 'סוג יחידה', shortLabel: 'סוג יחידה', help: 'יחידה / ק"ג / ליטר' },
+  { key: 'package_quantity', label: 'כמות באריזה', shortLabel: 'כמות באריזה', help: 'מספר חיובי או ריק' },
+  { key: 'package_type', label: 'סוג אריזה', shortLabel: 'סוג אריזה', help: 'carton/gallon/bag וכו׳' },
+  { key: 'line_total', label: 'סה"כ שורה', shortLabel: 'סה"כ', help: 'לאימות מחיר*כמות (אופציונלי)' },
+  { key: 'source_price_includes_vat', label: 'המחיר כולל מע"מ', shortLabel: 'כולל מע"מ', help: 'כן/לא' },
+  { key: 'vat_rate', label: 'שיעור מע"מ', shortLabel: 'שיעור מע"מ', help: 'אופציונלי 0-100' },
   { key: 'vat', label: 'מע"מ', shortLabel: 'מע"מ', help: 'אופציונלי' },
   { key: 'currency', label: 'מטבע', shortLabel: 'מטבע', help: 'אופציונלי' },
 ];
@@ -56,6 +62,14 @@ function getPairFields(pairCount: number): MappingField[] {
   for (let i = 1; i <= pairCount; i += 1) {
     out.push({ key: `price_${i}`, label: `מחיר ${i}`, shortLabel: `מחיר ${i}`, help: 'חייב להיות > 0' });
     out.push({ key: `supplier_${i}`, label: `ספק ${i}`, shortLabel: `ספק ${i}`, help: 'לזוג ספק/מחיר' });
+    if (i === 1) {
+      out.push({ key: 'package_quantity', label: 'כמות באריזה', shortLabel: 'כמות באריזה', help: 'מספר חיובי או ריק' });
+      out.push({ key: 'pricing_unit', label: 'סוג יחידה', shortLabel: 'סוג יחידה', help: 'יחידה / ק"ג / ליטר' });
+      out.push({ key: 'package_type', label: 'סוג אריזה', shortLabel: 'סוג אריזה', help: 'מומלץ למפות ליד ספק 1' });
+      out.push({ key: 'source_price_includes_vat', label: 'המחיר כולל מע"מ', shortLabel: 'כולל מע"מ', help: 'כן/לא' });
+      out.push({ key: 'vat_rate', label: 'שיעור מע"מ', shortLabel: 'שיעור מע"מ', help: 'אופציונלי' });
+      out.push({ key: 'line_total', label: 'סה"כ שורה', shortLabel: 'סה"כ', help: 'לאימות מחיר*כמות' });
+    }
     out.push({ key: `discount_percent_${i}`, label: `הנחה ${i}`, shortLabel: `הנחה ${i}`, help: 'אופציונלי 0-100' });
   }
   return out;
@@ -133,7 +147,13 @@ function toHebrewHeaderLabel(rawHeader: unknown): string {
   }
   if (['sku', 'מק ט', 'מקט', 'מק"ט', 'barcode', 'ברקוד'].includes(normalized)) return 'מק"ט';
   if (['category', 'קטגוריה'].includes(normalized)) return 'קטגוריה';
+  if (['pricing unit', 'pricing_unit', 'unit', 'יחידת תמחור', 'סוג יחידה'].includes(normalized)) return 'סוג יחידה';
   if (['package quantity', 'package_quantity', 'כמות באריזה'].includes(normalized)) return 'כמות באריזה';
+  if (['package type', 'package_type', 'packaging', 'סוג אריזה', 'אריזה'].includes(normalized)) return 'סוג אריזה';
+  if (['line total', 'line_total', 'total', 'סהכ', 'סה"כ', 'סך הכל'].includes(normalized)) return 'סה"כ';
+  if (['includes vat', 'source_price_includes_vat', 'כולל מעמ', 'כולל מע"מ'].includes(normalized)) return 'כולל מע"מ';
+  if (['vat rate', 'vat_rate', 'שיעור מעמ', 'שיעור מע"מ', 'אחוז מעמ', 'אחוז מע"מ'].includes(normalized)) return 'שיעור מע"מ';
+  if (['effective from', 'effective_from', 'מתאריך', 'תוקף מ', 'בתוקף מתאריך'].includes(normalized)) return 'בתוקף מתאריך';
   if (['vat', 'מע"מ', 'מעמ'].includes(normalized)) return 'מע"מ';
   if (['discount', 'discount percent', 'discount_percent', 'הנחה'].includes(normalized)) return 'הנחה';
   if (['currency', 'מטבע'].includes(normalized)) return 'מטבע';
@@ -150,10 +170,73 @@ function isCategoryFieldKey(fieldKey: string): boolean {
   return fieldKey === 'category';
 }
 
+function isPricingUnitFieldKey(fieldKey: string): boolean {
+  return fieldKey === 'pricing_unit';
+}
+
+function isPackageTypeFieldKey(fieldKey: string): boolean {
+  return fieldKey === 'package_type';
+}
+
+function isPresetValueFieldKey(fieldKey: string): boolean {
+  return (
+    isSupplierFieldKey(fieldKey) ||
+    isCategoryFieldKey(fieldKey) ||
+    isPricingUnitFieldKey(fieldKey) ||
+    isPackageTypeFieldKey(fieldKey)
+  );
+}
+
 function shortOptionLabel(value: string, maxLen = 26): string {
   const clean = String(value || '').trim();
   if (clean.length <= maxLen) return clean;
   return `${clean.slice(0, maxLen - 1)}…`;
+}
+
+function formatPricingUnitLabel(value: string): string {
+  switch (String(value || '').trim().toLowerCase()) {
+    case 'unit':
+      return 'יחידה';
+    case 'kg':
+      return 'ק"ג';
+    case 'liter':
+      return 'ליטר';
+    default:
+      return value;
+  }
+}
+
+function formatPackageTypeLabel(value: string): string {
+  switch (String(value || '').trim().toLowerCase()) {
+    case 'unknown':
+      return 'לא ידוע';
+    case 'carton':
+      return 'קרטון';
+    case 'gallon':
+      return 'גלון';
+    case 'bag':
+      return 'שק';
+    case 'bottle':
+      return 'בקבוק';
+    case 'pack':
+      return 'מארז';
+    case 'shrink':
+      return 'שרינק';
+    case 'sachet':
+      return 'שקית';
+    case 'can':
+      return 'פחית';
+    case 'roll':
+      return 'גליל';
+    default:
+      return value;
+  }
+}
+
+function formatPresetOptionLabel(fieldKey: string, optionValue: string): string {
+  if (isPricingUnitFieldKey(fieldKey)) return formatPricingUnitLabel(optionValue);
+  if (isPackageTypeFieldKey(fieldKey)) return formatPackageTypeLabel(optionValue);
+  return shortOptionLabel(optionValue);
 }
 
 function detectImportSourceType(file: File): ImportSourceType {
@@ -167,6 +250,24 @@ function isValueFromKnownOptions(value: string, options: string[]): boolean {
   const v = String(value || '').trim();
   if (!v) return false;
   return options.some((opt) => String(opt || '').trim() === v);
+}
+
+function normalizePreviewCellValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  return value
+    .replace(/[\u00a0\u2000-\u200b\u202f\u205f\u3000]/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/\n+/g, ' ');
+}
+
+function formatElapsed(seconds: number): string {
+  const mm = Math.floor(seconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const ss = Math.max(0, seconds % 60)
+    .toString()
+    .padStart(2, '0');
+  return `${mm}:${ss}`;
 }
 
 export default function ImportExport() {
@@ -183,7 +284,7 @@ export default function ImportExport() {
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [sourceType, setSourceType] = useState<ImportSourceType>('excel');
   const [sheetIndex, setSheetIndex] = useState(0);
-  const [selectedPdfTableIndex, setSelectedPdfTableIndex] = useState(0);
+  const [selectedPdfTableIndex, setSelectedPdfTableIndex] = useState(-1);
   const [hasHeader, setHasHeader] = useState(true);
   const [pageFrom, setPageFrom] = useState('');
   const [pageTo, setPageTo] = useState('');
@@ -195,6 +296,7 @@ export default function ImportExport() {
   const [showOnlyMapped, setShowOnlyMapped] = useState(false);
   const [manualColumns, setManualColumns] = useState<ManualColumn[]>([]);
   const [manualValuesByRow, setManualValuesByRow] = useState<Record<number, Record<string, string>>>({});
+  const [manualGlobalValuesByFieldKey, setManualGlobalValuesByFieldKey] = useState<Record<string, string>>({});
   const [manualBulkValueByColumnId, setManualBulkValueByColumnId] = useState<Record<string, string>>({});
   const [useManualSupplier, setUseManualSupplier] = useState(true);
   const [manualSupplierName, setManualSupplierName] = useState('');
@@ -205,11 +307,43 @@ export default function ImportExport() {
   const [mode, setMode] = useState<ImportMode>('merge');
   const [overwriteConfirm, setOverwriteConfirm] = useState('');
   const [applyResult, setApplyResult] = useState<ImportApplyResponse | null>(null);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase | null>(null);
+  const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
+  const previewTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const previewDragStateRef = useRef({
+    isPending: false,
+    isDragging: false,
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+  });
+  const [isPreviewDragging, setIsPreviewDragging] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setLoadingElapsedMs(0);
+    const timer = window.setInterval(() => {
+      setLoadingElapsedMs(Date.now() - startedAt);
+    }, 250);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loading, loadingPhase]);
 
   const allFields = useMemo<MappingField[]>(() => {
     const pairFields = getPairFields(pairCount);
-    const fixedBeforePairs = baseFields.filter((f) => f.key !== 'package_quantity' && f.key !== 'vat' && f.key !== 'currency');
-    const fixedAfterPairs = baseFields.filter((f) => f.key === 'package_quantity' || f.key === 'vat' || f.key === 'currency');
+    const fixedBeforePairs = baseFields.filter(
+      (f) =>
+        !['package_quantity', 'vat', 'currency', 'pricing_unit', 'package_type', 'source_price_includes_vat', 'vat_rate', 'line_total'].includes(f.key),
+    );
+    const fixedAfterPairs = baseFields.filter((f) => ['vat', 'currency'].includes(f.key));
     return [...fixedBeforePairs, ...pairFields, ...fixedAfterPairs];
   }, [pairCount]);
   const supplierNames = useMemo(
@@ -228,6 +362,11 @@ export default function ImportExport() {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'he'));
   }, [categories]);
+  const pricingUnitOptions = useMemo(() => ['unit', 'kg', 'liter'], []);
+  const packageTypeOptions = useMemo(
+    () => ['unknown', 'carton', 'gallon', 'bag', 'bottle', 'pack', 'shrink', 'sachet', 'can', 'roll'],
+    [],
+  );
   useEffect(() => {
     if (!useManualSupplier) return;
     if (manualSupplierName.trim() || manualSupplierNewName.trim()) return;
@@ -242,8 +381,12 @@ export default function ImportExport() {
     () => (activePdfTable?.columns || preview?.columns || []),
     [activePdfTable, preview],
   );
+  const sampleRowOffset = useMemo(() => Number(preview?.sampleRowOffset ?? 0), [preview]);
   const sourceSampleRows = useMemo(
-    () => (activePdfTable?.sampleRows || preview?.sampleRows || []),
+    () =>
+      (activePdfTable?.sampleRows || preview?.sampleRows || []).map((row) =>
+        Array.isArray(row) ? row.map((cell) => normalizePreviewCellValue(cell)) : row,
+      ),
     [activePdfTable, preview],
   );
   const fieldLabelMap = useMemo(() => {
@@ -284,20 +427,32 @@ export default function ImportExport() {
 
     return set;
   }, [sourceColumns, sourceSampleRows, mappedByColumn]);
+  const autoHiddenDerivedSet = useMemo(() => {
+    const set = new Set<number>();
+    for (const col of sourceColumns) {
+      const headerToken = normalizeHeaderToken(col.headerValue);
+      if (headerToken.endsWith('_derived') || headerToken.includes(' derived')) {
+        set.add(col.index);
+      }
+    }
+    return set;
+  }, [sourceColumns]);
   const mappedVisibleSet = useMemo(() => new Set<number>([...mappedByColumn.keys()].filter((idx) => !hiddenSet.has(idx))), [mappedByColumn, hiddenSet]);
   const visibleColumns = useMemo(() => {
     if (!sourceColumns.length) return [];
-    const base = sourceColumns.filter((col) => !hiddenSet.has(col.index) && !autoHiddenEmptySet.has(col.index));
+    const base = sourceColumns.filter(
+      (col) => !hiddenSet.has(col.index) && !autoHiddenEmptySet.has(col.index) && !autoHiddenDerivedSet.has(col.index),
+    );
     if (!showOnlyMapped || mappedVisibleSet.size === 0) return base;
     return base.filter((col) => mappedVisibleSet.has(col.index));
-  }, [sourceColumns, hiddenSet, autoHiddenEmptySet, showOnlyMapped, mappedVisibleSet]);
+  }, [sourceColumns, hiddenSet, autoHiddenEmptySet, autoHiddenDerivedSet, showOnlyMapped, mappedVisibleSet]);
   const hiddenColumnDefs = useMemo(
     () => sourceColumns.filter((col) => hiddenSet.has(col.index)),
     [sourceColumns, hiddenSet],
   );
   const previewRows = useMemo(
-    () => sourceSampleRows.map((row, sourceIndex) => ({ row, sourceIndex })),
-    [sourceSampleRows],
+    () => sourceSampleRows.map((row, idx) => ({ row, sourceIndex: sampleRowOffset + idx })),
+    [sampleRowOffset, sourceSampleRows],
   );
   const visiblePreviewRows = useMemo(
     () => previewRows.filter((entry) => !hiddenRowSet.has(entry.sourceIndex)),
@@ -325,6 +480,60 @@ export default function ImportExport() {
     return widths;
   }, [visibleColumns, mappedByColumn, fieldLabelMap, visiblePreviewRows]);
 
+  const isInteractiveDragTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest('input, textarea, select, button, a, [role="combobox"], [role="button"]');
+  };
+
+  const handlePreviewPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (isInteractiveDragTarget(e.target)) return;
+    const container = previewTableScrollRef.current;
+    if (!container) return;
+    previewDragStateRef.current = {
+      isPending: true,
+      isDragging: true,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: container.scrollLeft,
+      startScrollTop: container.scrollTop,
+    };
+    // Start dragging only after a small pointer movement threshold,
+    // so normal clicks (e.g. mapping/select/delete-row) still work.
+    previewDragStateRef.current.isDragging = false;
+  };
+
+  const handlePreviewPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = previewDragStateRef.current;
+    const container = previewTableScrollRef.current;
+    if ((!drag.isPending && !drag.isDragging) || !container) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.isDragging) {
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      drag.isDragging = true;
+      drag.isPending = false;
+      setIsPreviewDragging(true);
+      container.setPointerCapture?.(e.pointerId);
+    }
+    container.scrollLeft = drag.startScrollLeft - dx;
+    container.scrollTop = drag.startScrollTop - dy;
+    e.preventDefault();
+  };
+
+  const handlePreviewPointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    const container = previewTableScrollRef.current;
+    const drag = previewDragStateRef.current;
+    if (container && drag.isDragging && drag.pointerId === e.pointerId) {
+      container.releasePointerCapture?.(e.pointerId);
+    }
+    previewDragStateRef.current.isPending = false;
+    previewDragStateRef.current.isDragging = false;
+    previewDragStateRef.current.pointerId = -1;
+    setIsPreviewDragging(false);
+  };
+
   const startPreview = async (
     selectedFile: File,
     opts?: {
@@ -332,10 +541,13 @@ export default function ImportExport() {
       sheetIndex?: number;
       tableIndex?: number;
       hasHeader?: boolean;
+      previewPage?: number;
       pageFrom?: number;
       pageTo?: number;
+      preserveUserSelections?: boolean;
     },
   ) => {
+    setLoadingPhase('preview');
     setLoading(true);
     setError(null);
     try {
@@ -343,25 +555,31 @@ export default function ImportExport() {
       setPreview(result);
       setSourceType(result.sourceType || opts?.sourceType || 'excel');
       setSheetIndex(result.selectedSheet);
-      setSelectedPdfTableIndex(result.selectedTableIndex ?? 0);
+      setSelectedPdfTableIndex(result.selectedTableIndex ?? -1);
       setHasHeader(result.hasHeader);
+      setPreviewPage(result.previewPage || opts?.previewPage || 1);
 
-      const inferredPairs = inferPairCount(result.suggestedMapping || {});
-      const nextPairCount = Math.max(3, inferredPairs);
-      setPairCount(nextPairCount);
-      setMapping(normalizeMappingForUi(result.suggestedMapping || {}));
-      setHiddenColumns([]);
-      setHiddenRows([]);
-      setManualColumns([]);
-      setManualValuesByRow({});
-      setManualBulkValueByColumnId({});
-      setShowOnlyMapped(false);
+      const preserveUserSelections = opts?.preserveUserSelections === true;
+      if (!preserveUserSelections) {
+        const inferredPairs = inferPairCount(result.suggestedMapping || {});
+        const nextPairCount = Math.max(3, inferredPairs);
+        setPairCount(nextPairCount);
+        setMapping(normalizeMappingForUi(result.suggestedMapping || {}));
+        setHiddenColumns([]);
+        setHiddenRows([]);
+        setManualColumns([]);
+        setManualValuesByRow({});
+        setManualGlobalValuesByFieldKey({});
+        setManualBulkValueByColumnId({});
+        setShowOnlyMapped(false);
+      }
 
       setStep(2);
     } catch (e: unknown) {
       setError(getErrorMessage(e, 'שגיאה בתצוגה מקדימה'));
     } finally {
       setLoading(false);
+      setLoadingPhase(null);
     }
   };
 
@@ -372,10 +590,17 @@ export default function ImportExport() {
     setFile(selectedFile);
     setValidation(null);
     setApplyResult(null);
-    setSelectedPdfTableIndex(0);
+    setSelectedPdfTableIndex(detectedType === 'pdf' ? -1 : 0);
     setSourceType(detectedType);
     setSourceTypeHint(detectedType === 'pdf' ? 'זוהה אוטומטית: PDF' : 'זוהה אוטומטית: Excel / CSV');
-    await startPreview(selectedFile, { sourceType: detectedType, sheetIndex: 0, tableIndex: 0, hasHeader: true });
+    setPreviewPage(1);
+    await startPreview(selectedFile, {
+      sourceType: detectedType,
+      sheetIndex: detectedType === 'excel' ? -1 : 0,
+      tableIndex: detectedType === 'pdf' ? -1 : 0,
+      hasHeader: true,
+      previewPage: 1,
+    });
   };
 
   const refreshPreview = async () => {
@@ -385,13 +610,41 @@ export default function ImportExport() {
       sheetIndex,
       tableIndex: selectedPdfTableIndex,
       hasHeader,
+      previewPage,
       pageFrom: pageFrom ? Number(pageFrom) : undefined,
       pageTo: pageTo ? Number(pageTo) : undefined,
+    });
+  };
+  const previewTotalPages = Math.max(1, Number(preview?.previewTotalPages ?? 1));
+  const previewTotalRows = Math.max(0, Number(preview?.previewTotalRows ?? sourceSampleRows.length));
+  const goToPreviewPage = async (nextPage: number) => {
+    if (!file) return;
+    const safePage = Math.min(previewTotalPages, Math.max(1, nextPage));
+    if (safePage === previewPage) return;
+    await startPreview(file, {
+      sourceType,
+      sheetIndex,
+      tableIndex: selectedPdfTableIndex,
+      hasHeader,
+      previewPage: safePage,
+      pageFrom: pageFrom ? Number(pageFrom) : undefined,
+      pageTo: pageTo ? Number(pageTo) : undefined,
+      preserveUserSelections: true,
     });
   };
 
   const selectPdfTable = (tableIndex: number) => {
     setSelectedPdfTableIndex(tableIndex);
+    if (tableIndex === -1) {
+      setMapping(normalizeMappingForUi(preview?.suggestedMapping || {}));
+      setHiddenColumns([]);
+      setHiddenRows([]);
+      setManualColumns([]);
+      setManualValuesByRow({});
+      setManualGlobalValuesByFieldKey({});
+      setManualBulkValueByColumnId({});
+      return;
+    }
     const table = (preview?.tables || []).find((t) => t.tableIndex === tableIndex);
     if (!table) return;
     setMapping(normalizeMappingForUi(table.suggestedMapping || {}));
@@ -399,6 +652,7 @@ export default function ImportExport() {
     setHiddenRows([]);
     setManualColumns([]);
     setManualValuesByRow({});
+    setManualGlobalValuesByFieldKey({});
     setManualBulkValueByColumnId({});
   };
 
@@ -427,6 +681,7 @@ export default function ImportExport() {
       return;
     }
 
+    setLoadingPhase('validate');
     setLoading(true);
     setError(null);
     try {
@@ -439,6 +694,7 @@ export default function ImportExport() {
         ignoredRows: hiddenRows,
         manualSupplierName: useManualSupplier ? effectiveManualSupplierName : undefined,
         manualValuesByRow: Object.keys(manualValuesByRow).length > 0 ? manualValuesByRow : undefined,
+        manualGlobalValues: Object.keys(manualGlobalValuesByFieldKey).length > 0 ? manualGlobalValuesByFieldKey : undefined,
       });
       setValidation(result);
       setStep(3);
@@ -446,6 +702,7 @@ export default function ImportExport() {
       setError(getErrorMessage(e, 'שגיאה בבדיקת המיפוי'));
     } finally {
       setLoading(false);
+      setLoadingPhase(null);
     }
   };
 
@@ -459,6 +716,7 @@ export default function ImportExport() {
       setError('במצב החלפה יש להקליד DELETE');
       return;
     }
+    setLoadingPhase('apply');
     setLoading(true);
     setError(null);
     try {
@@ -472,6 +730,7 @@ export default function ImportExport() {
         ignoredRows: hiddenRows,
         manualSupplierName: useManualSupplier ? effectiveManualSupplierName : undefined,
         manualValuesByRow: Object.keys(manualValuesByRow).length > 0 ? manualValuesByRow : undefined,
+        manualGlobalValues: Object.keys(manualGlobalValuesByFieldKey).length > 0 ? manualGlobalValuesByFieldKey : undefined,
       });
       setApplyResult(result);
       await Promise.all([
@@ -484,6 +743,7 @@ export default function ImportExport() {
       setError(getErrorMessage(e, 'שגיאה בייבוא'));
     } finally {
       setLoading(false);
+      setLoadingPhase(null);
     }
   };
 
@@ -646,6 +906,8 @@ export default function ImportExport() {
     if (!value) return;
     setError(null);
 
+    setManualGlobalValuesByFieldKey((prev) => ({ ...prev, [manualCol.fieldKey]: value }));
+
     setManualValuesByRow((prev) => {
       const next = { ...prev };
       for (const entry of visiblePreviewRows) {
@@ -684,6 +946,41 @@ export default function ImportExport() {
   const hasGlobalNewSupplier = manualSupplierNewName.trim().length > 0;
   const highlightPriceError = !!error && (error.includes('חובה למפות לפחות עמודת מחיר אחת') || error.includes('לא נמצאה עמודת מחיר ממופה'));
   const highlightManualColumnError = !!error && error.includes('נוספה עמודה ידנית שלא הוגדרה');
+  const loadingView = useMemo(() => {
+    const elapsedSeconds = loadingElapsedMs / 1000;
+    const elapsed = formatElapsed(Math.floor(elapsedSeconds));
+
+    if (loadingPhase === 'preview') {
+      const isPdf = sourceType === 'pdf';
+      // Tune perceived delay to ~3.5-4s before reaching near-complete.
+      const targetSeconds = isPdf ? 4 : 3.5;
+      const progress = Math.min(94, 8 + (elapsedSeconds / targetSeconds) * 86);
+      return {
+        title: isPdf ? 'מנתח PDF ומכין תצוגה מקדימה...' : 'טוען Excel/CSV ומכין תצוגה מקדימה...',
+        hint: isPdf ? 'קבצי PDF יכולים לקחת יותר זמן. אפשר להמתין, התהליך רץ.' : 'קורא גיליון ובונה תצוגה מקדימה...',
+        progress,
+        elapsed,
+      };
+    }
+
+    if (loadingPhase === 'validate') {
+      const progress = Math.min(96, 10 + (elapsedSeconds / 3.8) * 86);
+      return {
+        title: 'בודק מיפוי שדות ושורות...',
+        hint: 'מבצע ולידציה לפני ייבוא.',
+        progress,
+        elapsed,
+      };
+    }
+
+    const progress = Math.min(98, 12 + (elapsedSeconds / 4) * 86);
+    return {
+      title: 'מייבא נתונים למערכת...',
+      hint: 'שומר מוצרים ומחירים. נא להמתין לסיום.',
+      progress,
+      elapsed,
+    };
+  }, [loadingElapsedMs, loadingPhase, sourceType]);
 
   return (
     <div className="space-y-6">
@@ -697,6 +994,27 @@ export default function ImportExport() {
       {error ? (
         <Card className="border-destructive/30">
           <CardContent className="py-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
+
+      {loading && loadingPhase ? (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-3">
+            <div className="flex items-start gap-3">
+              <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-primary" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{loadingView.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{loadingView.hint}</div>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${loadingView.progress}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">זמן שחלף: {loadingView.elapsed}</div>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       ) : null}
 
@@ -787,6 +1105,7 @@ export default function ImportExport() {
                       <SelectValue placeholder="בחר טבלה..." />
                     </SelectTrigger>
                     <SelectContent className="w-[--radix-select-trigger-width]">
+                      <SelectItem value="-1">כל הטבלאות יחד</SelectItem>
                       {(preview?.tables || []).map((table) => (
                         <SelectItem key={`pdf-table-${table.tableIndex}`} value={String(table.tableIndex)}>
                           {`טבלה ${table.tableIndex + 1} (עמוד ${table.pageStart})`}
@@ -835,6 +1154,21 @@ export default function ImportExport() {
 
             {sourceType === 'pdf' && (preview?.tables || []).length > 0 ? (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => selectPdfTable(-1)}
+                  className={`rounded-lg border p-2 text-right text-xs transition-colors ${
+                    selectedPdfTableIndex === -1 ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="font-semibold">כל הטבלאות יחד</div>
+                  <div className="text-muted-foreground">
+                    {(preview?.tables || []).reduce((sum, table) => sum + table.sampleRows.length, 0)} שורות דוגמה, תצוגה מאוחדת
+                  </div>
+                  <div className="mt-1 truncate text-muted-foreground">
+                    המערכת מאחדת את כל הטבלאות ומדלגת על כותרות כפולות.
+                  </div>
+                </button>
                 {(preview?.tables || []).map((table) => {
                   const active = table.tableIndex === selectedPdfTableIndex;
                   return (
@@ -1016,7 +1350,14 @@ export default function ImportExport() {
             ) : null}
 
             <div
-              className={`overflow-x-auto rounded-xl border ${highlightPriceError || highlightManualColumnError ? 'border-destructive' : ''}`}
+              ref={previewTableScrollRef}
+              onPointerDown={handlePreviewPointerDown}
+              onPointerMove={handlePreviewPointerMove}
+              onPointerUp={handlePreviewPointerUp}
+              onPointerCancel={handlePreviewPointerUp}
+              className={`overflow-x-auto rounded-xl border ${
+                highlightPriceError || highlightManualColumnError ? 'border-destructive' : ''
+              } ${isPreviewDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
               style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
             >
               <table className="min-w-max table-auto text-sm">
@@ -1059,14 +1400,34 @@ export default function ImportExport() {
                           <X className="ml-1 h-3 w-3" />
                           הסר
                         </Button>
-                        {isSupplierFieldKey(manualCol.fieldKey) || isCategoryFieldKey(manualCol.fieldKey) ? (
+                        {isPresetValueFieldKey(manualCol.fieldKey) ? (
                           <div className="mt-1 space-y-1">
                             {(() => {
-                              const options = isSupplierFieldKey(manualCol.fieldKey) ? supplierNames : categoryNames;
+                              const options = isSupplierFieldKey(manualCol.fieldKey)
+                                ? supplierNames
+                                : isCategoryFieldKey(manualCol.fieldKey)
+                                  ? categoryNames
+                                  : isPricingUnitFieldKey(manualCol.fieldKey)
+                                    ? pricingUnitOptions
+                                    : packageTypeOptions;
                               const currentValue = manualBulkValueByColumnId[manualCol.id] || '';
                               const hasKnownOption = isValueFromKnownOptions(currentValue, options);
                               const selectValue = hasKnownOption ? currentValue : SELECT_NONE_VALUE;
                               const inputValue = hasKnownOption ? '' : currentValue;
+                              const existingPlaceholder = isSupplierFieldKey(manualCol.fieldKey)
+                                ? 'בחר ספק קיים...'
+                                : isCategoryFieldKey(manualCol.fieldKey)
+                                  ? 'בחר קטגוריה קיימת...'
+                                  : isPricingUnitFieldKey(manualCol.fieldKey)
+                                    ? 'בחר סוג יחידה...'
+                                    : 'בחר סוג אריזה...';
+                              const newValuePlaceholder = isSupplierFieldKey(manualCol.fieldKey)
+                                ? 'או הקלד ספק חדש...'
+                                : isCategoryFieldKey(manualCol.fieldKey)
+                                  ? 'או הקלד קטגוריה חדשה...'
+                                  : isPricingUnitFieldKey(manualCol.fieldKey)
+                                    ? 'או הקלד סוג יחידה...'
+                                    : 'או הקלד סוג אריזה...';
                               return (
                                 <>
                                   <Select
@@ -1079,17 +1440,13 @@ export default function ImportExport() {
                                     }
                                   >
                                     <SelectTrigger className="h-8 w-full text-xs" disabled={!manualCol.fieldKey}>
-                                      <SelectValue
-                                        placeholder={isSupplierFieldKey(manualCol.fieldKey) ? 'בחר ספק קיים...' : 'בחר קטגוריה קיימת...'}
-                                      />
+                                      <SelectValue placeholder={existingPlaceholder} />
                                     </SelectTrigger>
                                     <SelectContent className="w-[--radix-select-trigger-width]">
-                                      <SelectItem value={SELECT_NONE_VALUE}>
-                                        {isSupplierFieldKey(manualCol.fieldKey) ? 'בחר ספק קיים...' : 'בחר קטגוריה קיימת...'}
-                                      </SelectItem>
+                                      <SelectItem value={SELECT_NONE_VALUE}>{existingPlaceholder}</SelectItem>
                                       {options.map((name) => (
                                         <SelectItem key={`${manualCol.id}-bulk-${name}`} value={name}>
-                                          {shortOptionLabel(name)}
+                                          {formatPresetOptionLabel(manualCol.fieldKey, name)}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
@@ -1102,7 +1459,7 @@ export default function ImportExport() {
                                         [manualCol.id]: e.target.value,
                                       }))
                                     }
-                                    placeholder={isSupplierFieldKey(manualCol.fieldKey) ? 'או הקלד ספק חדש...' : 'או הקלד קטגוריה חדשה...'}
+                                    placeholder={newValuePlaceholder}
                                     className="h-8 text-xs"
                                     disabled={!manualCol.fieldKey}
                                   />
@@ -1156,7 +1513,10 @@ export default function ImportExport() {
                             <SelectItem value={SELECT_NONE_VALUE}>לא רלוונטי</SelectItem>
                             {allFields.map((field) => {
                               const usedBy = mapping[field.key];
-                              const disabled = typeof usedBy === 'number' && usedBy !== col.index;
+                              const usedByAutoHidden =
+                                typeof usedBy === 'number' &&
+                                (autoHiddenEmptySet.has(usedBy) || autoHiddenDerivedSet.has(usedBy));
+                              const disabled = typeof usedBy === 'number' && usedBy !== col.index && !usedByAutoHidden;
                               return (
                                 <SelectItem key={field.key} value={field.key} disabled={disabled}>
                                   {field.shortLabel || field.label}
@@ -1211,14 +1571,34 @@ export default function ImportExport() {
                         </td>
                         {manualColumns.map((manualCol) => (
                           <td key={`manual-${manualCol.id}-${sourceIndex}`} className="border-r px-2 py-1 align-top">
-                            {isSupplierFieldKey(manualCol.fieldKey) || isCategoryFieldKey(manualCol.fieldKey) ? (
+                            {isPresetValueFieldKey(manualCol.fieldKey) ? (
                               <div className="space-y-1">
                                 {(() => {
-                                  const options = isSupplierFieldKey(manualCol.fieldKey) ? supplierNames : categoryNames;
+                                  const options = isSupplierFieldKey(manualCol.fieldKey)
+                                    ? supplierNames
+                                    : isCategoryFieldKey(manualCol.fieldKey)
+                                      ? categoryNames
+                                      : isPricingUnitFieldKey(manualCol.fieldKey)
+                                        ? pricingUnitOptions
+                                        : packageTypeOptions;
                                   const currentValue = manualValuesByRow[sourceIndex]?.[manualCol.fieldKey] || '';
                                   const hasKnownOption = isValueFromKnownOptions(currentValue, options);
                                   const selectValue = hasKnownOption ? currentValue : SELECT_NONE_VALUE;
                                   const inputValue = hasKnownOption ? '' : currentValue;
+                                  const existingPlaceholder = isSupplierFieldKey(manualCol.fieldKey)
+                                    ? 'בחר ספק קיים...'
+                                    : isCategoryFieldKey(manualCol.fieldKey)
+                                      ? 'בחר קטגוריה קיימת...'
+                                      : isPricingUnitFieldKey(manualCol.fieldKey)
+                                        ? 'בחר סוג יחידה...'
+                                        : 'בחר סוג אריזה...';
+                                  const newValuePlaceholder = isSupplierFieldKey(manualCol.fieldKey)
+                                    ? 'או הקלד ספק חדש...'
+                                    : isCategoryFieldKey(manualCol.fieldKey)
+                                      ? 'או הקלד קטגוריה חדשה...'
+                                      : isPricingUnitFieldKey(manualCol.fieldKey)
+                                        ? 'או הקלד סוג יחידה...'
+                                        : 'או הקלד סוג אריזה...';
                                   return (
                                     <>
                                       <Select
@@ -1232,17 +1612,13 @@ export default function ImportExport() {
                                         }
                                       >
                                         <SelectTrigger className="h-8 w-full text-xs" disabled={!manualCol.fieldKey}>
-                                          <SelectValue
-                                            placeholder={isSupplierFieldKey(manualCol.fieldKey) ? 'בחר ספק קיים...' : 'בחר קטגוריה קיימת...'}
-                                          />
+                                          <SelectValue placeholder={existingPlaceholder} />
                                         </SelectTrigger>
                                         <SelectContent className="w-[--radix-select-trigger-width]">
-                                          <SelectItem value={SELECT_NONE_VALUE}>
-                                            {isSupplierFieldKey(manualCol.fieldKey) ? 'בחר ספק קיים...' : 'בחר קטגוריה קיימת...'}
-                                          </SelectItem>
+                                          <SelectItem value={SELECT_NONE_VALUE}>{existingPlaceholder}</SelectItem>
                                           {options.map((name) => (
                                             <SelectItem key={`${manualCol.id}-${sourceIndex}-${name}`} value={name}>
-                                              {shortOptionLabel(name)}
+                                              {formatPresetOptionLabel(manualCol.fieldKey, name)}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
@@ -1250,7 +1626,7 @@ export default function ImportExport() {
                                       <Input
                                         value={inputValue}
                                         onChange={(e) => handleManualValueChange(sourceIndex, manualCol.fieldKey, e.target.value)}
-                                        placeholder={isSupplierFieldKey(manualCol.fieldKey) ? 'או הקלד ספק חדש...' : 'או הקלד קטגוריה חדשה...'}
+                                        placeholder={newValuePlaceholder}
                                         className="h-8 text-xs"
                                         disabled={!manualCol.fieldKey}
                                       />
@@ -1315,6 +1691,35 @@ export default function ImportExport() {
                 </tbody>
               </table>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div>
+                מציג שורות {visiblePreviewRows.length > 0 ? `${sampleRowOffset + 1}-${sampleRowOffset + visiblePreviewRows.length}` : '0'} מתוך{' '}
+                {previewTotalRows}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void goToPreviewPage(previewPage - 1)}
+                  disabled={loading || previewPage <= 1}
+                >
+                  קודם
+                </Button>
+                <span>
+                  עמוד {previewPage} מתוך {previewTotalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void goToPreviewPage(previewPage + 1)}
+                  disabled={loading || previewPage >= previewTotalPages}
+                >
+                  הבא
+                </Button>
+              </div>
+            </div>
             <div className="rounded-xl border p-3">
               <div className="mt-2 rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground">
                 שדות שמופו: {mappingCompletion} מתוך {allFields.length}. דוגמה: {columnMap.get(mapping.product_name ?? -1) || 'לא מופתה עמודת מוצר'}
@@ -1370,11 +1775,26 @@ export default function ImportExport() {
 
             {validation.rowErrors.length > 0 ? (
               <div className="rounded-lg border p-3">
-                <div className="mb-2 text-sm font-semibold">שגיאות שורות (עד 50)</div>
+                <div className="mb-2 text-sm font-semibold">שגיאות שורות</div>
                 <div className="max-h-56 overflow-auto space-y-1 text-xs">
                   {validation.rowErrors.map((err, idx) => (
                     <div key={`row-err-${idx}`} className="rounded bg-muted px-2 py-1">
                       שורה {err.row}: {err.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {Array.isArray(validation.unimportedProducts) && validation.unimportedProducts.length > 0 ? (
+              <div className="rounded-lg border border-amber-300/60 p-3">
+                <div className="mb-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                  מוצרים שלא ייובאו ({validation.unimportedProducts.length})
+                </div>
+                <div className="max-h-56 overflow-auto space-y-1 text-xs">
+                  {validation.unimportedProducts.map((item, idx) => (
+                    <div key={`unimported-${idx}`} className="rounded bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
+                      שורה {item.row}: {item.productName || '(ללא שם מוצר)'} — {item.reason}
                     </div>
                   ))}
                 </div>
@@ -1437,6 +1857,31 @@ export default function ImportExport() {
                 <div>מוצרים שנוצרו: {applyResult.stats.productsCreated}</div>
                 <div>מחירים שנוספו: {applyResult.stats.pricesInserted}</div>
                 <div>מחירים שדולגו: {applyResult.stats.pricesSkipped}</div>
+                {applyResult.importDiagnostics ? (
+                  <div className="mt-2 rounded border bg-muted/30 p-2 text-xs">
+                    <div>שורות לפני Ignore: {applyResult.importDiagnostics.rowsBeforeIgnored}</div>
+                    <div>שורות שדולגו ב-Ignored: {applyResult.importDiagnostics.ignoredRowsCount}</div>
+                    <div>שורות מקור: {applyResult.importDiagnostics.sourceRows}</div>
+                    <div>שורות שעברו מיפוי: {applyResult.importDiagnostics.mappedRowsBeforeDedupe}</div>
+                    <div>שורות אחרי הסרת כפילויות: {applyResult.importDiagnostics.rowsAfterDedupe}</div>
+                    <div>נפלו בולידציה: {applyResult.importDiagnostics.droppedInValidation}</div>
+                    <div>נפלו ככפילויות: {applyResult.importDiagnostics.droppedAsDuplicates}</div>
+                  </div>
+                ) : null}
+                {Array.isArray(applyResult.unimportedProducts) && applyResult.unimportedProducts.length > 0 ? (
+                  <div className="mt-3 rounded border border-amber-300/60 p-2">
+                    <div className="mb-1 font-semibold text-amber-700 dark:text-amber-300">
+                      מוצרים שלא ייובאו ({applyResult.unimportedProducts.length})
+                    </div>
+                    <div className="max-h-40 overflow-auto space-y-1 text-xs">
+                      {applyResult.unimportedProducts.map((item, idx) => (
+                        <div key={`apply-unimported-${idx}`} className="rounded bg-amber-50 px-2 py-1 dark:bg-amber-950/30">
+                          שורה {item.row}: {item.productName || '(ללא שם מוצר)'} — {item.reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </CardContent>

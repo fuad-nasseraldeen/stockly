@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { useProducts, useDeleteProduct, useProductPriceHistory } from '../hooks/useProducts';
+import { useProducts, useDeleteProduct, useProductPriceHistory, useAddProductPrice } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useCategories } from '../hooks/useCategories';
 import { useSettings } from '../hooks/useSettings';
@@ -21,11 +21,12 @@ import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { ProductsSkeleton } from '../components/ProductsSkeleton';
-import { grossToNet } from '../lib/pricing-rules';
+import { grossToNet, netToGross } from '../lib/pricing-rules';
 import { useTableLayout } from '../hooks/useTableLayout';
 import type { ColumnId } from '../lib/price-columns';
 import type { FieldOption } from '../components/FieldLayoutEditor/fieldLayoutTypes';
 import { normalizePinnedFieldIds, parsePinnedFieldIdsFromSavedLayout } from '../components/FieldLayoutEditor/fieldLayoutUtils';
+import { formatNumberTrimmed, getDecimalPrecision } from '../lib/number-format';
 
 type SortOption = 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
 
@@ -87,6 +88,18 @@ export default function Products() {
   const [historyProductId, setHistoryProductId] = useState<string | null>(null);
   const [historySupplierId, setHistorySupplierId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showInlineAddPriceDialog, setShowInlineAddPriceDialog] = useState(false);
+  const [productForInlineAdd, setProductForInlineAdd] = useState<Product | null>(null);
+  const [inlinePriceSupplierId, setInlinePriceSupplierId] = useState('');
+  const [inlinePriceCost, setInlinePriceCost] = useState('0');
+  const [inlinePriceCartonPrice, setInlinePriceCartonPrice] = useState('0');
+  const [inlinePriceIncludesVat, setInlinePriceIncludesVat] = useState<'with' | 'without'>('with');
+  const [inlinePriceDiscount, setInlinePriceDiscount] = useState('0');
+  const [inlinePricePackageQuantity, setInlinePricePackageQuantity] = useState('1');
+  const [inlinePricePackageType, setInlinePricePackageType] = useState<
+    'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown'
+  >('unknown');
+  const [inlinePriceError, setInlinePriceError] = useState<string | null>(null);
   const [expandedPriceId, setExpandedPriceId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -124,6 +137,7 @@ export default function Products() {
     historySupplierId || undefined
   );
   const deleteProduct = useDeleteProduct();
+  const addProductPrice = useAddProductPrice();
 
 
   const handleDelete = async () => {
@@ -137,41 +151,162 @@ export default function Products() {
     }
   };
 
-  // Format cost price (including VAT) - 2 decimal places
-  const formatCostPrice = (num: number): string => {
-    if (isNaN(num) || num === null || num === undefined) return '0';
-    return parseFloat(num.toFixed(2)).toString();
+  const resetInlineAddPriceForm = () => {
+    setInlinePriceSupplierId('');
+    setInlinePriceCost('0');
+    setInlinePriceCartonPrice('0');
+    setInlinePriceIncludesVat('with');
+    setInlinePriceDiscount('0');
+    setInlinePricePackageQuantity('1');
+    setInlinePricePackageType('unknown');
+    setInlinePriceError(null);
   };
 
-  // Format unit price - 4 decimal places, removing trailing zeros
-  const formatUnitPrice = (num: number): string => {
-    if (isNaN(num) || num === null || num === undefined) return '0';
-    // Use toFixed(4) to get up to 4 decimal places, then remove trailing zeros
-    return parseFloat(num.toFixed(4)).toString();
+  const openInlineAddPriceDialog = (product: Product) => {
+    setProductForInlineAdd(product);
+    resetInlineAddPriceForm();
+    setShowInlineAddPriceDialog(true);
   };
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS' }).format(price);
-  };
+  const decimalPrecision = getDecimalPrecision(settings);
+  const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
+  const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
 
   const formatDate = (date: string | null) => {
     if (!date) return '-';
     return new Date(date).toLocaleDateString('he-IL');
   };
 
-  const useVat = settings?.use_vat === true; // Default to false if not set
+  const useVat = true; // use_vat is deprecated: VAT mode is always enabled
   const useMargin = settings?.use_margin === true; // Default to false if not set
-  
   const vatPercent = settings?.vat_percent ?? 18;
+
+  const parseInlineNumber = (v: string): number => (v ? Number(v) || 0 : 0);
+  const inlinePackageQty = parseInlineNumber(inlinePricePackageQuantity) || 1;
+  const inlineCartonPriceValue = parseInlineNumber(inlinePriceCartonPrice);
+  const inlineCalculatedUnitPrice = inlineCartonPriceValue > 0 && inlinePackageQty > 0
+    ? inlineCartonPriceValue / inlinePackageQty
+    : parseInlineNumber(inlinePriceCost);
+  const inlineCostPriceGross = useVat && inlineCalculatedUnitPrice > 0 && inlinePriceIncludesVat === 'without'
+    ? netToGross(inlineCalculatedUnitPrice, vatPercent / 100)
+    : inlineCalculatedUnitPrice;
+  const inlineDiscountValue = parseInlineNumber(inlinePriceDiscount);
+  const inlineCostAfterDiscountGross = inlineCostPriceGross > 0 && inlineDiscountValue > 0
+    ? inlineCostPriceGross * (1 - inlineDiscountValue / 100)
+    : inlineCostPriceGross;
+  const inlineCostAfterDiscountNet = useVat && inlineCostAfterDiscountGross > 0 && vatPercent > 0
+    ? grossToNet(inlineCostAfterDiscountGross, vatPercent / 100)
+    : inlineCostAfterDiscountGross;
+  const inlineCartonTotal = inlineCostAfterDiscountGross * inlinePackageQty;
+
+  const handleInlineUnitPriceChange = (value: string) => {
+    setInlinePriceCost(value);
+    const unitPriceNum = parseInlineNumber(value);
+    if (unitPriceNum > 0 && inlinePackageQty > 0) {
+      const calculatedCarton = unitPriceNum * inlinePackageQty;
+      setInlinePriceCartonPrice(formatUnitPrice(calculatedCarton));
+    }
+  };
+
+  const handleInlineCartonPriceChange = (value: string) => {
+    setInlinePriceCartonPrice(value);
+    const cartonNum = parseInlineNumber(value);
+    if (cartonNum > 0 && inlinePackageQty > 0) {
+      const calculatedUnit = cartonNum / inlinePackageQty;
+      setInlinePriceCost(formatUnitPrice(calculatedUnit));
+    }
+  };
+
+  const handleInlinePackageQtyChange = (value: string) => {
+    setInlinePricePackageQuantity(value);
+    const qtyNum = parseInlineNumber(value);
+    if (qtyNum <= 0) return;
+
+    const cartonNum = parseInlineNumber(inlinePriceCartonPrice);
+    if (cartonNum > 0) {
+      const calculatedUnit = cartonNum / qtyNum;
+      setInlinePriceCost(formatUnitPrice(calculatedUnit));
+      return;
+    }
+
+    const unitNum = parseInlineNumber(inlinePriceCost);
+    if (unitNum > 0) {
+      const calculatedCarton = unitNum * qtyNum;
+      setInlinePriceCartonPrice(formatUnitPrice(calculatedCarton));
+    }
+  };
+
+  const handleInlineAddPrice = async (): Promise<void> => {
+    if (!productForInlineAdd) return;
+    if (!inlinePriceSupplierId) {
+      setInlinePriceError('חובה לבחור ספק');
+      return;
+    }
+
+    const finalUnitPrice = inlineCalculatedUnitPrice;
+    if (!finalUnitPrice || finalUnitPrice <= 0) {
+      setInlinePriceError('חובה להזין מחיר עלות תקין או מחיר אריזה');
+      return;
+    }
+
+    try {
+      setInlinePriceError(null);
+      const costPriceToStore = useVat && finalUnitPrice > 0 && inlinePriceIncludesVat === 'without'
+        ? netToGross(finalUnitPrice, vatPercent / 100)
+        : finalUnitPrice;
+
+      await addProductPrice.mutateAsync({
+        id: productForInlineAdd.id,
+        data: {
+          supplier_id: inlinePriceSupplierId,
+          cost_price: costPriceToStore,
+          discount_percent: inlinePriceDiscount ? Number(inlinePriceDiscount) : undefined,
+          package_quantity: inlinePricePackageQuantity ? Number(inlinePricePackageQuantity) : undefined,
+          package_type: inlinePricePackageType,
+        },
+      });
+
+      setShowInlineAddPriceDialog(false);
+      resetInlineAddPriceForm();
+      setProductForInlineAdd(null);
+      await queryClient.refetchQueries({ queryKey: ['products'] });
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as { message?: string }).message)
+          : null;
+      setInlinePriceError(message || 'שגיאה בהוספת מחיר');
+    }
+  };
+
+  const formatPackageType = (packageType?: string | null) => {
+    if (!packageType) return 'לא ידוע';
+    const normalized = packageType.toLowerCase();
+    if (normalized === 'carton') return 'קרטון';
+    if (normalized === 'gallon') return 'גלון';
+    if (normalized === 'bag') return 'שק';
+    if (normalized === 'bottle') return 'בקבוק';
+    if (normalized === 'pack') return 'מארז';
+    if (normalized === 'shrink') return 'שרינק';
+    if (normalized === 'sachet') return 'שקית';
+    if (normalized === 'can') return 'פחית/קופסה';
+    if (normalized === 'roll') return 'גליל';
+    return 'לא ידוע';
+  };
+
   const appSettings: SettingsType = useMemo(() => ({
     use_vat: useVat,
     use_margin: useMargin,
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
-  }), [useVat, useMargin, vatPercent, settings?.global_margin_percent]);
+    decimal_precision: settings?.decimal_precision ?? null,
+  }), [useVat, useMargin, vatPercent, settings?.global_margin_percent, settings?.decimal_precision]);
   const { data: savedLayout } = useTableLayout('productsTable');
   const availableColumns = useMemo(
-    () => getAvailableColumns(appSettings).filter((col) => col.id !== 'actions'),
+    () =>
+      getAvailableColumns(appSettings).filter(
+        (col) => col.id !== 'actions',
+      ),
     [appSettings]
   );
   const allFields: FieldOption[] = useMemo(
@@ -284,7 +419,7 @@ export default function Products() {
       const BOM = '\uFEFF';
       let csv =
         BOM +
-        'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
+        'שם מוצר,מק"ט,מחיר עלות,כמות באריזה,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
 
       for (const p of allProducts) {
         const productName = p?.name ?? '';
@@ -794,6 +929,10 @@ export default function Products() {
           {products.map((product) => (
             <Card key={product.id} className="shadow-md hover:shadow-lg transition-all border-2">
               <CardHeader className="pb-4 border-b-2 border-border/50">
+                {(() => {
+                  const firstPrice = Array.isArray(product.prices) && product.prices.length > 0 ? product.prices[0] : null;
+                  const packageTypeLabel = formatPackageType(firstPrice?.package_type || null);
+                  return (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex-1">
                     <CardTitle className="text-xl font-bold mb-2">{product.name}</CardTitle>
@@ -802,7 +941,13 @@ export default function Products() {
                         {product.category?.name || 'ללא קטגוריה'}
                       </span>
                       <span>•</span>
-                      <span className="px-2 py-1 bg-muted rounded-md border border-border/50">{product.unit === 'unit' ? 'יחידה' : product.unit === 'kg' ? 'ק"ג' : 'ליטר'}</span>
+                      <span className="px-2 py-1 bg-muted rounded-md border border-border/50">
+                        יחידת מידה: {product.unit === 'unit' ? 'יחידה' : product.unit === 'kg' ? 'ק"ג' : 'ליטר'}
+                      </span>
+                      <span>•</span>
+                      <span className="px-2 py-1 bg-muted rounded-md border border-border/50">
+                        סוג אריזה: {packageTypeLabel}
+                      </span>
                       {product.sku && (
                         <>
                           <span>•</span>
@@ -836,6 +981,8 @@ export default function Products() {
                     </Button>
                   </div>
                 </div>
+                  );
+                })()}
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -848,7 +995,7 @@ export default function Products() {
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">מחיר נמוך ביותר:</span>
-                        <span className="font-semibold text-foreground">{formatPrice(Number(summary.minCost ?? 0))}</span>
+                        <span className="font-semibold text-foreground">₪{formatUnitPrice(Number(summary.minCost ?? 0))}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-primary" />
@@ -860,9 +1007,19 @@ export default function Products() {
                     })()
                   )}
 
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-base font-bold text-foreground">מחירים לפי ספק (נמוך ראשון):</h4>
+                    <Button
+                      size="sm"
+                      onClick={() => openInlineAddPriceDialog(product)}
+                    >
+                      <Plus className="w-4 h-4 ml-1" />
+                      הוסף מחיר חדש
+                    </Button>
+                  </div>
+
                   {product.prices && product.prices.length > 0 ? (
                     <div>
-                      <h4 className="text-base font-bold mb-4 text-foreground">מחירים לפי ספק (נמוך ראשון):</h4>
                       <div className="overflow-x-auto rounded-lg border border-border bg-card">
                         <Table>
                           <TableHeader>
@@ -896,17 +1053,36 @@ export default function Products() {
                               );
                               const fields = [
                                 { id: 'supplier' as ColumnId, label: 'ספק', value: price.supplier_name || 'לא ידוע' },
-                                { id: 'cost_gross' as ColumnId, label: 'מחיר אחרי מע"מ', value: `₪${formatUnitPrice(Number(price.cost_price))}` },
+                                {
+                                  id: 'cost_gross' as ColumnId,
+                                  label: 'מחיר עלות',
+                                  value: `₪${formatUnitPrice(Number(price.cost_price))}`,
+                                  tooltip: 'מחיר עלות כולל מע"מ',
+                                },
+                                {
+                                  id: 'sell_price' as ColumnId,
+                                  label: 'מחיר מכירה',
+                                  value: price.sell_price ? `₪${formatUnitPrice(Number(price.sell_price))}` : '-',
+                                  highlight: true,
+                                  tooltip: 'מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח + מע"מ',
+                                },
                                 ...(useVat ? [{ id: 'cost_net' as ColumnId, label: 'מחיר לפני מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
                                 ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ id: 'discount' as ColumnId, label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
                                 { id: 'cost_after_discount_gross' as ColumnId, label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
                                 ...(useVat ? [{ id: 'cost_after_discount_net' as ColumnId, label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
-                                { id: 'quantity_per_carton' as ColumnId, label: 'כמות יחידות בקרטון', value: `${packageQty} יחידות` },
-                                { id: 'carton_price' as ColumnId, label: 'מחיר לקרטון', value: `₪${formatCostPrice(cartonPrice)}` },
-                                ...(useMargin && price.sell_price ? [{ id: 'sell_price' as ColumnId, label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
+                                ...(price.vat_rate !== null && price.vat_rate !== undefined
+                                  ? [{ id: 'vat_rate' as ColumnId, label: 'שיעור מע"מ', value: `${Number(price.vat_rate).toFixed(1)}%` }]
+                                  : []),
+                                { id: 'quantity_per_carton' as ColumnId, label: 'כמות יחידות באריזה', value: `${packageQty} יחידות`, highlightBusiness: true },
+                                { id: 'carton_price' as ColumnId, label: 'מחיר לאריזה', value: `₪${formatCostPrice(cartonPrice)}`, highlight: true, highlightBusiness: true },
                                 ...(useMargin && price.margin_percent ? [{ id: 'profit_percent' as ColumnId, label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
                                 { id: 'date' as ColumnId, label: 'תאריך עדכון', value: formatDate(price.created_at) },
-                              ].filter((field) => !mobileSummaryColumnIds.has(field.id));
+                              ].filter(
+                                (field) =>
+                                  field.id === 'sell_price' ||
+                                  field.id === 'cost_gross' ||
+                                  !mobileSummaryColumnIds.has(field.id)
+                              );
                               
                               return (
                                 <React.Fragment key={priceId}>
@@ -916,7 +1092,7 @@ export default function Products() {
                                   >
                                     {mobileSummaryColumns.map((col) => (
                                       <TableCell key={col.id} className={col.id === 'supplier' ? 'font-semibold' : undefined}>
-                                        {col.renderCell(price as any, product as any, appSettings as any)}
+                                        {col.renderCell(price, product, appSettings)}
                                       </TableCell>
                                     ))}
                                     <TableCell>
@@ -933,13 +1109,31 @@ export default function Products() {
                                         <div className="p-4 bg-muted/30">
                                           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                                             {fields.map((field, idx) => (
-                                              <div key={idx} className="flex items-center gap-2 border-b border-border/50 pb-2">
-                                                <span className="text-sm font-medium text-muted-foreground">{field.label}</span>
-                                                <span className={`text-sm font-semibold ${field.highlight ? 'text-primary' : 'text-foreground'}`}>{field.value}</span>
+                                              <div
+                                                key={idx}
+                                                className={`flex items-center gap-2 pb-2 ${
+                                                  idx < fields.length - 1 ? 'border-b border-border/50' : ''
+                                                } ${field.highlightBusiness ? 'rounded-md border border-primary/30 bg-primary/5 px-2 py-1' : ''}`}
+                                              >
+                                                <span className={`text-sm font-medium ${field.highlightBusiness ? 'text-primary' : 'text-muted-foreground'}`}>
+                                                  {field.label}
+                                                  {'tooltip' in field && field.tooltip ? (
+                                                    <span className="inline-flex align-middle mr-1">
+                                                      <Tooltip content={field.tooltip} />
+                                                    </span>
+                                                  ) : null}
+                                                </span>
+                                                <span
+                                                  className={`text-sm font-semibold ${
+                                                    field.highlightBusiness || field.highlight ? 'text-primary' : 'text-foreground'
+                                                  }`}
+                                                >
+                                                  {field.value}
+                                                </span>
                                               </div>
                                             ))}
                                           </div>
-                                          <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                                          <div className="flex justify-end gap-2 pt-4 mt-4">
                                             <Button
                                               variant="outline"
                                               size="sm"
@@ -997,6 +1191,201 @@ export default function Products() {
           </div>
         </div>
       )}
+
+      <Dialog open={showInlineAddPriceDialog} onOpenChange={setShowInlineAddPriceDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>הוסף מחיר חדש</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {productForInlineAdd && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+                <div className="font-semibold">{productForInlineAdd.name}</div>
+                <div className="text-muted-foreground">
+                  {productForInlineAdd.category?.name || 'כללי'}
+                  {productForInlineAdd.sku ? ` • מק"ט: ${productForInlineAdd.sku}` : ''}
+                  {' • '}
+                  {productForInlineAdd.unit === 'unit' ? 'יחידה' : productForInlineAdd.unit === 'kg' ? 'ק"ג' : 'ליטר'}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="inlinePriceSupplier">ספק *</Label>
+              <Select
+                id="inlinePriceSupplier"
+                value={inlinePriceSupplierId}
+                onChange={(e) => setInlinePriceSupplierId(e.target.value)}
+              >
+                <option value="">בחר ספק</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="inlinePriceCost">מחיר עלות ליחידה *</Label>
+                <Input
+                  id="inlinePriceCost"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={inlinePriceCost}
+                  onChange={(e) => handleInlineUnitPriceChange(e.target.value)}
+                  placeholder="0.0000"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="inlinePriceCarton">מחיר אריזה</Label>
+                <Input
+                  id="inlinePriceCarton"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={inlinePriceCartonPrice}
+                  onChange={(e) => handleInlineCartonPriceChange(e.target.value)}
+                  placeholder="0.0000"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {inlinePriceCartonPrice && inlinePackageQty > 0
+                ? `מחיר יחידה מחושב: ${formatUnitPrice(parseInlineNumber(inlinePriceCartonPrice) / inlinePackageQty)} ₪`
+                : 'אם תזין מחיר אריזה, מחיר היחידה יחושב אוטומטית'}
+            </p>
+
+            {useVat && (
+              <div className="flex flex-col gap-2 text-xs mt-2 p-3 bg-muted rounded-lg">
+                <Label className="text-sm font-medium">המחיר שהזנת הוא:</Label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="inlinePriceIncludesVat"
+                      className="h-3 w-3"
+                      checked={inlinePriceIncludesVat === 'with'}
+                      onChange={() => setInlinePriceIncludesVat('with')}
+                    />
+                    <span>מחיר כולל מע&quot;מ</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="inlinePriceIncludesVat"
+                      className="h-3 w-3"
+                      checked={inlinePriceIncludesVat === 'without'}
+                      onChange={() => setInlinePriceIncludesVat('without')}
+                    />
+                    <span>מחיר ללא מע&quot;מ</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-10 gap-4">
+              <div className="space-y-2 col-span-7">
+                <Label htmlFor="inlinePriceQty">כמות יחידות באריזה</Label>
+                <Input
+                  id="inlinePriceQty"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={inlinePricePackageQuantity}
+                  onChange={(e) => handleInlinePackageQtyChange(e.target.value)}
+                  placeholder="1"
+                />
+              </div>
+              <div className="space-y-2 col-span-3">
+                <Label htmlFor="inlinePriceDiscount">אחוז הנחה</Label>
+                <Input
+                  id="inlinePriceDiscount"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="100"
+                  value={inlinePriceDiscount}
+                  onChange={(e) => setInlinePriceDiscount(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="inlinePackageType">סוג אריזה</Label>
+              <Select
+                id="inlinePackageType"
+                value={inlinePricePackageType}
+                onChange={(e) =>
+                  setInlinePricePackageType(
+                    e.target.value as
+                      | 'carton'
+                      | 'gallon'
+                      | 'bag'
+                      | 'bottle'
+                      | 'pack'
+                      | 'shrink'
+                      | 'sachet'
+                      | 'can'
+                      | 'roll'
+                      | 'unknown'
+                  )
+                }
+              >
+                <option value="unknown">לא ידוע</option>
+                <option value="carton">אריזה</option>
+                <option value="gallon">גלון</option>
+                <option value="bag">שק</option>
+                <option value="bottle">בקבוק</option>
+                <option value="pack">חבילה/מארז</option>
+                <option value="shrink">שרינק</option>
+                <option value="sachet">שקית</option>
+                <option value="can">פחית/קופסה</option>
+                <option value="roll">גליל</option>
+              </Select>
+            </div>
+
+            {inlineCalculatedUnitPrice > 0 && (
+              <div className="p-3 bg-muted rounded-lg space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">מחיר עלות כולל מע"מ:</span>
+                  <span className="text-lg font-bold">₪{formatUnitPrice(inlineCostAfterDiscountGross)}</span>
+                </div>
+                {useVat && inlineCostAfterDiscountGross > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    (מחיר ללא מע&quot;מ: ₪{formatCostPrice(inlineCostAfterDiscountNet)})
+                  </p>
+                )}
+                {inlinePackageQty > 1 && (
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-sm font-medium">מחיר לאריזה ({formatUnitPrice(inlinePackageQty)} יחידות):</span>
+                    <span className="text-lg font-bold text-primary">₪{formatCostPrice(inlineCartonTotal)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {inlinePriceError && <p className="text-xs text-red-600">{inlinePriceError}</p>}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowInlineAddPriceDialog(false);
+                setProductForInlineAdd(null);
+              }}
+            >
+              ביטול
+            </Button>
+            <Button onClick={handleInlineAddPrice} disabled={addProductPrice.isPending || !productForInlineAdd}>
+              {addProductPrice.isPending ? 'מוסיף...' : 'הוסף מחיר'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -1112,11 +1501,11 @@ export default function Products() {
                         <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
                       </TableHead>
                     )}
-                    <TableHead className="whitespace-nowrap">כמות בקרטון</TableHead>
+                    <TableHead className="whitespace-nowrap">כמות באריזה</TableHead>
                     <TableHead className="whitespace-nowrap">
                       <div className="flex items-center gap-1">
-                        מחיר לקרטון
-                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
+                        מחיר לאריזה
+                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות באריזה" />
                       </div>
                     </TableHead>
                     {useMargin && (

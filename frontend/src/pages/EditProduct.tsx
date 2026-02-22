@@ -20,19 +20,7 @@ import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { grossToNet } from '../lib/pricing-rules';
-
-// Format cost price (including VAT) - 2 decimal places
-function formatCostPrice(num: number): string {
-  if (isNaN(num) || num === null || num === undefined) return '0';
-  return parseFloat(num.toFixed(2)).toString();
-}
-
-// Format unit price - 4 decimal places, removing trailing zeros
-function formatUnitPrice(num: number): string {
-  if (isNaN(num) || num === null || num === undefined) return '0';
-  // Use toFixed(4) to get up to 4 decimal places, then remove trailing zeros
-  return parseFloat(num.toFixed(4)).toString();
-}
+import { formatNumberTrimmed, getDecimalPrecision } from '../lib/number-format';
 
 export default function EditProduct() {
   const { id } = useParams<{ id: string }>();
@@ -44,8 +32,10 @@ export default function EditProduct() {
   const productFromState = location.state && typeof location.state === 'object' && 'product' in location.state 
     ? (location.state as { product: any }).product 
     : undefined;
-  const { data: productFromApi, isLoading } = useProduct(id || '', { enabled: !productFromState });
-  const product = productFromState || productFromApi;
+  // Always keep API query enabled so post-update invalidations refresh this page immediately.
+  const { data: productFromApi, isLoading } = useProduct(id || '', { enabled: !!id });
+  // Prefer fresh API data when available; use navigation state only as initial fallback.
+  const product = productFromApi || productFromState;
   const { data: categories = [] } = useCategories();
   const { data: suppliers = [] } = useSuppliers();
   const { data: settings } = useSettings();
@@ -57,12 +47,13 @@ export default function EditProduct() {
 
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
-  const [unit, setUnit] = useState<'unit' | 'kg' | 'liter'>('unit');
   const [sku, setSku] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Price management state
-  const [showAddPrice, setShowAddPrice] = useState(false);
+  const [showAddPrice, setShowAddPrice] = useState(
+    () => new URLSearchParams(location.search).get('addPrice') === '1'
+  );
   const [showEditPrice, setShowEditPrice] = useState(false);
   const [showDeletePrice, setShowDeletePrice] = useState(false);
   const [priceToEdit, setPriceToEdit] = useState<{ id: string; supplier_id: string; cost_price: number; discount_percent?: number; package_quantity?: number } | null>(null);
@@ -75,18 +66,23 @@ export default function EditProduct() {
   const [newSupplierPhone, setNewSupplierPhone] = useState('');
   const [newSupplierNotes, setNewSupplierNotes] = useState('');
   const [newPriceSupplierId, setNewPriceSupplierId] = useState('');
-  const [newPriceCost, setNewPriceCost] = useState('');
-  const [newPriceCartonPrice, setNewPriceCartonPrice] = useState(''); // מחיר קרטון
-  const [newPriceIncludesVat, setNewPriceIncludesVat] = useState<'with' | 'without'>('without');
-  const [newPriceDiscount, setNewPriceDiscount] = useState('');
-  const [newPricePackageQuantity, setNewPricePackageQuantity] = useState('');
+  const [newPriceCost, setNewPriceCost] = useState('0');
+  const [newPriceCartonPrice, setNewPriceCartonPrice] = useState('0'); // מחיר קרטון
+  const [newPriceIncludesVat, setNewPriceIncludesVat] = useState<'with' | 'without'>('with');
+  const [newPriceDiscount, setNewPriceDiscount] = useState('0');
+  const [newPricePackageQuantity, setNewPricePackageQuantity] = useState('1');
+  const [newPriceUnit, setNewPriceUnit] = useState<'unit' | 'kg' | 'liter'>('unit');
+  const [newPricePackageType, setNewPricePackageType] = useState<'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown'>('unknown');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const didInitFormFromProduct = useRef(false);
   
   const vatPercent = settings?.vat_percent ?? 18;
   const useMargin = settings?.use_margin === true;
-  const useVat = settings?.use_vat === true;
+  const useVat = true; // use_vat is deprecated: VAT mode is always enabled
+  const decimalPrecision = getDecimalPrecision(settings);
+  const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
+  const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
   
   // Resolve columns based on settings and layout
   const appSettings: SettingsType = {
@@ -94,6 +90,7 @@ export default function EditProduct() {
     use_margin: useMargin,
     vat_percent: vatPercent,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
+    decimal_precision: settings?.decimal_precision ?? null,
   };
   
   // Listen for layout changes (when user saves layout in Settings page)
@@ -121,7 +118,6 @@ export default function EditProduct() {
     if (!product || didInitFormFromProduct.current) return;
     setName(product.name ?? '');
     setCategoryId(product.category?.id ?? '');
-    setUnit((product.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
     setSku((product as any).sku ?? '');
     didInitFormFromProduct.current = true;
     // package_quantity removed - it's now only in price_entries (supplier-specific)
@@ -145,7 +141,6 @@ export default function EditProduct() {
         data: {
           name: name.trim(),
           category_id: categoryId || null,
-          unit,
           sku: sku.trim() || null,
           // package_quantity removed - it's now only in price_entries (supplier-specific)
         },
@@ -197,24 +192,64 @@ export default function EditProduct() {
     }
   };
 
+  const resetNewPriceFormDefaults = () => {
+    setNewPriceSupplierId('');
+    setNewPriceCost('0');
+    setNewPriceCartonPrice('0');
+    setNewPriceIncludesVat('with');
+    setNewPriceDiscount('0');
+    setNewPricePackageQuantity('1');
+    setNewPriceUnit('unit');
+    setNewPricePackageType('unknown');
+    setPriceError(null);
+  };
+
+  const openAddPriceDialog = () => {
+    setShowEditPrice(false);
+    resetNewPriceFormDefaults();
+    setShowAddPrice(true);
+  };
+
+  const isEditPriceMode = showEditPrice;
+  const isPriceDialogOpen = showAddPrice || showEditPrice;
+  const closePriceDialog = () => {
+    setShowAddPrice(false);
+    setShowEditPrice(false);
+  };
+
   const handleAddPrice = async () => {
     if (!id) return;
     if (!newPriceSupplierId) {
       setPriceError('חובה לבחור ספק');
       return;
     }
-    if (!newPriceCost || Number(newPriceCost) <= 0) {
-      setPriceError('חובה להזין מחיר עלות תקין');
+    
+    // Use calculated unit price (from carton price if entered, otherwise from direct input)
+    const parseNumber = (v: string): number => (v ? Number(v) || 0 : 0);
+    const cartonPriceValue = parseNumber(newPriceCartonPrice);
+    const packageQty = parseNumber(newPricePackageQuantity) || 1;
+    const finalUnitPrice = cartonPriceValue > 0 && packageQty > 0
+      ? cartonPriceValue / packageQty
+      : parseNumber(newPriceCost);
+    
+    if (!finalUnitPrice || finalUnitPrice <= 0) {
+      setPriceError('חובה להזין מחיר עלות תקין או מחיר אריזה');
       return;
     }
     try {
       setPriceError(null);
-      const rawCost = Number(newPriceCost);
+      const rawCost = finalUnitPrice;
       // cost_price is ALWAYS stored as gross (with VAT if VAT enabled)
       // If user selected "without VAT", convert net to gross
       const costPriceToStore = useVat && rawCost > 0 && newPriceIncludesVat === 'without'
           ? netToGross(rawCost, vatPercent / 100)
           : rawCost;
+      if (id) {
+        await updateProduct.mutateAsync({
+          id,
+          data: { unit: newPriceUnit },
+        });
+      }
       await addProductPrice.mutateAsync({
         id,
         data: {
@@ -222,14 +257,11 @@ export default function EditProduct() {
           cost_price: costPriceToStore,
           discount_percent: newPriceDiscount ? Number(newPriceDiscount) : undefined,
           package_quantity: newPricePackageQuantity ? Number(newPricePackageQuantity) : undefined,
+          package_type: newPricePackageType,
         } as any,
       });
-      setNewPriceSupplierId('');
-      setNewPriceCost('');
-      setNewPriceIncludesVat('without');
-      setNewPriceDiscount('');
-      setNewPricePackageQuantity('');
-      setShowAddPrice(false);
+      resetNewPriceFormDefaults();
+      closePriceDialog();
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
       setPriceError(message || 'שגיאה בהוספת מחיר');
@@ -256,7 +288,10 @@ export default function EditProduct() {
     setNewPriceIncludesVat('with'); // Always show as gross (including VAT) in edit form
     setNewPriceDiscount(price.discount_percent ? price.discount_percent.toString() : '');
     setNewPricePackageQuantity(price.package_quantity ? price.package_quantity.toString() : '');
+    setNewPriceUnit((product?.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
+    setNewPricePackageType(price.package_type || 'unknown');
     setPriceError(null);
+    setShowAddPrice(false);
     setShowEditPrice(true);
   };
 
@@ -276,7 +311,7 @@ export default function EditProduct() {
       : parseNumber(newPriceCost);
     
     if (!finalUnitPrice || finalUnitPrice <= 0) {
-      setPriceError('חובה להזין מחיר עלות תקין או מחיר קרטון');
+      setPriceError('חובה להזין מחיר עלות תקין או מחיר אריזה');
       return;
     }
     
@@ -287,6 +322,12 @@ export default function EditProduct() {
       const costPriceToStore = useVat && finalUnitPrice > 0 && newPriceIncludesVat === 'without'
           ? netToGross(finalUnitPrice, vatPercent / 100)
           : finalUnitPrice;
+      if (id) {
+        await updateProduct.mutateAsync({
+          id,
+          data: { unit: newPriceUnit },
+        });
+      }
       await updateProductPrice.mutateAsync({
         id,
         priceId: priceToEdit.id,
@@ -295,6 +336,7 @@ export default function EditProduct() {
           cost_price: costPriceToStore,
           discount_percent: newPriceDiscount ? Number(newPriceDiscount) : undefined,
           package_quantity: newPricePackageQuantity ? Number(newPricePackageQuantity) : undefined,
+          package_type: newPricePackageType,
         } as any,
       });
       setPriceToEdit(null);
@@ -304,7 +346,9 @@ export default function EditProduct() {
       setNewPriceIncludesVat('without');
       setNewPriceDiscount('');
       setNewPricePackageQuantity('');
-      setShowEditPrice(false);
+      setNewPriceUnit('unit');
+      setNewPricePackageType('unknown');
+      closePriceDialog();
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
       setPriceError(message || 'שגיאה בעדכון מחיר');
@@ -333,6 +377,47 @@ export default function EditProduct() {
   const parseNumber = (v: string): number => (v ? Number(v) || 0 : 0);
   const cartonPriceValue = parseNumber(newPriceCartonPrice);
   const packageQty = parseNumber(newPricePackageQuantity) || 1;
+
+  const handleUnitPriceInputChange = (value: string) => {
+    setNewPriceCost(value);
+    if (value && packageQty > 0) {
+      const unitPriceNum = parseNumber(value);
+      if (unitPriceNum > 0) {
+        const calculatedCartonPrice = unitPriceNum * packageQty;
+        setNewPriceCartonPrice(formatUnitPrice(calculatedCartonPrice));
+      }
+    } else if (!value) {
+      setNewPriceCartonPrice('');
+    }
+  };
+
+  const handleCartonPriceInputChange = (value: string) => {
+    setNewPriceCartonPrice(value);
+    if (value && packageQty > 0) {
+      const cartonPriceNum = parseNumber(value);
+      if (cartonPriceNum > 0) {
+        const calculatedUnitPrice = cartonPriceNum / packageQty;
+        setNewPriceCost(formatUnitPrice(calculatedUnitPrice));
+      }
+    }
+  };
+
+  const handlePackageQuantityInputChange = (value: string) => {
+    setNewPricePackageQuantity(value);
+    const qtyNum = parseNumber(value);
+    const cartonPriceNum = parseNumber(newPriceCartonPrice);
+    if (cartonPriceNum > 0 && qtyNum > 0) {
+      const calculatedUnitPrice = cartonPriceNum / qtyNum;
+      setNewPriceCost(formatUnitPrice(calculatedUnitPrice));
+      return;
+    }
+
+    const unitPriceNum = parseNumber(newPriceCost);
+    if (unitPriceNum > 0 && qtyNum > 0) {
+      const calculatedCartonPrice = unitPriceNum * qtyNum;
+      setNewPriceCartonPrice(formatUnitPrice(calculatedCartonPrice));
+    }
+  };
   
   // If carton price is entered, calculate unit price from it
   let calculatedUnitPrice = parseNumber(newPriceCost);
@@ -370,9 +455,9 @@ export default function EditProduct() {
   useEffect(() => {
     if (cartonPriceValue > 0 && packageQty > 0) {
       const calculated = cartonPriceValue / packageQty;
-      setNewPriceCost(formatUnitPrice(calculated));
+      setNewPriceCost(formatNumberTrimmed(calculated, decimalPrecision));
     }
-  }, [cartonPriceValue, packageQty]);
+  }, [cartonPriceValue, packageQty, decimalPrecision]);
 
   if (!id) {
     return null;
@@ -410,8 +495,7 @@ export default function EditProduct() {
           </CardDescription> */}
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-10 gap-4">
-            <div className="space-y-2 col-span-7">
+          <div className="space-y-2">
               <Label htmlFor="name">שם מוצר *</Label>
               <Input
                 id="name"
@@ -420,20 +504,6 @@ export default function EditProduct() {
                 placeholder="הזן שם מוצר"
                 required
               />
-            </div>
-
-            <div className="space-y-2 col-span-3">
-              <Label htmlFor="unit">יחידת מידה</Label>
-              <Select
-                id="unit"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value as 'unit' | 'kg' | 'liter')}
-              >
-                <option value="unit">יחידה</option>
-                <option value="kg">ק"ג</option>
-                <option value="liter">ליטר</option>
-              </Select>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -481,20 +551,23 @@ export default function EditProduct() {
         </CardContent>
       </Card>
 
+      <div className="flex justify-end mt-6 mb-2">
+        <Button
+          onClick={openAddPriceDialog}
+        >
+          <Plus className="w-4 h-4 ml-2" />
+          הוסף מחיר חדש
+        </Button>
+      </div>
+
       {/* Suppliers and Prices Section */}
-      <Card className="shadow-md border-2 mt-6">
+      <Card className="shadow-md border-2">
         <CardHeader className=" border-border/50">
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle className="text-2xl">ספקים ומחירים</CardTitle>
-              {/* <CardDescription className="text-base mt-2">
-                ניהול ספקים ומחירים עבור מוצר זה
-              </CardDescription> */}
-            </div>
-            <Button onClick={() => setShowAddPrice(true)}>
-              <Plus className="w-4 h-4 ml-2" />
-              הוסף מחיר חדש
-            </Button>
+          <div>
+            <CardTitle className="text-2xl">ספקים ומחירים</CardTitle>
+            {/* <CardDescription className="text-base mt-2">
+              ניהול ספקים ומחירים עבור מוצר זה
+            </CardDescription> */}
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
@@ -527,19 +600,16 @@ export default function EditProduct() {
                       const costPriceNet = useVat && costAfterDiscount > 0 && vatPercent > 0
                         ? grossToNet(costAfterDiscount, vatPercent / 100)
                         : costAfterDiscount;
-                      const costPriceBeforeDiscountNet = useVat && Number(price.cost_price) > 0 && vatPercent > 0
-                        ? grossToNet(Number(price.cost_price), vatPercent / 100)
-                        : Number(price.cost_price);
                       
                       // Prepare fields for accordion content (with labels) - including carton price
                       const fields = [
-                        { label: 'מחיר לקרטון', value: `₪${formatCostPrice(cartonPrice)}`, highlight: true },
-                        { label: 'מחיר עלות כולל מע"מ', value: `₪${formatUnitPrice(Number(price.cost_price))}` },
-                        ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
+                        { label: 'מחיר לאריזה', value: `₪${formatCostPrice(cartonPrice)}`, highlight: true },
+                        { label: 'מחיר עלות כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                        ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
                         ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
                         { label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
                         ...(useVat ? [{ label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
-                        { label: 'כמות יחידות בקרטון', value: `${packageQty} יחידות` },
+                        { label: 'כמות יחידות באריזה', value: `${packageQty} יחידות` },
                         ...(useMargin && price.sell_price ? [{ label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
                         ...(useMargin && price.margin_percent ? [{ label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
                       ];
@@ -548,7 +618,7 @@ export default function EditProduct() {
                         <React.Fragment key={priceId}>
                           <TableRow className="border-b border-border">
                             <TableCell className="font-semibold">{supplier?.name || 'לא ידוע'}</TableCell>
-                            <TableCell>₪{formatUnitPrice(Number(price.cost_price))}</TableCell>
+                            <TableCell>₪{formatUnitPrice(costAfterDiscount)}</TableCell>
                             <TableCell>
                               <div className="flex flex-col items-center gap-2">
                                 <Button
@@ -632,158 +702,6 @@ export default function EditProduct() {
         </CardContent>
       </Card>
 
-      {/* Add Price Dialog */}
-      <Dialog open={showAddPrice} onOpenChange={setShowAddPrice}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>הוסף מחיר חדש</DialogTitle>
-            <DialogDescription>הוסף מחיר חדש לספק עבור מוצר זה</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="newPriceSupplier">ספק *</Label>
-              <div className="flex gap-2">
-                <Select
-                  id="newPriceSupplier"
-                  value={newPriceSupplierId}
-                  onChange={(e) => setNewPriceSupplierId(e.target.value)}
-                  className="flex-1"
-                >
-                  <option value="">בחר ספק</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddSupplier(true)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPriceCost">מחיר עלות *</Label>
-              <Input
-                id="newPriceCost"
-                type="number"
-                step="0.01"
-                min="0"
-                value={newPriceCost}
-                onChange={(e) => setNewPriceCost(e.target.value)}
-                placeholder="0.00"
-              />
-              {useVat && (
-                <div className="flex flex-col gap-2 text-xs mt-2 p-3 bg-muted rounded-lg">
-                  <Label className="text-sm font-medium">המחיר שהזנת הוא:</Label>
-                  <div className="flex gap-4">
-                    <label className="inline-flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="newPriceIncludesVat"
-                        className="h-3 w-3"
-                        checked={newPriceIncludesVat === 'with'}
-                        onChange={() => setNewPriceIncludesVat('with')}
-                      />
-                      <span>גרוס (כולל מע&quot;מ)</span>
-                    </label>
-                    <label className="inline-flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="newPriceIncludesVat"
-                        className="h-3 w-3"
-                        checked={newPriceIncludesVat === 'without'}
-                        onChange={() => setNewPriceIncludesVat('without')}
-                      />
-                      <span>נטו (ללא מע&quot;מ) - המערכת תמיר לגרוס</span>
-                    </label>
-                  </div>
-                  {newPriceRaw > 0 && (
-                    <div className="mt-2 pt-2 border-t border-border/50">
-                      <p className="text-xs text-muted-foreground">
-                        יישמר כ-cost (gross): ₪{formatUnitPrice(costPriceGross)}
-                      </p>
-                      {newPriceIncludesVat === 'without' && (
-                        <p className="text-xs text-muted-foreground">
-                          נטו: ₪{formatUnitPrice(newPriceRaw)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPricePackageQuantity">כמות יחידות בקרטון</Label>
-              <Input
-                id="newPricePackageQuantity"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={newPricePackageQuantity}
-                onChange={(e) => setNewPricePackageQuantity(e.target.value)}
-                placeholder="1"
-              />
-              <p className="text-xs text-muted-foreground">מספר היחידות בקרטון עבור ספק זה (למשל: 12, 24, 48)</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPriceDiscount">אחוז הנחה</Label>
-              <Input
-                id="newPriceDiscount"
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={newPriceDiscount}
-                onChange={(e) => setNewPriceDiscount(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-
-            {newPriceRaw > 0 && (
-              <div className="p-3 bg-muted rounded-lg space-y-2">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">
-                      {useVat ? 'מחיר יחידה כולל מע"מ' : 'מחיר יחידה'}:
-                    </span>
-                    <span className="text-lg font-bold">₪{formatUnitPrice(unitPrice)}</span>
-                  </div>
-                  {useVat && costPriceAfterDiscountGross > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      (מחיר ללא מע&quot;מ: ₪{formatCostPrice(costPriceAfterDiscountNet)})
-                    </p>
-                  )}
-                  {packageQty > 1 && (
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-sm font-medium">מחיר לקרטון ({formatUnitPrice(packageQty)} יחידות):</span>
-                      <span className="text-lg font-bold text-primary">₪{formatCostPrice(cartonPrice)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {priceError && <p className="text-xs text-red-600">{priceError}</p>}
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowAddPrice(false)}>
-                ביטול
-              </Button>
-              <Button onClick={handleAddPrice} disabled={addProductPrice.isPending}>
-                {addProductPrice.isPending ? 'מוסיף...' : 'הוסף מחיר'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Add Supplier Dialog */}
       <Dialog open={showAddSupplier} onOpenChange={setShowAddSupplier}>
         <DialogContent className="max-w-md">
@@ -837,19 +755,26 @@ export default function EditProduct() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Price Dialog */}
-      <Dialog open={showEditPrice} onOpenChange={setShowEditPrice}>
+      {/* Unified Price Dialog (Add/Edit) */}
+      <Dialog
+        open={isPriceDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closePriceDialog();
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>ערוך מחיר</DialogTitle>
-            <DialogDescription>עדכן מחיר לספק עבור מוצר זה</DialogDescription>
+            <DialogTitle>{isEditPriceMode ? 'ערוך מחיר' : 'הוסף מחיר חדש'}</DialogTitle>
+            <DialogDescription>
+              {isEditPriceMode ? 'עדכן מחיר לספק עבור מוצר זה' : 'הוסף מחיר חדש לספק עבור מוצר זה'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="editPriceSupplier">ספק *</Label>
+              <Label htmlFor="priceSupplier">ספק *</Label>
               <div className="flex gap-2">
                 <Select
-                  id="editPriceSupplier"
+                  id="priceSupplier"
                   value={newPriceSupplierId}
                   onChange={(e) => setNewPriceSupplierId(e.target.value)}
                   className="flex-1"
@@ -873,52 +798,26 @@ export default function EditProduct() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="editPriceCost">מחיר עלות ליחידה *</Label>
+                <Label htmlFor="priceCost">מחיר עלות ליחידה *</Label>
                 <Input
-                  id="editPriceCost"
+                  id="priceCost"
                   type="number"
                   step="0.0001"
                   min="0"
                   value={newPriceCost}
-                  onChange={(e) => {
-                    const newUnitPrice = e.target.value;
-                    setNewPriceCost(newUnitPrice);
-                    // Calculate carton price when unit price is entered
-                    if (newUnitPrice && packageQty > 0) {
-                      const unitPriceNum = parseNumber(newUnitPrice);
-                      if (unitPriceNum > 0) {
-                        const calculatedCartonPrice = unitPriceNum * packageQty;
-                        setNewPriceCartonPrice(formatUnitPrice(calculatedCartonPrice));
-                      }
-                    } else if (!newUnitPrice) {
-                      setNewPriceCartonPrice('');
-                    }
-                  }}
+                  onChange={(e) => handleUnitPriceInputChange(e.target.value)}
                   placeholder="0.0000"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="editPriceCartonPrice">מחיר קרטון</Label>
+                <Label htmlFor="priceCartonPrice">מחיר אריזה</Label>
                 <Input
-                  id="editPriceCartonPrice"
+                  id="priceCartonPrice"
                   type="number"
                   step="0.0001"
                   min="0"
                   value={newPriceCartonPrice}
-                  onChange={(e) => {
-                    const newCartonPrice = e.target.value;
-                    setNewPriceCartonPrice(newCartonPrice);
-                    // Calculate and update unit price when carton price is entered
-                    if (newCartonPrice && packageQty > 0) {
-                      const cartonPriceNum = parseNumber(newCartonPrice);
-                      if (cartonPriceNum > 0) {
-                        const calculatedUnitPrice = cartonPriceNum / packageQty;
-                        setNewPriceCost(formatUnitPrice(calculatedUnitPrice));
-                      }
-                    } else if (!newCartonPrice && newPriceCost) {
-                      // Don't clear unit price when carton price is cleared
-                    }
-                  }}
+                  onChange={(e) => handleCartonPriceInputChange(e.target.value)}
                   placeholder="0.0000"
                 />
               </div>
@@ -926,7 +825,7 @@ export default function EditProduct() {
             <p className="text-xs text-muted-foreground">
               {newPriceCartonPrice && packageQty > 0
                 ? `מחיר יחידה מחושב: ${formatUnitPrice(parseNumber(newPriceCartonPrice) / packageQty)} ₪`
-                : 'אם תזין מחיר קרטון, מחיר היחידה יחושב אוטומטית'}
+                : 'אם תזין מחיר אריזה, מחיר היחידה יחושב אוטומטית'}
             </p>
             {useVat && (
                 <div className="flex flex-col gap-2 text-xs mt-2 p-3 bg-muted rounded-lg">
@@ -935,32 +834,32 @@ export default function EditProduct() {
                     <label className="inline-flex items-center gap-1 cursor-pointer">
                       <input
                         type="radio"
-                        name="editPriceIncludesVat"
+                      name="priceIncludesVat"
                         className="h-3 w-3"
                         checked={newPriceIncludesVat === 'with'}
                         onChange={() => setNewPriceIncludesVat('with')}
                       />
-                      <span>גרוס (כולל מע&quot;מ)</span>
+                      <span>מחיר כולל מע&quot;מ</span>
                     </label>
                     <label className="inline-flex items-center gap-1 cursor-pointer">
                       <input
                         type="radio"
-                        name="editPriceIncludesVat"
+                      name="priceIncludesVat"
                         className="h-3 w-3"
                         checked={newPriceIncludesVat === 'without'}
                         onChange={() => setNewPriceIncludesVat('without')}
                       />
-                      <span>נטו (ללא מע&quot;מ) - המערכת תמיר לגרוס</span>
+                      <span>מחיר ללא מע&quot;מ - המערכת תמיר למחיר כולל מע&quot;מ</span>
                     </label>
                   </div>
                   {newPriceRaw > 0 && (
                     <div className="mt-2 pt-2 border-t border-border/50">
                       <p className="text-xs text-muted-foreground">
-                        יישמר כ-cost (gross): ₪{formatUnitPrice(costPriceGross)}
+                        יישמר כמחיר כולל מע&quot;מ: ₪{formatUnitPrice(costPriceGross)}
                       </p>
                       {newPriceIncludesVat === 'without' && (
                         <p className="text-xs text-muted-foreground">
-                          נטו: ₪{formatUnitPrice(newPriceRaw)}
+                          מחיר ללא מע&quot;מ: ₪{formatUnitPrice(newPriceRaw)}
                         </p>
                       )}
                     </div>
@@ -970,42 +869,22 @@ export default function EditProduct() {
 
             <div className="grid grid-cols-10 gap-4">
               <div className="space-y-2 col-span-7">
-                <Label htmlFor="editPricePackageQuantity">כמות יחידות בקרטון</Label>
+                <Label htmlFor="pricePackageQuantity">כמות יחידות באריזה</Label>
                 <Input
-                  id="editPricePackageQuantity"
+                  id="pricePackageQuantity"
                   type="number"
                   step="0.01"
                   min="0.01"
                   value={newPricePackageQuantity}
-                  onChange={(e) => {
-                    const newQty = e.target.value;
-                    setNewPricePackageQuantity(newQty);
-                    const qtyNum = parseNumber(newQty);
-                    // Recalculate unit price if carton price is set
-                    if (newPriceCartonPrice && qtyNum > 0) {
-                      const cartonPriceNum = parseNumber(newPriceCartonPrice);
-                      if (cartonPriceNum > 0) {
-                        const calculatedUnitPrice = cartonPriceNum / qtyNum;
-                        setNewPriceCost(formatUnitPrice(calculatedUnitPrice));
-                      }
-                    }
-                    // Recalculate carton price if unit price is set
-                    else if (newPriceCost && qtyNum > 0) {
-                      const unitPriceNum = parseNumber(newPriceCost);
-                      if (unitPriceNum > 0) {
-                        const calculatedCartonPrice = unitPriceNum * qtyNum;
-                        setNewPriceCartonPrice(formatUnitPrice(calculatedCartonPrice));
-                      }
-                    }
-                  }}
+                  onChange={(e) => handlePackageQuantityInputChange(e.target.value)}
                   placeholder="1"
                 />
               </div>
 
               <div className="space-y-2 col-span-3">
-                <Label htmlFor="editPriceDiscount">אחוז הנחה</Label>
+                <Label htmlFor="priceDiscount">אחוז הנחה</Label>
                 <Input
-                  id="editPriceDiscount"
+                  id="priceDiscount"
                   type="number"
                   step="0.1"
                   min="0"
@@ -1014,9 +893,42 @@ export default function EditProduct() {
                   onChange={(e) => setNewPriceDiscount(e.target.value)}
                   placeholder="0"
                 />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="priceUnit">סוג יחידה</Label>
+                <Select
+                  id="priceUnit"
+                  value={newPriceUnit}
+                  onChange={(e) => setNewPriceUnit(e.target.value as 'unit' | 'kg' | 'liter')}
+                >
+                  <option value="unit">יחידה</option>
+                  <option value="kg">ק&quot;ג</option>
+                  <option value="liter">ליטר</option>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pricePackageType">סוג אריזה</Label>
+                <Select
+                  id="pricePackageType"
+                  value={newPricePackageType}
+                  onChange={(e) => setNewPricePackageType(e.target.value as any)}
+                >
+                  <option value="unknown">לא ידוע</option>
+                  <option value="carton">אריזה</option>
+                  <option value="gallon">גלון</option>
+                  <option value="bag">שק</option>
+                  <option value="bottle">בקבוק</option>
+                  <option value="pack">חבילה/מארז</option>
+                  <option value="shrink">שרינק</option>
+                  <option value="sachet">שקית</option>
+                  <option value="can">פחית/קופסה</option>
+                  <option value="roll">גליל</option>
+                </Select>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">אחוז הנחה שהספק נותן על המחיר (0-100%)</p>
 
             {newPriceRaw > 0 && (
               <div className="p-3 bg-muted rounded-lg space-y-2">
@@ -1034,7 +946,7 @@ export default function EditProduct() {
                   )}
                   {packageQty > 1 && (
                     <div className="flex justify-between items-center mt-2">
-                      <span className="text-sm font-medium">מחיר לקרטון ({formatUnitPrice(packageQty)} יחידות):</span>
+                      <span className="text-sm font-medium">מחיר לאריזה ({formatUnitPrice(packageQty)} יחידות):</span>
                       <span className="text-lg font-bold text-primary">₪{formatCostPrice(cartonPrice)}</span>
                     </div>
                   )}
@@ -1045,11 +957,16 @@ export default function EditProduct() {
             {priceError && <p className="text-xs text-red-600">{priceError}</p>}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowEditPrice(false)}>
+              <Button variant="outline" onClick={closePriceDialog}>
                 ביטול
               </Button>
-              <Button onClick={handleUpdatePrice} disabled={updateProductPrice.isPending}>
-                {updateProductPrice.isPending ? 'מעדכן...' : 'עדכן מחיר'}
+              <Button
+                onClick={isEditPriceMode ? handleUpdatePrice : handleAddPrice}
+                disabled={isEditPriceMode ? updateProductPrice.isPending : addProductPrice.isPending}
+              >
+                {isEditPriceMode
+                  ? (updateProductPrice.isPending ? 'מעדכן...' : 'עדכן מחיר')
+                  : (addProductPrice.isPending ? 'מוסיף...' : 'הוסף מחיר')}
               </Button>
             </div>
           </div>
@@ -1187,11 +1104,11 @@ export default function EditProduct() {
                         <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
                       </TableHead>
                     )}
-                    <TableHead className="whitespace-nowrap min-w-[100px]">כמות בקרטון</TableHead>
+                    <TableHead className="whitespace-nowrap min-w-[100px]">כמות באריזה</TableHead>
                     <TableHead className="whitespace-nowrap min-w-[140px]">
                       <div className="flex items-center gap-1">
-                        מחיר לקרטון
-                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
+                        מחיר לאריזה
+                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות באריזה" />
                       </div>
                     </TableHead>
                     {useMargin && (
@@ -1248,20 +1165,20 @@ export default function EditProduct() {
                           })}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{supplierName}</TableCell>
-                        <TableCell className="whitespace-nowrap">₪{costPriceWithVat.toFixed(2)}</TableCell>
-                        {useVat && <TableCell className="whitespace-nowrap">₪{costPriceBeforeVat.toFixed(2)}</TableCell>}
+                        <TableCell className="whitespace-nowrap">₪{formatCostPrice(costPriceWithVat)}</TableCell>
+                        {useVat && <TableCell className="whitespace-nowrap">₪{formatCostPrice(costPriceBeforeVat)}</TableCell>}
                         <TableCell className="whitespace-nowrap">
                           {price.discount_percent && Number(price.discount_percent) > 0 
                             ? `${Number(price.discount_percent).toFixed(1)}%`
                             : '-'}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">₪{costAfterDiscountWithVat.toFixed(2)}</TableCell>
-                        {useVat && <TableCell className="whitespace-nowrap">₪{costAfterDiscountBeforeVat.toFixed(2)}</TableCell>}
+                        <TableCell className="whitespace-nowrap">₪{formatCostPrice(costAfterDiscountWithVat)}</TableCell>
+                        {useVat && <TableCell className="whitespace-nowrap">₪{formatCostPrice(costAfterDiscountBeforeVat)}</TableCell>}
                         <TableCell className="whitespace-nowrap">{packageQty} יח`</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">
-                          ₪{cartonPrice.toFixed(2)}
+                          ₪{formatCostPrice(cartonPrice)}
                         </TableCell>
-                        {useMargin && <TableCell className="whitespace-nowrap">₪{Number(price.sell_price).toFixed(2)}</TableCell>}
+                        {useMargin && <TableCell className="whitespace-nowrap">₪{formatCostPrice(Number(price.sell_price))}</TableCell>}
                       </TableRow>
                     );
                   })}

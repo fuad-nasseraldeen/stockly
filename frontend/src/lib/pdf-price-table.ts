@@ -1,12 +1,13 @@
 import { resolveColumns, type Settings, type ColumnLayout } from './column-resolver';
 import { loadLayout, mergeWithDefaults, type LayoutKey } from './column-layout-storage';
 import { grossToNet, calculateProfitAmount } from './pricing-rules';
+import { formatNumberTrimmed, getDecimalPrecision } from './number-format';
 
 type TablePdfColumn = { key: string; label: string };
 
-function formatMoney(value: number) {
+function formatMoney(value: number, settings: Settings) {
   if (Number.isNaN(value)) return '-';
-  return `₪${value.toFixed(2)}`;
+  return `₪${formatNumberTrimmed(value, getDecimalPrecision(settings))}`;
 }
 
 function formatDateHe(date: string | null | undefined) {
@@ -57,11 +58,11 @@ export function priceRowToExportValues(params: {
         return price?.supplier_name || '-';
 
       case 'cost_gross':
-        return formatMoney(Number(price?.cost_price || 0));
+        return formatMoney(Number(price?.cost_price || 0), settings);
 
       case 'cost_net': {
         const net = grossToNet(Number(price?.cost_price || 0), vatRate);
-        return formatMoney(net);
+        return formatMoney(net, settings);
       }
 
       case 'discount': {
@@ -71,13 +72,13 @@ export function priceRowToExportValues(params: {
 
       case 'cost_after_discount_gross': {
         const v = Number(price?.cost_price_after_discount || price?.cost_price || 0);
-        return formatMoney(v);
+        return formatMoney(v, settings);
       }
 
       case 'cost_after_discount_net': {
         const gross = Number(price?.cost_price_after_discount || price?.cost_price || 0);
         const net = grossToNet(gross, vatRate);
-        return formatMoney(net);
+        return formatMoney(net, settings);
       }
 
       case 'quantity_per_carton': {
@@ -88,12 +89,12 @@ export function priceRowToExportValues(params: {
       case 'carton_price': {
         const gross = Number(price?.cost_price_after_discount || price?.cost_price || 0);
         const q = getPackageQuantity(price, product);
-        return formatMoney(gross * q);
+        return formatMoney(gross * q, settings);
       }
 
       case 'sell_price': {
         if (!price?.sell_price) return '-';
-        return formatMoney(Number(price.sell_price));
+        return formatMoney(Number(price.sell_price), settings);
       }
 
       case 'profit_amount': {
@@ -102,7 +103,7 @@ export function priceRowToExportValues(params: {
           Number(price.sell_price),
           Number(price?.cost_price_after_discount || price?.cost_price || 0)
         );
-        return formatMoney(profit);
+        return formatMoney(profit, settings);
       }
 
       case 'profit_percent': {

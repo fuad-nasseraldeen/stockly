@@ -57,6 +57,7 @@ function finalizePdfCellText(value: string): string {
   let text = String(value || '')
     .replace(/[\u00a0\u2000-\u200b\u202f\u205f\u3000]/g, ' ')
     .replace(/\r/g, '')
+    .replace(/\n+/g, ' ')
     .trim();
 
   // In some RTL extraction flows, parentheses are mirrored (")...(" instead of "(...)").
@@ -70,13 +71,39 @@ function finalizePdfCellText(value: string): string {
     .replace(/([^\s(])\(/g, '$1 (')
     .replace(/\)([^\s)])/g, ') $1')
     .replace(/([א-ת])\.(\d)/g, '$1. $2')
+    // Hebrew final letters are expected at end-of-word; if another Hebrew letter follows,
+    // it's usually two glued words from PDF extraction (e.g. שמןפרפין -> שמן פרפין).
+    .replace(/([ךםןףץ])([א-ת])/g, '$1 $2')
+    .replace(/([א-ת])([A-Za-z])/g, '$1 $2')
+    .replace(/([A-Za-z])([א-ת])/g, '$1 $2')
     .replace(/(\d)([A-Za-z\u0590-\u05FF])/g, '$1 $2')
     .replace(/([A-Za-z\u0590-\u05FF])(\d)/g, '$1 $2')
     .trim();
 }
 
-function normalizeAndReverseRows(rows: string[][]): string[][] {
-  return rows.map((row) => row.map((cell) => finalizePdfCellText(cell)).reverse());
+function hasHebrewChars(value: string): boolean {
+  return /[\u0590-\u05FF]/.test(String(value || ''));
+}
+
+function shouldUseRtlColumnOrder(rows: string[][]): boolean {
+  if (!rows.length) return false;
+  let hebrewCells = 0;
+  let totalCells = 0;
+  for (const row of rows.slice(0, 20)) {
+    for (const cell of row.slice(0, 20)) {
+      totalCells += 1;
+      if (hasHebrewChars(cell)) hebrewCells += 1;
+    }
+  }
+  if (!totalCells) return false;
+  return hebrewCells / totalCells >= 0.25;
+}
+
+function normalizeAndOrientRows(rows: string[][]): string[][] {
+  const normalized = rows.map((row) => row.map((cell) => finalizePdfCellText(cell)));
+  if (!shouldUseRtlColumnOrder(normalized)) return normalized;
+  // RTL tables are visually right-to-left, so we keep first logical column on the right edge.
+  return normalized.map((row) => [...row].reverse());
 }
 
 function splitTextLineToCells(line: string): string[] {
@@ -149,7 +176,7 @@ async function tryExtractTextTableFromPdf(pdfBytes: Buffer): Promise<ExtractedPd
       .flatMap((page) =>
         (page.tables || []).map((rows) => ({
           page: page.num || 1,
-          rows: normalizeAndReverseRows(
+          rows: normalizeAndOrientRows(
             normalizeRowsWidth(rows.map((row) => row.map((cell) => String(cell ?? '').trim()))),
           ),
         })),
@@ -178,7 +205,7 @@ async function tryExtractTextTableFromPdf(pdfBytes: Buffer): Promise<ExtractedPd
         .split('\n')
         .map((line) => line.trimEnd())
         .filter((line) => line.trim().length > 0);
-      const rows = normalizeAndReverseRows(pickLikelyTableRows(lines));
+      const rows = normalizeAndOrientRows(pickLikelyTableRows(lines));
       if (rows.length >= 2) {
         return {
           tables: [
@@ -259,7 +286,7 @@ function buildRowsFromTable(table: Block, blockById: Map<string, Block>): string
     return row.slice(0, Math.max(1, end));
   });
   const width = Math.max(1, ...trimmedRows.map((r) => r.length));
-  return normalizeAndReverseRows(trimmedRows.map((row) => {
+  return normalizeAndOrientRows(trimmedRows.map((row) => {
     if (row.length === width) return row;
     return [...row, ...Array.from({ length: width - row.length }, () => '')];
   }));

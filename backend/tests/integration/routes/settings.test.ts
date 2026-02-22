@@ -53,6 +53,7 @@ describe('GET /api/settings', () => {
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('vat_percent');
     expect(response.body).toHaveProperty('global_margin_percent');
+    expect(response.body).toHaveProperty('decimal_precision');
   });
 
   it('should return 500 on error', async () => {
@@ -90,7 +91,7 @@ describe('PUT /api/settings', () => {
           eq: vi.fn().mockReturnThis(),
           select: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({
-            data: { ...mockSettings, vat_percent: 20 },
+            data: { ...mockSettings, vat_percent: 20, decimal_precision: 4 },
             error: null,
           }),
         };
@@ -114,10 +115,12 @@ describe('PUT /api/settings', () => {
       .send({
         vat_percent: 20,
         global_margin_percent: 35,
+        decimal_precision: 4,
       });
 
     expect(response.status).toBe(200);
     expect(response.body.vat_percent).toBe(20);
+    expect(response.body.decimal_precision).toBe(4);
   });
 
   it('should return 400 on validation error', async () => {

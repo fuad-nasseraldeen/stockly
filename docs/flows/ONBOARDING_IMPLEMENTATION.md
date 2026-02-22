@@ -1,5 +1,7 @@
 # Onboarding Implementation Summary
 
+> עדכון 2026-02: זרימת onboarding נשארה יציבה. למסכי products/import/settings המעודכנים ראה `04-component-flows.md`.
+
 ## Flow Overview
 
 ### New User Flow (No Tenants)

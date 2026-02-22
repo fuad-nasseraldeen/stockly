@@ -4,31 +4,11 @@ import { performance } from 'perf_hooks';
 import { randomUUID } from 'crypto';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
-import { calcSellPrice, calcCostAfterDiscount, round2, round4 } from '../lib/pricing.js';
+import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 
 const router = Router();
-
-/**
- * PERF DEBUGGING (ONLY for GET /api/products)
- *
- * How to run:
- * - Enable logs:
- *   - Bash: `PERF_DEBUG=1 npm start`
- *   - PowerShell: `$env:PERF_DEBUG = "1"; npm start`
- * - Call endpoint (replace TOKEN + TENANT):
- *   - Bash:
- *     curl -H "Authorization: Bearer <TOKEN>" -H "x-tenant-id: <TENANT_ID>" \
- *       "http://localhost:3001/api/products?sort=updated_desc&all=true"
- *   - PowerShell:
- *     curl.exe -H "Authorization: Bearer <TOKEN>" -H "x-tenant-id: <TENANT_ID>" `
- *       "http://localhost:3001/api/products?sort=updated_desc&all=true"
- *
- * Notes:
- * - Logs are gated behind PERF_DEBUG=1 (or "true").
- * - Never logs payload contents; only counts and sizes.
- * - Uses `x-request-id` if provided; otherwise generates one and sets it on the response.
- */
+const packageTypeSchema = z.enum(['carton', 'gallon', 'bag', 'bottle', 'pack', 'shrink', 'sachet', 'can', 'roll', 'unknown']);
 
 // Performance debugging flag
 const PERF_DEBUG = process.env.PERF_DEBUG === '1' || process.env.PERF_DEBUG === 'true';
@@ -76,7 +56,41 @@ const priceSchema = z.object({
     .optional(),
   discount_percent: z.coerce.number().min(0).max(100).optional(),
   package_quantity: z.coerce.number().min(0.01, 'כמות באריזה חייבת להיות גדולה מ-0').optional(),
+  package_type: packageTypeSchema.optional(),
+  source_price_includes_vat: z.coerce.boolean().optional(),
+  vat_rate: z.coerce.number().min(0).max(100).optional(),
+  effective_from: z.string().trim().min(1).optional(),
 });
+
+const CURRENT_PRICE_SELECT_EXTENDED =
+  'product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,package_type,source_price_includes_vat,vat_rate,effective_from,created_at';
+const CURRENT_PRICE_SELECT_LEGACY =
+  'product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at';
+const PRODUCT_PRICE_SELECT_EXTENDED =
+  'id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,package_type,source_price_includes_vat,vat_rate,effective_from,created_at';
+const PRODUCT_PRICE_SELECT_LEGACY =
+  'id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at';
+
+function isMissingExtendedPriceColumns(error: any): boolean {
+  const raw = String(error?.message || error || '').toLowerCase();
+  if (!raw) return false;
+  const mentionsNewColumn =
+    raw.includes('package_type') ||
+    raw.includes('source_price_includes_vat') ||
+    raw.includes('vat_rate') ||
+    raw.includes('effective_from');
+  return mentionsNewColumn && (raw.includes('column') || raw.includes('does not exist') || raw.includes('schema cache'));
+}
+
+function applyExtendedPriceDefaults<T extends Record<string, any>>(rows: T[] | null | undefined): T[] {
+  return (rows || []).map((row) => ({
+    ...row,
+    package_type: row.package_type ?? 'unknown',
+    source_price_includes_vat: row.source_price_includes_vat ?? false,
+    vat_rate: row.vat_rate ?? null,
+    effective_from: row.effective_from ?? null,
+  }));
+}
 
 async function getVatPercent(tenantId: string): Promise<number> {
   const { data, error } = await supabase.from('settings').select('vat_percent').eq('tenant_id', tenantId).single();
@@ -90,7 +104,7 @@ async function getGlobalMarginPercent(tenantId: string): Promise<number> {
     .select('global_margin_percent')
     .eq('tenant_id', tenantId)
     .single();
-  return Number(data?.global_margin_percent ?? 30);
+  return Number(data?.global_margin_percent ?? 0);
 }
 
 async function getUseMargin(tenantId: string): Promise<boolean> {
@@ -103,12 +117,18 @@ async function getUseMargin(tenantId: string): Promise<boolean> {
 }
 
 async function getUseVat(tenantId: string): Promise<boolean> {
+  void tenantId;
+  // use_vat is deprecated for runtime behavior: VAT mode is always enabled.
+  return true;
+}
+
+async function getDecimalPrecision(tenantId: string): Promise<number> {
   const { data } = await supabase
     .from('settings')
-    .select('use_vat')
+    .select('decimal_precision')
     .eq('tenant_id', tenantId)
     .single();
-  return data?.use_vat === true; // Default to false if not set
+  return clampDecimalPrecision((data as any)?.decimal_precision, 2);
 }
 
 async function getCategoryDefaultMargin(tenantId: string, categoryId: string | null | undefined): Promise<number> {
@@ -118,7 +138,7 @@ async function getCategoryDefaultMargin(tenantId: string, categoryId: string | n
       .select('global_margin_percent')
       .eq('tenant_id', tenantId)
       .single();
-    return Number(settings?.global_margin_percent ?? 30);
+    return Number(settings?.global_margin_percent ?? 0);
   }
   const { data } = await supabase
     .from('categories')
@@ -132,9 +152,9 @@ async function getCategoryDefaultMargin(tenantId: string, categoryId: string | n
       .select('global_margin_percent')
       .eq('tenant_id', tenantId)
       .single();
-    return Number(settings?.global_margin_percent ?? 30);
+    return Number(settings?.global_margin_percent ?? 0);
   }
-  return Number(data.default_margin_percent ?? 30);
+  return Number(data.default_margin_percent ?? 0);
 }
 
 // Get all products
@@ -339,13 +359,26 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     let currentQ = supabase
       .from('product_supplier_current_price')
       // NOTE: product_id is needed here only for grouping; it will NOT be sent back in the JSON payload
-      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .select(CURRENT_PRICE_SELECT_EXTENDED)
       .eq('tenant_id', tenant.tenantId)
       .in('product_id', pageProductIds);
 
     if (supplierId) currentQ = currentQ.eq('supplier_id', supplierId);
 
-    const { data: currentRows, error: currentErr } = await currentQ;
+    let { data: currentRows, error: currentErr } = await currentQ;
+    if (currentErr && isMissingExtendedPriceColumns(currentErr)) {
+      let fallbackQ = supabase
+        .from('product_supplier_current_price')
+        .select(CURRENT_PRICE_SELECT_LEGACY)
+        .eq('tenant_id', tenant.tenantId)
+        .in('product_id', pageProductIds);
+      if (supplierId) fallbackQ = fallbackQ.eq('supplier_id', supplierId);
+      const fallback = await fallbackQ;
+      currentRows = applyExtendedPriceDefaults(fallback.data as any[]);
+      currentErr = fallback.error;
+    } else {
+      currentRows = applyExtendedPriceDefaults(currentRows as any[]);
+    }
     const pricesQueryTime = performance.now() - pricesQueryStart;
     extraQueriesCount++;
     extraQueriesTotalTime += pricesQueryTime;
@@ -402,6 +435,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         margin_percent,
         sell_price,
         package_quantity,
+        package_type,
         created_at,
       } = row as {
         product_id: string;
@@ -412,6 +446,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         margin_percent: number | null;
         sell_price: number;
         package_quantity: number | null;
+        package_type?: string | null;
         created_at: string;
       };
 
@@ -424,6 +459,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
         margin_percent,
         sell_price,
         package_quantity,
+        package_type: package_type ?? 'unknown',
         created_at,
         supplier_name: supplierNameById.get(supplier_id) ?? null,
       });
@@ -513,12 +549,25 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
     if (error) throw error;
     // Add current prices per supplier + summary
     // Get latest price entry for each supplier (with id for edit/delete)
-    const { data: priceEntries } = await supabase
+    let { data: priceEntries, error: priceEntriesError } = await supabase
       .from('price_entries')
-      .select('id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .select(PRODUCT_PRICE_SELECT_EXTENDED)
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', id)
       .order('created_at', { ascending: false });
+    if (priceEntriesError && isMissingExtendedPriceColumns(priceEntriesError)) {
+      const fallback = await supabase
+        .from('price_entries')
+        .select(PRODUCT_PRICE_SELECT_LEGACY)
+        .eq('tenant_id', tenant.tenantId)
+        .eq('product_id', id)
+        .order('created_at', { ascending: false });
+      priceEntries = applyExtendedPriceDefaults(fallback.data as any[]);
+      priceEntriesError = fallback.error;
+    } else {
+      priceEntries = applyExtendedPriceDefaults(priceEntries as any[]);
+    }
+    if (priceEntriesError) throw priceEntriesError;
     
     // Get the latest price entry for each supplier
     const latestBySupplier = new Map<string, any>();
@@ -589,18 +638,23 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const use_margin = await getUseMargin(tenant.tenantId);
     const use_vat = await getUseVat(tenant.tenantId);
+    const decimalPrecision = await getDecimalPrecision(tenant.tenantId);
     const discount_percent = parsed.data.discount_percent ?? 0;
-    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const roundedCostPrice = roundToPrecision(cost_price, decimalPrecision);
+    const roundedDiscount = roundToPrecision(discount_percent, decimalPrecision);
+    const roundedMargin = roundToPrecision(finalMargin, decimalPrecision);
+    const cost_price_after_discount = calcCostAfterDiscount(roundedCostPrice, roundedDiscount, decimalPrecision);
     const sell_price = calcSellPrice({ 
-      cost_price, 
-      margin_percent: finalMargin, 
+      cost_price: roundedCostPrice, 
+      margin_percent: roundedMargin, 
       vat_percent,
       cost_price_after_discount,
       use_margin,
-      use_vat
+      use_vat,
+      precision: decimalPrecision,
     });
 
-    const package_quantity = parsed.data.package_quantity ? round2(parsed.data.package_quantity) : null;
+    const package_quantity = parsed.data.package_quantity ? roundToPrecision(parsed.data.package_quantity, decimalPrecision) : null;
     
     const { data, error } = await supabase
       .from('price_entries')
@@ -608,15 +662,19 @@ router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
         tenant_id: tenant.tenantId,
         product_id: productId,
         supplier_id,
-        cost_price: round4(cost_price),
-        discount_percent: round2(discount_percent),
-        cost_price_after_discount: round4(cost_price_after_discount),
-        margin_percent: round2(finalMargin),
+        cost_price: roundedCostPrice,
+        discount_percent: roundedDiscount,
+        cost_price_after_discount: roundToPrecision(cost_price_after_discount, decimalPrecision),
+        margin_percent: roundedMargin,
         sell_price,
         package_quantity,
+        package_type: parsed.data.package_type ?? 'unknown',
+        source_price_includes_vat: parsed.data.source_price_includes_vat ?? false,
+        vat_rate: parsed.data.vat_rate ?? null,
+        effective_from: parsed.data.effective_from ?? null,
         created_by: user.id,
       })
-      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,package_type,source_price_includes_vat,vat_rate,effective_from,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לשמור מחיר. נסה שוב.' });
@@ -634,18 +692,44 @@ router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) =>
     const productId = req.params.id;
     const supplierId = typeof req.query.supplier_id === 'string' ? req.query.supplier_id : undefined;
 
-    let q = supabase
+    const normalizeHistoryRows = (rows: Array<Record<string, any>> | null | undefined) =>
+      applyExtendedPriceDefaults(rows).map((row) => ({
+        ...row,
+        supplier_name: row.supplier_name ?? row.suppliers?.name ?? null,
+      }));
+
+    let qExtended = supabase
       .from('price_entries')
-      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .select(
+        'id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,package_type,source_price_includes_vat,vat_rate,effective_from,created_at,suppliers(name)',
+      )
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', productId)
       .order('created_at', { ascending: false });
 
-    if (supplierId) q = q.eq('supplier_id', supplierId);
+    if (supplierId) qExtended = qExtended.eq('supplier_id', supplierId);
 
-    const { data, error } = await q;
-    if (error) return res.status(500).json({ error: 'שגיאה בטעינת היסטוריית מחירים' });
-    return res.json(data);
+    const extendedRes = await qExtended;
+    if (!extendedRes.error) {
+      return res.json(normalizeHistoryRows(extendedRes.data as Array<Record<string, any>>));
+    }
+
+    if (!isMissingExtendedPriceColumns(extendedRes.error)) {
+      return res.status(500).json({ error: 'שגיאה בטעינת היסטוריית מחירים' });
+    }
+
+    let qLegacy = supabase
+      .from('price_entries')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at,suppliers(name)')
+      .eq('tenant_id', tenant.tenantId)
+      .eq('product_id', productId)
+      .order('created_at', { ascending: false });
+
+    if (supplierId) qLegacy = qLegacy.eq('supplier_id', supplierId);
+
+    const legacyRes = await qLegacy;
+    if (legacyRes.error) return res.status(500).json({ error: 'שגיאה בטעינת היסטוריית מחירים' });
+    return res.json(normalizeHistoryRows(legacyRes.data as Array<Record<string, any>>));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -673,17 +757,49 @@ router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) 
       .single();
     if (prodCheck.error || !prodCheck.data) return res.status(404).json({ error: 'המוצר לא נמצא' });
 
-    // Validate price entry exists and belongs to this product and tenant
+    const { supplier_id, cost_price } = parsed.data;
+
+    // Validate price entry exists and belongs to this product and tenant.
+    // Fallback: if stale/missing priceId came from UI, resolve latest by product+supplier.
+    let effectivePriceId = String(priceId || '').trim();
+    if (!effectivePriceId || effectivePriceId === 'undefined' || effectivePriceId === 'null') {
+      const latestBySupplier = await supabase
+        .from('price_entries')
+        .select('id')
+        .eq('tenant_id', tenant.tenantId)
+        .eq('product_id', productId)
+        .eq('supplier_id', supplier_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestBySupplier.error || !latestBySupplier.data?.id) {
+        return res.status(404).json({ error: 'המחיר לא נמצא' });
+      }
+      effectivePriceId = latestBySupplier.data.id;
+    }
+
     const priceCheck = await supabase
       .from('price_entries')
       .select('id,product_id,supplier_id')
       .eq('tenant_id', tenant.tenantId)
       .eq('product_id', productId)
-      .eq('id', priceId)
+      .eq('id', effectivePriceId)
       .single();
-    if (priceCheck.error || !priceCheck.data) return res.status(404).json({ error: 'המחיר לא נמצא' });
-
-    const { supplier_id, cost_price } = parsed.data;
+    if (priceCheck.error || !priceCheck.data) {
+      const latestBySupplier = await supabase
+        .from('price_entries')
+        .select('id')
+        .eq('tenant_id', tenant.tenantId)
+        .eq('product_id', productId)
+        .eq('supplier_id', supplier_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestBySupplier.error || !latestBySupplier.data?.id) {
+        return res.status(404).json({ error: 'המחיר לא נמצא' });
+      }
+      effectivePriceId = latestBySupplier.data.id;
+    }
 
     // Validate supplier exists and active
     const supplierCheck = await supabase
@@ -699,18 +815,23 @@ router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) 
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const use_margin = await getUseMargin(tenant.tenantId);
     const use_vat = await getUseVat(tenant.tenantId);
+    const decimalPrecision = await getDecimalPrecision(tenant.tenantId);
     const discount_percent = parsed.data.discount_percent ?? 0;
-    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const roundedCostPrice = roundToPrecision(cost_price, decimalPrecision);
+    const roundedDiscount = roundToPrecision(discount_percent, decimalPrecision);
+    const roundedMargin = roundToPrecision(finalMargin, decimalPrecision);
+    const cost_price_after_discount = calcCostAfterDiscount(roundedCostPrice, roundedDiscount, decimalPrecision);
     const sell_price = calcSellPrice({ 
-      cost_price, 
-      margin_percent: finalMargin, 
+      cost_price: roundedCostPrice, 
+      margin_percent: roundedMargin, 
       vat_percent,
       cost_price_after_discount,
       use_margin,
-      use_vat
+      use_vat,
+      precision: decimalPrecision,
     });
 
-    const package_quantity = parsed.data.package_quantity ? round2(parsed.data.package_quantity) : null;
+    const package_quantity = parsed.data.package_quantity ? roundToPrecision(parsed.data.package_quantity, decimalPrecision) : null;
     
     // Create a new price entry (keeps history)
     const { data, error } = await supabase
@@ -719,15 +840,19 @@ router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) 
         tenant_id: tenant.tenantId,
         product_id: productId,
         supplier_id,
-        cost_price: round4(cost_price),
-        discount_percent: round2(discount_percent),
-        cost_price_after_discount: round4(cost_price_after_discount),
-        margin_percent: round2(finalMargin),
+        cost_price: roundedCostPrice,
+        discount_percent: roundedDiscount,
+        cost_price_after_discount: roundToPrecision(cost_price_after_discount, decimalPrecision),
+        margin_percent: roundedMargin,
         sell_price,
         package_quantity,
+        package_type: parsed.data.package_type ?? 'unknown',
+        source_price_includes_vat: parsed.data.source_price_includes_vat ?? false,
+        vat_rate: parsed.data.vat_rate ?? null,
+        effective_from: parsed.data.effective_from ?? null,
         created_by: user.id,
       })
-      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,created_at')
+      .select('id,product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,margin_percent,sell_price,package_quantity,package_type,source_price_includes_vat,vat_rate,effective_from,created_at')
       .single();
 
     if (error) return res.status(400).json({ error: 'לא ניתן לעדכן מחיר. נסה שוב.' });
@@ -860,15 +985,20 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     const finalMargin = await getGlobalMarginPercent(tenant.tenantId);
     const use_margin = await getUseMargin(tenant.tenantId);
     const use_vat = await getUseVat(tenant.tenantId);
+    const decimalPrecision = await getDecimalPrecision(tenant.tenantId);
     const discount_percent = parsedPrice.data.discount_percent ?? 0;
-    const cost_price_after_discount = calcCostAfterDiscount(cost_price, discount_percent);
+    const roundedCostPrice = roundToPrecision(cost_price, decimalPrecision);
+    const roundedDiscount = roundToPrecision(discount_percent, decimalPrecision);
+    const roundedMargin = roundToPrecision(finalMargin, decimalPrecision);
+    const cost_price_after_discount = calcCostAfterDiscount(roundedCostPrice, roundedDiscount, decimalPrecision);
     const sell_price = calcSellPrice({ 
-      cost_price, 
-      margin_percent: finalMargin, 
+      cost_price: roundedCostPrice, 
+      margin_percent: roundedMargin, 
       vat_percent,
       cost_price_after_discount,
       use_margin,
-      use_vat
+      use_vat,
+      precision: decimalPrecision,
     });
 
     // Create product first
@@ -894,17 +1024,21 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     }
 
     // Then create price entry (history)
-    const package_quantity = parsedPrice.data.package_quantity ? round2(parsedPrice.data.package_quantity) : null;
+    const package_quantity = parsedPrice.data.package_quantity ? roundToPrecision(parsedPrice.data.package_quantity, decimalPrecision) : null;
     const { error: priceErr } = await supabase.from('price_entries').insert({
       tenant_id: tenant.tenantId,
       product_id: product.id,
       supplier_id,
-      cost_price: round4(cost_price),
-      discount_percent: round2(discount_percent),
-      cost_price_after_discount: round4(cost_price_after_discount),
-      margin_percent: round2(finalMargin),
+      cost_price: roundedCostPrice,
+      discount_percent: roundedDiscount,
+      cost_price_after_discount: roundToPrecision(cost_price_after_discount, decimalPrecision),
+      margin_percent: roundedMargin,
       sell_price,
       package_quantity,
+      package_type: parsedPrice.data.package_type ?? 'unknown',
+      source_price_includes_vat: parsedPrice.data.source_price_includes_vat ?? false,
+      vat_rate: parsedPrice.data.vat_rate ?? null,
+      effective_from: parsedPrice.data.effective_from ?? null,
       created_by: user.id,
     });
 

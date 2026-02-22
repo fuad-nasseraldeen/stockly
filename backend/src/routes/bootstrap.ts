@@ -66,7 +66,7 @@ router.get('/', requireAuth, async (req, res) => {
           // 2. Get current tenant settings
           supabase
             .from('settings')
-            .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,updated_at')
+            .select('tenant_id,vat_percent,global_margin_percent,use_margin,use_vat,decimal_precision,updated_at')
             .eq('tenant_id', tenantId)
             .single(),
 

@@ -8,18 +8,11 @@
 import { Tooltip } from '../components/ui/tooltip';
 import { grossToNet, calculateProfitAmount } from './pricing-rules';
 import * as React from 'react';
+import { formatNumberTrimmed, getDecimalPrecision } from './number-format';
 
-// Format cost price (including VAT) - 2 decimal places
-function formatCostPrice(num: number): string {
+function formatUnitPrice(num: number, settings?: Settings): string {
   if (isNaN(num) || num === null || num === undefined) return '0';
-  return parseFloat(num.toFixed(2)).toString();
-}
-
-// Format unit price - 4 decimal places, removing trailing zeros
-function formatUnitPrice(num: number): string {
-  if (isNaN(num) || num === null || num === undefined) return '0';
-  // Use toFixed(4) to get up to 4 decimal places, then remove trailing zeros
-  return parseFloat(num.toFixed(4)).toString();
+  return formatNumberTrimmed(num, getDecimalPrecision(settings));
 }
 
 export type ColumnId =
@@ -29,7 +22,10 @@ export type ColumnId =
   | 'discount'
   | 'cost_after_discount_gross'
   | 'cost_after_discount_net'
+  | 'pricing_unit'
   | 'quantity_per_carton'
+  | 'package_type'
+  | 'vat_rate'
   | 'carton_price'
   | 'sell_price'
   | 'profit_amount'
@@ -53,7 +49,7 @@ export type ColumnDefinition = {
   minWidth?: number;
   align?: 'left' | 'center' | 'right';
   renderHeader: () => React.ReactNode;
-  renderCell: (price: any, product: any, settings: any) => React.ReactNode;
+  renderCell: (price: PriceData, product: ProductData | null | undefined, settings: Settings) => React.ReactNode;
 };
 
 export type PriceData = {
@@ -62,6 +58,8 @@ export type PriceData = {
   cost_price_after_discount?: number | null; // Always gross
   discount_percent?: number | null;
   package_quantity?: number | null;
+  package_type?: 'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown' | null;
+  vat_rate?: number | null;
   sell_price?: number;
   margin_percent?: number | null;
   supplier_id: string;
@@ -71,6 +69,7 @@ export type PriceData = {
 
 export type ProductData = {
   package_quantity?: number | null;
+  unit?: 'unit' | 'kg' | 'liter' | string | null;
 };
 
 export type Settings = {
@@ -78,12 +77,13 @@ export type Settings = {
   use_margin?: boolean;
   vat_percent?: number;
   global_margin_percent?: number;
+  decimal_precision?: number | null;
 };
 
 /**
  * Get package quantity: first from price (supplier-specific), then product, then default to 1
  */
-function getPackageQuantity(price: PriceData, product: ProductData): number {
+function getPackageQuantity(price: PriceData, product: ProductData | null | undefined): number {
   const pricePackageQty = price.package_quantity;
   const productPackageQty = product?.package_quantity;
   
@@ -94,6 +94,27 @@ function getPackageQuantity(price: PriceData, product: ProductData): number {
     return Number(productPackageQty);
   }
   return 1;
+}
+
+function formatPricingUnit(unit: unknown): string {
+  const normalized = String(unit ?? '').toLowerCase().trim();
+  if (normalized === 'kg') return 'ק"ג';
+  if (normalized === 'liter') return 'ליטר';
+  return 'יחידה';
+}
+
+function formatPackageType(packageType: unknown): string {
+  const normalized = String(packageType ?? '').toLowerCase().trim();
+  if (normalized === 'carton') return 'קרטון';
+  if (normalized === 'gallon') return 'גלון';
+  if (normalized === 'bag') return 'שק';
+  if (normalized === 'bottle') return 'בקבוק';
+  if (normalized === 'pack') return 'מארז';
+  if (normalized === 'shrink') return 'שרינק';
+  if (normalized === 'sachet') return 'שקית';
+  if (normalized === 'can') return 'פחית/קופסה';
+  if (normalized === 'roll') return 'גליל';
+  return 'לא ידוע';
 }
 
 /**
@@ -111,20 +132,21 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
 
   cost_gross: {
     id: 'cost_gross',
-    headerLabel: 'מחיר אחרי מע"מ',
-    headerSubLabel: '(מחיר עלות כולל מע"מ)',
-    tooltip: 'מחיר אחרי מע"מ (מחיר עלות כולל מע"מ)',
+    headerLabel: 'מחיר עלות',
+    headerSubLabel: '(מחיר לאחר הנחה כולל מע"מ)',
+    tooltip: 'מחיר עלות כולל מע"מ (אחרי הנחה אם קיימת)',
     group: 'pricing',
     minWidth: 100,
     renderHeader: () => (
       <div className="flex items-center gap-1">
-        <span>מחיר אחרי מע&quot;מ</span>
-        <Tooltip content="מחיר אחרי מע&quot;מ (מחיר עלות כולל מע&quot;מ)" />
+        <span>מחיר עלות</span>
+        <Tooltip content="מחיר עלות כולל מע&quot;מ (אחרי הנחה אם קיימת)" />
       </div>
     ),
-    renderCell: (price: PriceData) => (
-      <span>₪{formatCostPrice(Number(price.cost_price))}</span>
-    ),
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, settings: Settings) => {
+      const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
+      return <span>₪{formatUnitPrice(costAfterDiscount, settings)}</span>;
+    },
   },
 
   cost_net: {
@@ -134,10 +156,11 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     requires: { vat: true },
     minWidth: 120,
     renderHeader: () => <span>מחיר לפני מע&quot;מ</span>,
-    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, _settings: Settings) => {
       const vatRate = (_settings.vat_percent || 18) / 100;
-      const netPrice = grossToNet(Number(price.cost_price), vatRate);
-      return <span>₪{formatCostPrice(netPrice)}</span>;
+      const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
+      const netPrice = grossToNet(costAfterDiscount, vatRate);
+      return <span>₪{formatUnitPrice(netPrice, _settings)}</span>;
     },
   },
 
@@ -169,9 +192,9 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
         <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(כולל מע&quot;מ)</div>
       </div>
     ),
-    renderCell: (price: PriceData) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, settings: Settings) => {
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
-      return <span>₪{formatCostPrice(costAfterDiscount)}</span>;
+      return <span>₪{formatUnitPrice(costAfterDiscount, settings)}</span>;
     },
   },
 
@@ -188,44 +211,79 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
         <div className="text-[10px] text-muted-foreground font-normal mt-0.5">(לפני מע&quot;מ)</div>
       </div>
     ),
-    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, _settings: Settings) => {
       const vatRate = (_settings.vat_percent || 18) / 100;
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const netPrice = grossToNet(costAfterDiscount, vatRate);
-      return <span>₪{formatCostPrice(netPrice)}</span>;
+      return <span>₪{formatUnitPrice(netPrice, _settings)}</span>;
+    },
+  },
+
+  pricing_unit: {
+    id: 'pricing_unit',
+    headerLabel: 'יחידת מידה',
+    group: 'inventory',
+    minWidth: 100,
+    renderHeader: () => <span>יחידת מידה</span>,
+    renderCell: (_price: PriceData, product: ProductData | null | undefined) => {
+      return <span>{formatPricingUnit(product?.unit)}</span>;
     },
   },
 
   quantity_per_carton: {
     id: 'quantity_per_carton',
-    headerLabel: 'כמות בקרטון',
+    headerLabel: 'כמות באריזה',
     group: 'inventory',
     minWidth: 120,
-    renderHeader: () => <span>כמות בקרטון</span>,
-    renderCell: (price: PriceData, product: ProductData) => {
+    renderHeader: () => <span>כמות באריזה</span>,
+    renderCell: (price: PriceData, product: ProductData | null | undefined) => {
       const packageQty = getPackageQuantity(price, product);
       return <span>{packageQty} יח`</span>;
     },
   },
 
+  package_type: {
+    id: 'package_type',
+    headerLabel: 'סוג אריזה',
+    group: 'inventory',
+    minWidth: 120,
+    renderHeader: () => <span>סוג אריזה</span>,
+    renderCell: (price: PriceData) => {
+      return <span>{formatPackageType(price.package_type)}</span>;
+    },
+  },
+
+  vat_rate: {
+    id: 'vat_rate',
+    headerLabel: 'שיעור מע"מ',
+    group: 'pricing',
+    minWidth: 95,
+    align: 'center',
+    renderHeader: () => <span>שיעור מע&quot;מ</span>,
+    renderCell: (price: PriceData) => {
+      if (price.vat_rate === null || price.vat_rate === undefined) return <span>-</span>;
+      return <span className="text-center">{Number(price.vat_rate).toFixed(1)}%</span>;
+    },
+  },
+
   carton_price: {
     id: 'carton_price',
-    headerLabel: 'מחיר לקרטון',
-    tooltip: 'מחיר עלות כולל מע"מ × כמות בקרטון',
+    headerLabel: 'מחיר לאריזה',
+    tooltip: 'מחיר עלות כולל מע"מ × כמות באריזה',
     group: 'pricing',
     minWidth: 180,
     renderHeader: () => (
       <div className="flex items-center gap-1">
-        <span>מחיר לקרטון</span>
-        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות בקרטון" />
+        <span>מחיר לאריזה</span>
+        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות באריזה" />
       </div>
     ),
-    renderCell: (price: PriceData, _product: ProductData, _settings: Settings) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, settings: Settings) => {
       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
       const packageQty = getPackageQuantity(price, _product);
       const cartonPrice = costAfterDiscount * packageQty;
       return (
-        <div className="font-semibold text-base">₪{formatUnitPrice(cartonPrice)}</div>
+        <div className="font-semibold text-base">₪{formatUnitPrice(cartonPrice, settings)}</div>
       );
     },
   },
@@ -233,20 +291,19 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
   sell_price: {
     id: 'sell_price',
     headerLabel: 'מחיר מכירה',
-    tooltip: 'מחיר עלות + מע"מ + רווח',
+    tooltip: 'מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח + מע"מ',
     group: 'pricing',
-    requires: { margin: true },
     minWidth: 100,
     renderHeader: () => (
       <div className="flex items-center gap-1">
         <span>מחיר מכירה</span>
-        <Tooltip content="מחיר עלות + מע&quot;מ + רווח" />
+        <Tooltip content="מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח + מע&quot;מ" />
       </div>
     ),
-    renderCell: (price: PriceData) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, settings: Settings) => {
       if (!price.sell_price) return <span>-</span>;
       return (
-        <span className="font-bold text-primary">₪{formatUnitPrice(Number(price.sell_price))}</span>
+        <span className="font-bold text-primary">₪{formatUnitPrice(Number(price.sell_price), settings)}</span>
       );
     },
   },
@@ -258,10 +315,10 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     requires: { margin: true },
     minWidth: 100,
     renderHeader: () => <span>סכום רווח</span>,
-    renderCell: (price: PriceData) => {
+    renderCell: (price: PriceData, _product: ProductData | null | undefined, settings: Settings) => {
       if (!price.sell_price) return <span>-</span>;
       const profit = calculateProfitAmount(Number(price.sell_price), Number(price.cost_price_after_discount || price.cost_price));
-      return <span>₪{formatCostPrice(profit)}</span>;
+      return <span>₪{formatUnitPrice(profit, settings)}</span>;
     },
   },
 
@@ -315,7 +372,10 @@ export const DEFAULT_COLUMN_ORDER: ColumnId[] = [
   'discount',
   'cost_after_discount_gross',
   'cost_after_discount_net',
+  'pricing_unit',
   'quantity_per_carton',
+  'package_type',
+  'vat_rate',
   'carton_price',
   'sell_price',
   'date',
@@ -332,7 +392,10 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
   discount: true,
   cost_after_discount_gross: true,
   cost_after_discount_net: true,
+  pricing_unit: false,
   quantity_per_carton: true,
+  package_type: false,
+  vat_rate: false,
   carton_price: true,
   sell_price: true,
   profit_amount: false,

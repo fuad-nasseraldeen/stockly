@@ -1,95 +1,40 @@
-# ⚡ Quick Start - התחלה מהירה
+# Quick Start
 
-מדריך מהיר להתחלת עבודה עם Stockly.
-
-## 🎯 5 שלבים להתחלה
-
-### 1️⃣ התקנת תלויות
+## 1) Install
 
 ```bash
-# Backend
-cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
+cd backend && npm install
+cd ../frontend && npm install
 ```
 
-### 2️⃣ יצירת קבצי .env
+## 2) Env
 
-**`backend/.env`:**
-```env
-PORT=3001
-FRONTEND_URL=http://localhost:5173
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-```
+הגדר `backend/.env` ו-`frontend/.env` (ראה README ראשי).
 
-**`frontend/.env`:**
-```env
-VITE_API_URL=http://localhost:3001
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your_anon_key
-```
+אם עובדים עם PDF import:
 
-> 📍 **איפה למצוא את ה-Keys?**  
-> Supabase Dashboard → Settings → API
+- `AWS_REGION`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- IAM permission: `textract:AnalyzeDocument`
 
-### 3️⃣ הגדרת מסד נתונים
+## 3) DB Migrations
 
-1. פתח **Supabase Dashboard** → **SQL Editor**
-2. הפעל את ה-extension הנדרש:
-   ```sql
-   CREATE EXTENSION IF NOT EXISTS pg_trgm;
-   ```
-3. הרץ את המיגרציות בסדר (לפי המספרים):
-   - התחל מ-`supabase/migrations/0001_schema.sql`
-   - המשך לפי הסדר: 0002, 0003, 0004... עד 0021
-   - ראה [supabase/README.md](../../supabase/README.md) לפרטים מלאים
+הרץ את כל `supabase/migrations/*.sql` לפי סדר מספרי עד `0028`.
 
-### 4️⃣ הפעלת השרתים
+## 4) Run
 
-**Terminal 1:**
 ```bash
-cd backend
-npm run dev
+# terminal 1
+cd backend && npm run dev
+
+# terminal 2
+cd frontend && npm run dev
 ```
 
-**Terminal 2:**
-```bash
-cd frontend
-npm run dev
-```
+## 5) Smoke Test
 
-### 5️⃣ התחברות
-
-1. פתח http://localhost:5173
-2. לחץ על "הרשמה"
-3. צור חשבון חדש
-4. התחבר והתחל לעבוד! 🎉
-
----
-
-## ✅ בדיקה שהכל עובד
-
-1. **Backend:** פתח http://localhost:3001/health - צריך לראות `{"status":"ok"}`
-2. **Frontend:** פתח http://localhost:5173 - צריך לראות דף התחברות
-3. **Database:** הירשם והתחבר - אם זה עובד, הכל תקין!
-
----
-
-## 🆘 בעיות נפוצות
-
-| בעיה | פתרון |
-|------|-------|
-| `SUPABASE_URL is required` | ודא שקובץ `.env` קיים ונכון |
-| CORS error | ודא ש-`FRONTEND_URL` תואם ל-URL של ה-frontend |
-| RLS error | הרץ `update_policies_RLS.sql` ב-Supabase |
-| Frontend לא מתחבר | ודא שה-backend רץ על פורט 3001 |
-
----
-
-## 📖 מידע נוסף
-
-למדריך מפורט, ראה [README.md](./README.md)
+1. העלה קובץ Excel עם כמה גיליונות -> ודא שכל הגיליונות נכנסים ל-preview.
+2. עבור בין עמודי preview -> ודא שמיפוי לא מתאפס.
+3. `Apply to all rows` לקטגוריה/סוג אריזה -> ודא שזה חל על כל הקובץ.
+4. Validate + Apply -> ודא תוצאה בסוף הייבוא.

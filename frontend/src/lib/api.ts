@@ -45,6 +45,10 @@ export type ProductPrice = {
   supplier_id: string;
   cost_price: number;
   package_quantity?: number | null;
+  package_type?: 'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown' | null;
+  source_price_includes_vat?: boolean | null;
+  vat_rate?: number | null;
+  effective_from?: string | null;
   discount_percent?: number | null;
   cost_price_after_discount?: number | null;
   margin_percent: number | null;
@@ -75,6 +79,7 @@ export type Settings = {
   global_margin_percent?: number | null;
   use_margin?: boolean | null;
   use_vat?: boolean | null;
+  decimal_precision?: number | null;
   updated_at: string;
 };
 
@@ -326,7 +331,21 @@ export const productsApi = {
   
   get: (id: string): Promise<Product> => apiRequest<Product>(`/api/products/${id}`),
   
-  create: (data: { name: string; category_id?: string | null; unit: 'unit' | 'kg' | 'liter'; sku?: string | null; supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
+  create: (data: {
+    name: string;
+    category_id?: string | null;
+    unit: 'unit' | 'kg' | 'liter';
+    sku?: string | null;
+    supplier_id: string;
+    cost_price: number;
+    margin_percent?: number;
+    discount_percent?: number;
+    package_quantity?: number;
+    package_type?: 'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown';
+    source_price_includes_vat?: boolean;
+    vat_rate?: number;
+    effective_from?: string;
+  }) =>
     apiRequest('/api/products', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -343,13 +362,33 @@ export const productsApi = {
       method: 'DELETE',
     }),
   
-  addPrice: (id: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
+  addPrice: (id: string, data: {
+    supplier_id: string;
+    cost_price: number;
+    margin_percent?: number;
+    discount_percent?: number;
+    package_quantity?: number;
+    package_type?: 'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown';
+    source_price_includes_vat?: boolean;
+    vat_rate?: number;
+    effective_from?: string;
+  }) =>
     apiRequest(`/api/products/${id}/prices`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   
-  updatePrice: (id: string, priceId: string, data: { supplier_id: string; cost_price: number; margin_percent?: number; discount_percent?: number; package_quantity?: number }) =>
+  updatePrice: (id: string, priceId: string, data: {
+    supplier_id: string;
+    cost_price: number;
+    margin_percent?: number;
+    discount_percent?: number;
+    package_quantity?: number;
+    package_type?: 'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown';
+    source_price_includes_vat?: boolean;
+    vat_rate?: number;
+    effective_from?: string;
+  }) =>
     apiRequest(`/api/products/${id}/prices/${priceId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -415,7 +454,7 @@ export const suppliersApi = {
 export const settingsApi = {
   get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
-  update: (data: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean }): Promise<Settings> =>
+  update: (data: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean; decimal_precision?: number }): Promise<Settings> =>
     apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -638,6 +677,11 @@ export type ImportPreviewResponse = {
   sourceType: ImportSourceType;
   sheets: Array<{ name: string; index: number }>;
   selectedSheet: number;
+  previewPage?: number;
+  previewPageSize?: number;
+  previewTotalRows?: number;
+  previewTotalPages?: number;
+  sampleRowOffset?: number;
   selectedTableIndex?: number;
   tables?: ImportPreviewTable[];
   hasHeader: boolean;
@@ -653,6 +697,7 @@ export type ImportValidateResponse = {
   selectedTableIndex?: number;
   fieldErrors: string[];
   rowErrors: Array<{ row: number; message: string }>;
+  unimportedProducts?: Array<{ row: number; productName: string; reason: string }>;
   normalizedPreview: Array<Record<string, unknown>>;
   statsEstimate: {
     totalInputRows: number;
@@ -675,6 +720,16 @@ export type ImportApplyResponse = {
     byCategory?: Record<string, { total: number }>;
   };
   rowErrors?: Array<{ row: number; message: string }>;
+  unimportedProducts?: Array<{ row: number; productName: string; reason: string }>;
+  importDiagnostics?: {
+    sourceRows: number;
+    rowsBeforeIgnored: number;
+    ignoredRowsCount: number;
+    mappedRowsBeforeDedupe: number;
+    rowsAfterDedupe: number;
+    droppedInValidation: number;
+    droppedAsDuplicates: number;
+  };
 };
 
 export type SavedImportMapping = {
@@ -718,6 +773,8 @@ export const importApi = {
       sheetIndex?: number;
       tableIndex?: number;
       hasHeader?: boolean;
+      previewPage?: number;
+      previewPageSize?: number;
       pageFrom?: number;
       pageTo?: number;
     },
@@ -728,6 +785,8 @@ export const importApi = {
     if (typeof options?.sheetIndex === 'number') formData.append('sheetIndex', String(options.sheetIndex));
     if (typeof options?.tableIndex === 'number') formData.append('tableIndex', String(options.tableIndex));
     if (typeof options?.hasHeader === 'boolean') formData.append('hasHeader', String(options.hasHeader));
+    if (typeof options?.previewPage === 'number') formData.append('previewPage', String(options.previewPage));
+    if (typeof options?.previewPageSize === 'number') formData.append('previewPageSize', String(options.previewPageSize));
     if (typeof options?.pageFrom === 'number') formData.append('pageFrom', String(options.pageFrom));
     if (typeof options?.pageTo === 'number') formData.append('pageTo', String(options.pageTo));
     return importRequest<ImportPreviewResponse>(`${API_URL}/api/import/preview`, formData);
@@ -744,6 +803,7 @@ export const importApi = {
       ignoredRows?: number[];
       manualSupplierName?: string;
       manualValuesByRow?: Record<number, Record<string, string>>;
+      manualGlobalValues?: Record<string, string>;
     },
   ): Promise<ImportValidateResponse> => {
     const formData = new FormData();
@@ -762,6 +822,9 @@ export const importApi = {
     if (payload.manualValuesByRow && Object.keys(payload.manualValuesByRow).length > 0) {
       formData.append('manualValuesByRow', JSON.stringify(payload.manualValuesByRow));
     }
+    if (payload.manualGlobalValues && Object.keys(payload.manualGlobalValues).length > 0) {
+      formData.append('manualGlobalValues', JSON.stringify(payload.manualGlobalValues));
+    }
     return importRequest<ImportValidateResponse>(`${API_URL}/api/import/validate-mapping`, formData);
   },
 
@@ -777,6 +840,7 @@ export const importApi = {
       ignoredRows?: number[];
       manualSupplierName?: string;
       manualValuesByRow?: Record<number, Record<string, string>>;
+      manualGlobalValues?: Record<string, string>;
     },
   ): Promise<ImportApplyResponse> => {
     const formData = new FormData();
@@ -794,6 +858,9 @@ export const importApi = {
     }
     if (payload.manualValuesByRow && Object.keys(payload.manualValuesByRow).length > 0) {
       formData.append('manualValuesByRow', JSON.stringify(payload.manualValuesByRow));
+    }
+    if (payload.manualGlobalValues && Object.keys(payload.manualGlobalValues).length > 0) {
+      formData.append('manualGlobalValues', JSON.stringify(payload.manualGlobalValues));
     }
     return importRequest<ImportApplyResponse>(`${API_URL}/api/import/apply?mode=${payload.mode}`, formData);
   },

@@ -1,5 +1,7 @@
 # 🔐 הגדרת משתני סביבה (Environment Variables)
 
+> עדכון 2026-02: עבור ייבוא PDF יש להוסיף גם `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` עם הרשאה `textract:AnalyzeDocument`.
+
 מדריך מפורט להגדרת כל משתני הסביבה הנדרשים לפרויקט Stockly.
 
 ---

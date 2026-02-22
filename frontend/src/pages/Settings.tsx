@@ -28,13 +28,10 @@ export default function Settings() {
     settings?.vat_percent != null ? String(settings.vat_percent) : '18'
   );
   const [margin, setMargin] = useState<string>(() =>
-    settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '30'
+    settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '0'
   );
-  const [useMargin, setUseMargin] = useState<boolean>(() =>
-    settings?.use_margin === true // Default to false if not set
-  );
-  const [useVat, setUseVat] = useState<boolean>(() =>
-    settings?.use_vat === true // Default to false if not set
+  const [decimalPrecision, setDecimalPrecision] = useState<string>(() =>
+    settings?.decimal_precision != null ? String(settings.decimal_precision) : '2'
   );
 
   const [userEmail, setUserEmail] = useState<string>('');
@@ -63,13 +60,6 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    if (settings) {
-      setUseMargin(settings.use_margin === true);
-      setUseVat(settings.use_vat === true);
-    }
-  }, [settings]);
-
-  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) {
         setUserEmail(user.email);
@@ -82,6 +72,13 @@ export default function Settings() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!settings) return;
+    setVat(settings.vat_percent != null ? String(settings.vat_percent) : '18');
+    setMargin(settings.global_margin_percent != null ? String(settings.global_margin_percent) : '0');
+    setDecimalPrecision(settings.decimal_precision != null ? String(settings.decimal_precision) : '2');
+  }, [settings]);
+
   const [savingVat, setSavingVat] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -89,11 +86,12 @@ export default function Settings() {
   
   // Column layout management - global for all products
   const appSettings: SettingsType = useMemo(() => ({
-    use_vat: useVat,
-    use_margin: useMargin,
+    use_vat: true,
+    use_margin: Number(margin) > 0,
     vat_percent: settings?.vat_percent ?? undefined,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
-  }), [useVat, useMargin, settings?.vat_percent, settings?.global_margin_percent]);
+    decimal_precision: settings?.decimal_precision ?? null,
+  }), [margin, settings?.vat_percent, settings?.global_margin_percent, settings?.decimal_precision]);
   
   const { data: savedLayout, isLoading: layoutLoading } = useTableLayout('productsTable');
   const allFields: FieldOption[] = useMemo(
@@ -146,14 +144,17 @@ export default function Settings() {
       setSavingVat(true);
       setProfileMessage(null);
       const marginValue = margin.trim() ? Number(margin) : NaN;
-      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean } = {
+      const precisionValue = decimalPrecision.trim() ? Number(decimalPrecision) : NaN;
+      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; decimal_precision?: number } = {
         vat_percent: vatValue,
       };
       if (!Number.isNaN(marginValue)) {
         payload.global_margin_percent = marginValue;
       }
-      payload.use_margin = useMargin;
-      payload.use_vat = useVat;
+      if (!Number.isNaN(precisionValue)) {
+        payload.decimal_precision = Math.max(0, Math.min(8, Math.floor(precisionValue)));
+      }
+      payload.use_margin = !Number.isNaN(marginValue) && marginValue > 0;
       await updateSettings.mutateAsync(payload);
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -244,7 +245,7 @@ export default function Settings() {
           <CardTitle className="text-lg font-bold">הגדרות מחירים</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="vatPercent">מע&quot;מ (%)</Label>
               <Input
@@ -271,62 +272,36 @@ export default function Settings() {
                 step="0.1"
                 value={margin}
                 onChange={(e) => setMargin(e.target.value)}
-                placeholder="לדוגמה: 30"
+                placeholder="לדוגמה: 0"
               />
               <p className="text-xs text-muted-foreground">
                 ערך זה יכול לשמש כברירת מחדל כשאין קטגוריה עם רווח מוגדר (כרגע לשימוש תצוגתי בלבד).
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="decimalPrecision">דיוק עשרוני למחירים</Label>
+              <Input
+                id="decimalPrecision"
+                type="number"
+                min="0"
+                max="8"
+                step="1"
+                value={decimalPrecision}
+                onChange={(e) => setDecimalPrecision(e.target.value)}
+                placeholder="2"
+              />
+              <p className="text-xs text-muted-foreground">
+                כמה ספרות אחרי הנקודה יישמרו במחירים (ברירת מחדל: 2). בתצוגה אפסים לא משמעותיים בסוף יוסתרו.
+              </p>
+            </div>
           </div>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useMargin"
-                  checked={useMargin}
-                  onChange={(e) => setUseMargin(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <Label htmlFor="useMargin" className="cursor-pointer">
-                  חשב מחיר מכירה עם רווח
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground pr-6">
-                {useMargin 
-                  ? 'מחיר מכירה יכלול רווח'
-                  : 'מחיר מכירה ללא רווח (רק עלות + מע"מ אם מופעל)'}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useVat"
-                  checked={useVat}
-                  onChange={(e) => setUseVat(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <Label htmlFor="useVat" className="cursor-pointer">
-                  חשב מחיר מכירה עם מע&quot;מ
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground pr-6">
-                {useVat 
-                  ? 'מחיר מכירה יכלול מע"מ'
-                  : 'מחיר מכירה ללא מע"מ (רק עלות + רווח אם מופעל)'}
-              </p>
-            </div>
             <div className="p-3 bg-muted rounded-lg border-2 border-border">
               <p className="text-xs font-medium mb-1">סיכום החישוב:</p>
               <p className="text-xs text-muted-foreground">
-                {!useMargin && !useVat 
-                  ? 'מחיר מכירה = עלות בלבד'
-                  : !useMargin && useVat
-                  ? 'מחיר מכירה = עלות + מע"מ'
-                  : useMargin && !useVat
-                  ? 'מחיר מכירה = עלות + רווח'
-                  : 'מחיר מכירה = עלות + רווח + מע"מ'}
+                {Number(margin) > 0
+                  ? 'מחיר מכירה = עלות + רווח + מע"מ'
+                  : 'מחיר מכירה = עלות + מע"מ'}
               </p>
             </div>
           </div>
