@@ -24,8 +24,8 @@ cd backend
 npm run dev
 npm run build
 npm run test
-
-# frontend
+;  
+# frontendדד
 cd frontend
 npm run dev
 npm run build
