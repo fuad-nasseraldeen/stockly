@@ -38,6 +38,7 @@ PORT=3001
 FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service_role>
+SUPABASE_JWT_AUDIENCE=authenticated
 AWS_REGION=<region>
 AWS_ACCESS_KEY_ID=<key>
 AWS_SECRET_ACCESS_KEY=<secret>

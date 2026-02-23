@@ -129,7 +129,7 @@ const handleLogout = async () => {
 ### 4.1 `requireAuth` Middleware
 
 ```typescript
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization || '';
   const match = header.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1];
@@ -138,40 +138,28 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'נדרש להתחבר כדי לבצע פעולה זו' });
   }
 
-  const authSupabase = getAuthClient();
-  
-  authSupabase.auth
-    .getUser(token)
-    .then(({ data, error }) => {
-      if (error || !data?.user) {
-        return res.status(401).json({ error: 'ההתחברות פגה תוקף, נא להתחבר מחדש' });
-      }
+  const verifiedToken = await verifyAccessToken(token);
+  if (!verifiedToken) {
+    return res.status(401).json({ error: 'ההתחברות פגה תוקף, נא להתחבר מחדש' });
+  }
 
-      (req as any).user = { id: data.user.id, email: data.user.email };
-      (req as any).authToken = token;
-      next();
-    })
-    .catch(() => res.status(401).json({ error: 'שגיאת אימות, נסה שוב' }));
+  (req as any).user = { id: verifiedToken.sub, email: verifiedToken.email };
+  (req as any).authToken = token;
+  next();
 }
 ```
 
 **תפקיד:**
 1. קורא את `Authorization: Bearer <token>` מה-headers
-2. מאמת את ה-token עם Supabase
+2. מאמת את ה-token לוקאלית (JWT + JWKS)
 3. אם תקין → מוסיף `user` ל-`req` וממשיך
 4. אם לא תקין → מחזיר 401
 
-**Supabase Auth Client:**
+**JWT Verifier (JWKS):**
 ```typescript
-function getAuthClient() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-  
-  if (!globalThis.__stocklyAuthSupabase) {
-    globalThis.__stocklyAuthSupabase = createClient(supabaseUrl, supabaseAnonKey);
-  }
-  return globalThis.__stocklyAuthSupabase;
-}
+const issuer = `${process.env.SUPABASE_URL}/auth/v1`;
+const jwks = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
+await jwtVerify(token, jwks, { issuer, audience: 'authenticated' });
 ```
 
 ---
@@ -284,7 +272,7 @@ Backend: requireAuth middleware
     ↓
 Extract token from Authorization header
     ↓
-supabase.auth.getUser(token)
+verifyAccessToken(token) // local JWT verification via JWKS
     ↓
 If valid → add user to req, continue
     ↓
@@ -306,7 +294,7 @@ Retry request with new token
 
 ### 9.2 Backend
 - כל route מוגן עם `requireAuth`
-- Token מאומת עם Supabase לפני כל פעולה
+- Token מאומת לוקאלית בבקאנד (JWT + JWKS) לפני כל פעולה
 - אין גישה לנתונים ללא token תקין
 
 ### 9.3 Supabase

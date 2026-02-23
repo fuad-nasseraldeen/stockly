@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { requireAuth, requireTenant, ownerOnly, requireSuperAdmin } from '../../../src/middleware/auth';
 import { createMockRequest, createMockResponse, createMockNext } from '../../utils/test-helpers';
 import { supabase } from '../../../src/lib/supabase';
+import { verifyAccessToken } from '../../../src/lib/jwt';
 
 // Mock Supabase
 vi.mock('../../../src/lib/supabase', () => ({
   supabase: {
     from: vi.fn(),
   },
+}));
+vi.mock('../../../src/lib/jwt', () => ({
+  verifyAccessToken: vi.fn(),
 }));
 
 describe('auth middleware', () => {
@@ -29,17 +33,44 @@ describe('auth middleware', () => {
     });
 
     it('should return 401 if token is invalid', async () => {
-      // This would require mocking Supabase auth client
-      // For now, we'll test the structure
+      (verifyAccessToken as any).mockResolvedValue(null);
+
       const req = createMockRequest({
         headers: { authorization: 'Bearer invalid-token' },
       });
       const res = createMockResponse();
       const next = createMockNext();
 
-      // Mock would need to be set up for actual Supabase call
-      // This is a placeholder test structure
-      expect(req).toBeDefined();
+      await requireAuth(req as any, res as any, next);
+
+      expect(verifyAccessToken).toHaveBeenCalledWith('invalid-token');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'ההתחברות פגה תוקף, נא להתחבר מחדש' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should add user context and continue when token is valid', async () => {
+      (verifyAccessToken as any).mockResolvedValue({
+        sub: '550e8400-e29b-41d4-a716-446655440001',
+        email: 'test@example.com',
+      });
+
+      const req = createMockRequest({
+        headers: { authorization: 'Bearer valid-token' },
+      });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await requireAuth(req as any, res as any, next);
+
+      expect(verifyAccessToken).toHaveBeenCalledWith('valid-token');
+      expect((req as any).user).toEqual({
+        id: '550e8400-e29b-41d4-a716-446655440001',
+        email: 'test@example.com',
+      });
+      expect((req as any).authToken).toBe('valid-token');
+      expect(next).toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
     });
   });
 
