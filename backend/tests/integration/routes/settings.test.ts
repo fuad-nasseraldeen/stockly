@@ -91,7 +91,7 @@ describe('PUT /api/settings', () => {
           eq: vi.fn().mockReturnThis(),
           select: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({
-            data: { ...mockSettings, vat_percent: 20, decimal_precision: 4 },
+            data: { ...mockSettings, vat_percent: 20, use_vat: false, decimal_precision: 4 },
             error: null,
           }),
         };
@@ -115,11 +115,13 @@ describe('PUT /api/settings', () => {
       .send({
         vat_percent: 20,
         global_margin_percent: 35,
+        use_vat: false,
         decimal_precision: 4,
       });
 
     expect(response.status).toBe(200);
     expect(response.body.vat_percent).toBe(20);
+    expect(response.body.use_vat).toBe(false);
     expect(response.body.decimal_precision).toBe(4);
   });
 

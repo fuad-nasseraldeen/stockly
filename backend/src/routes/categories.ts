@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
+import { calcSellPrice, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
 
 const router = Router();
 
@@ -128,10 +129,13 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
         // Get current VAT
         const { data: settings } = await supabase
           .from('settings')
-          .select('vat_percent')
+          .select('vat_percent,use_vat,use_margin,decimal_precision')
           .eq('tenant_id', tenant.tenantId)
           .single();
         const vatPercent = Number(settings?.vat_percent ?? 18);
+        const useVat = settings?.use_vat === true;
+        const useMargin = settings?.use_margin === true;
+        const decimalPrecision = clampDecimalPrecision((settings as any)?.decimal_precision, 2);
 
         // Get current prices for these products
         const { data: currentRows, error: currentErr } = await supabase
@@ -145,9 +149,14 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
             const cost = Number(row.cost_price);
             if (!Number.isFinite(cost) || cost < 0) continue;
 
-            const base = cost + cost * (newMargin / 100);
-            const sell = base + base * (vatPercent / 100);
-            const sellPrice = Math.round((sell + Number.EPSILON) * 100) / 100;
+            const sellPrice = calcSellPrice({
+              cost_price: cost,
+              margin_percent: roundToPrecision(newMargin, decimalPrecision),
+              vat_percent: vatPercent,
+              use_margin: useMargin,
+              use_vat: useVat,
+              precision: decimalPrecision,
+            });
 
             await supabase.from('price_entries').insert({
               tenant_id: tenant.tenantId,

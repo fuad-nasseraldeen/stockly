@@ -162,6 +162,7 @@ router.post('/', requireAuth, async (req, res) => {
       .insert({
         tenant_id: tenant.id,
         vat_percent: 18,
+        use_vat: false,
         decimal_precision: 2,
       });
 

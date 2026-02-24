@@ -34,6 +34,7 @@ router.post('/', requireAuth, requireTenant, ownerOnly, async (req, res) => {
     await supabase.from('settings').insert({
       tenant_id: tenant.tenantId,
       vat_percent: 18,
+      use_vat: false,
       decimal_precision: 2,
     });
 

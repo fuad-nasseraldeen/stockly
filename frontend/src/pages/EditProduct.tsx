@@ -79,7 +79,7 @@ export default function EditProduct() {
   
   const vatPercent = settings?.vat_percent ?? 18;
   const useMargin = settings?.use_margin === true;
-  const useVat = true; // use_vat is deprecated: VAT mode is always enabled
+  const useVat = settings?.use_vat === true;
   const decimalPrecision = getDecimalPrecision(settings);
   const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
   const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
@@ -604,10 +604,10 @@ export default function EditProduct() {
                       // Prepare fields for accordion content (with labels) - including carton price
                       const fields = [
                         { label: 'מחיר לאריזה', value: `₪${formatCostPrice(cartonPrice)}`, highlight: true },
-                        { label: 'מחיר עלות כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                        { label: useVat ? 'מחיר עלות כולל מע"מ' : 'מחיר עלות', value: `₪${formatUnitPrice(costAfterDiscount)}` },
                         ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
                         ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
-                        { label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                        { label: useVat ? 'מחיר לאחר הנחה כולל מע"מ' : 'מחיר לאחר הנחה', value: `₪${formatUnitPrice(costAfterDiscount)}` },
                         ...(useVat ? [{ label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
                         { label: 'כמות יחידות באריזה', value: `${packageQty} יחידות` },
                         ...(useMargin && price.sell_price ? [{ label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
@@ -1108,14 +1108,14 @@ export default function EditProduct() {
                     <TableHead className="whitespace-nowrap min-w-[140px]">
                       <div className="flex items-center gap-1">
                         מחיר לאריזה
-                        <Tooltip content="מחיר עלות כולל מע&quot;מ × כמות באריזה" />
+                        <Tooltip content={useVat ? 'מחיר עלות כולל מע"מ × כמות באריזה' : 'מחיר עלות × כמות באריזה'} />
                       </div>
                     </TableHead>
                     {useMargin && (
                       <TableHead className="whitespace-nowrap min-w-[100px]">
                         <div className="flex items-center gap-1">
                           מחיר מכירה
-                          <Tooltip content="מחיר עלות + מע&quot;מ + רווח" />
+                          <Tooltip content={useVat ? 'מחיר עלות + מע"מ + רווח' : 'מחיר עלות + רווח'} />
                         </div>
                       </TableHead>
                     )}

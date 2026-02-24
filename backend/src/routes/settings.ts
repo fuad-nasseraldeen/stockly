@@ -24,7 +24,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: 'שגיאה בטעינת הגדרות' });
-  return res.json(data ? { ...data, use_vat: true, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
+  return res.json(data ? { ...data, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
 });
 
 const updateSchema = z.object({
@@ -64,7 +64,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
   }
 
-  const { vat_percent, global_margin_percent, use_margin, decimal_precision } = parsed.data;
+  const { vat_percent, global_margin_percent, use_margin, use_vat, decimal_precision } = parsed.data;
 
   const patch: Record<string, unknown> = {
     vat_percent,
@@ -79,8 +79,9 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
   if (decimal_precision !== undefined) {
     patch.decimal_precision = clampDecimalPrecision(decimal_precision);
   }
-  // use_vat is deprecated for runtime behavior, keep it forced to true.
-  patch.use_vat = true;
+  if (use_vat !== undefined) {
+    patch.use_vat = use_vat;
+  }
 
   const { data, error } = await supabase
     .from('settings')
@@ -97,7 +98,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     const newVat = Number(data.vat_percent);
     const newMargin = Number(data.global_margin_percent ?? global_margin_percent ?? 0);
     const newUseMargin = data.use_margin === true; // Default to false if not set
-    const newUseVat = true;
+    const newUseVat = data.use_vat === true;
     const decimalPrecision = clampDecimalPrecision((data as any).decimal_precision, 2);
 
     // Get current price per product+supplier
@@ -203,7 +204,7 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     // לא מפילים את הבקשה – ההגדרות עודכנו, רק הרה-חישוב נכשל
   }
 
-  return res.json(data ? { ...data, use_vat: true, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
+  return res.json(data ? { ...data, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
 });
 
 // User preferences endpoints

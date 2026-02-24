@@ -257,6 +257,7 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     id: 'vat_rate',
     headerLabel: 'שיעור מע"מ',
     group: 'pricing',
+    requires: { vat: true },
     minWidth: 95,
     align: 'center',
     renderHeader: () => <span>שיעור מע&quot;מ</span>,

@@ -117,9 +117,12 @@ async function getUseMargin(tenantId: string): Promise<boolean> {
 }
 
 async function getUseVat(tenantId: string): Promise<boolean> {
-  void tenantId;
-  // use_vat is deprecated for runtime behavior: VAT mode is always enabled.
-  return true;
+  const { data } = await supabase
+    .from('settings')
+    .select('use_vat')
+    .eq('tenant_id', tenantId)
+    .single();
+  return data?.use_vat === true;
 }
 
 async function getDecimalPrecision(tenantId: string): Promise<number> {

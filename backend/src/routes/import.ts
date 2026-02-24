@@ -1797,7 +1797,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     const vatPercent = settings?.vat_percent || 18;
     const globalMarginPercent = settings?.global_margin_percent ?? 0;
     const useMargin = settings?.use_margin === true;
-    const useVat = true; // use_vat is deprecated: VAT mode is always enabled
+    const useVat = settings?.use_vat === true;
     const decimalPrecision = clampDecimalPrecision((settings as any)?.decimal_precision, 2);
 
     // OVERWRITE mode: delete all tenant data
@@ -1815,6 +1815,7 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
       await supabase.from('settings').insert({
         tenant_id: tenant.tenantId,
         vat_percent: 18,
+        use_vat: false,
         decimal_precision: 2,
       });
 

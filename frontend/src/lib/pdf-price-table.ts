@@ -50,6 +50,7 @@ export function priceRowToExportValues(params: {
   columnKeys: string[];
 }): Array<string | number | null> {
   const { price, product, settings, columnKeys } = params;
+  const vatEnabled = settings.use_vat === true;
   const vatRate = (settings.vat_percent || 18) / 100;
 
   return columnKeys.map((key) => {
@@ -61,7 +62,8 @@ export function priceRowToExportValues(params: {
         return formatMoney(Number(price?.cost_price || 0), settings);
 
       case 'cost_net': {
-        const net = grossToNet(Number(price?.cost_price || 0), vatRate);
+        const gross = Number(price?.cost_price || 0);
+        const net = vatEnabled ? grossToNet(gross, vatRate) : gross;
         return formatMoney(net, settings);
       }
 
@@ -77,7 +79,7 @@ export function priceRowToExportValues(params: {
 
       case 'cost_after_discount_net': {
         const gross = Number(price?.cost_price_after_discount || price?.cost_price || 0);
-        const net = grossToNet(gross, vatRate);
+        const net = vatEnabled ? grossToNet(gross, vatRate) : gross;
         return formatMoney(net, settings);
       }
 

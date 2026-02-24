@@ -60,6 +60,8 @@ export default function NewProduct() {
   const marginToUse = defaultMargin; // Use default margin from category or settings
   const defaultVatPercent = settings?.vat_percent ? Number(settings.vat_percent) : 18;
   const vatPercent = defaultVatPercent; // Use VAT from settings
+  const useMargin = settings?.use_margin === true; // Default to false if not set
+  const useVat = settings?.use_vat === true;
   const decimalPrecision = getDecimalPrecision(settings);
   const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
   const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
@@ -80,7 +82,7 @@ export default function NewProduct() {
   const rawCost = calculatedUnitPrice;
   const unitCostDisplayValue = costPrice.trim() || (rawCost > 0 ? formatUnitPrice(rawCost) : '');
   const costBeforeVat =
-    rawCost > 0 && vatPercent > 0 && costIncludesVat === 'with'
+    useVat && rawCost > 0 && vatPercent > 0 && costIncludesVat === 'with'
       ? rawCost / (1 + vatPercent / 100)
       : rawCost;
   
@@ -90,8 +92,6 @@ export default function NewProduct() {
     : roundToPrecision(costBeforeVat, decimalPrecision);
 
   // Calculate sell price - check if use_margin and use_vat are enabled
-  const useMargin = settings?.use_margin === true; // Default to false if not set
-  const useVat = true; // use_vat is deprecated: VAT mode is always enabled
   const calculateSellPrice = (cost: number, margin: number, vat: number, useMargin: boolean, useVat: boolean) => {
     if (!cost || cost <= 0) return 0;
     
@@ -392,7 +392,7 @@ export default function NewProduct() {
                 placeholder="0.0000"
                 required
               />
-              {useVat && (
+          {useVat && (
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
                   <label className="inline-flex items-center gap-1 cursor-pointer">
                     <input

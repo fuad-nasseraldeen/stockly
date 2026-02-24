@@ -255,7 +255,7 @@ describe('POST /api/products', () => {
       if (table === 'settings') {
         // Get VAT, global margin, use_margin, use_vat (all return same structure)
         return createQueryBuilder({
-          data: { vat_percent: 18, global_margin_percent: 30, use_margin: true, use_vat: true },
+          data: { vat_percent: 18, global_margin_percent: 30, use_margin: true, use_vat: false },
           error: null,
         });
       }

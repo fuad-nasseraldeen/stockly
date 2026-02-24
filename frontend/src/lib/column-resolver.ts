@@ -27,7 +27,7 @@ export function resolveColumns(
   settings: Settings,
   layout?: Partial<ColumnLayout>
 ): ColumnDefinition[] {
-  const vatEnabled = true; // use_vat is deprecated: VAT mode is always enabled
+  const vatEnabled = settings.use_vat === true;
   const marginEnabled = settings.use_margin === true;
 
   // Step 1: Filter columns based on requirements
@@ -80,7 +80,7 @@ export function resolveColumns(
  * Used for column management modal where all columns should be shown
  */
 export function getAvailableColumns(settings: Settings): ColumnDefinition[] {
-  const vatEnabled = true; // use_vat is deprecated: VAT mode is always enabled
+  const vatEnabled = settings.use_vat === true;
   const marginEnabled = settings.use_margin === true;
 
   // Filter columns based on requirements only (not visibility)
@@ -103,7 +103,7 @@ export function getAvailableColumns(settings: Settings): ColumnDefinition[] {
  * Get default layout based on settings
  */
 export function getDefaultLayout(settings: Settings): ColumnLayout {
-  const vatEnabled = true; // use_vat is deprecated: VAT mode is always enabled
+  const vatEnabled = settings.use_vat === true;
   const marginEnabled = settings.use_margin === true;
 
   const visible: Record<ColumnId, boolean> = { ...DEFAULT_VISIBLE_COLUMNS };

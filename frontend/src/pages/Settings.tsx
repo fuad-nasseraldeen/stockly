@@ -30,6 +30,7 @@ export default function Settings() {
   const [margin, setMargin] = useState<string>(() =>
     settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '0'
   );
+  const [useVat, setUseVat] = useState<boolean>(() => settings?.use_vat === true);
   const [decimalPrecision, setDecimalPrecision] = useState<string>(() =>
     settings?.decimal_precision != null ? String(settings.decimal_precision) : '2'
   );
@@ -76,6 +77,7 @@ export default function Settings() {
     if (!settings) return;
     setVat(settings.vat_percent != null ? String(settings.vat_percent) : '18');
     setMargin(settings.global_margin_percent != null ? String(settings.global_margin_percent) : '0');
+    setUseVat(settings.use_vat === true);
     setDecimalPrecision(settings.decimal_precision != null ? String(settings.decimal_precision) : '2');
   }, [settings]);
 
@@ -86,12 +88,12 @@ export default function Settings() {
   
   // Column layout management - global for all products
   const appSettings: SettingsType = useMemo(() => ({
-    use_vat: true,
+    use_vat: useVat,
     use_margin: Number(margin) > 0,
     vat_percent: settings?.vat_percent ?? undefined,
     global_margin_percent: settings?.global_margin_percent ?? undefined,
     decimal_precision: settings?.decimal_precision ?? null,
-  }), [margin, settings?.vat_percent, settings?.global_margin_percent, settings?.decimal_precision]);
+  }), [useVat, margin, settings?.vat_percent, settings?.global_margin_percent, settings?.decimal_precision]);
   
   const { data: savedLayout, isLoading: layoutLoading } = useTableLayout('productsTable');
   const allFields: FieldOption[] = useMemo(
@@ -145,8 +147,9 @@ export default function Settings() {
       setProfileMessage(null);
       const marginValue = margin.trim() ? Number(margin) : NaN;
       const precisionValue = decimalPrecision.trim() ? Number(decimalPrecision) : NaN;
-      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; decimal_precision?: number } = {
+      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean; decimal_precision?: number } = {
         vat_percent: vatValue,
+        use_vat: useVat,
       };
       if (!Number.isNaN(marginValue)) {
         payload.global_margin_percent = marginValue;
@@ -265,6 +268,24 @@ export default function Settings() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
+              <Label htmlFor="useVatToggle">חשב מע&quot;מ</Label>
+              <label
+                htmlFor="useVatToggle"
+                className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+              >
+                <span>{useVat ? 'פעיל' : 'כבוי'}</span>
+                <input
+                  id="useVatToggle"
+                  type="checkbox"
+                  checked={useVat}
+                  onChange={(e) => setUseVat(e.target.checked)}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">
+                כאשר כבוי, המערכת תתייחס למחירים כסופיים ללא מע&quot;מ ותסתיר שדות מע&quot;מ במסכים.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="vatPercent">מע&quot;מ (%)</Label>
               <Input
                 id="vatPercent"
@@ -277,7 +298,7 @@ export default function Settings() {
                 placeholder={settings?.vat_percent != null ? String(settings.vat_percent) : '18'}
               />
               <p className="text-xs text-muted-foreground">
-                ערך זה ישמש כברירת מחדל לחישוב מחיר מכירה בכל המערכת.
+                ערך זה ישמש כברירת מחדל לחישוב מחיר מכירה כאשר מע&quot;מ פעיל.
               </p>
             </div>
             <div className="space-y-2">
@@ -318,8 +339,8 @@ export default function Settings() {
               <p className="text-xs font-medium mb-1">סיכום החישוב:</p>
               <p className="text-xs text-muted-foreground">
                 {Number(margin) > 0
-                  ? 'מחיר מכירה = עלות + רווח + מע"מ'
-                  : 'מחיר מכירה = עלות + מע"מ'}
+                  ? useVat ? 'מחיר מכירה = עלות + רווח + מע"מ' : 'מחיר מכירה = עלות + רווח'
+                  : useVat ? 'מחיר מכירה = עלות + מע"מ' : 'מחיר מכירה = עלות'}
               </p>
             </div>
           </div>

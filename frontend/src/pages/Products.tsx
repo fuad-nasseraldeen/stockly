@@ -177,7 +177,7 @@ export default function Products() {
     return new Date(date).toLocaleDateString('he-IL');
   };
 
-  const useVat = true; // use_vat is deprecated: VAT mode is always enabled
+  const useVat = settings?.use_vat === true;
   const useMargin = settings?.use_margin === true; // Default to false if not set
   const vatPercent = settings?.vat_percent ?? 18;
 
@@ -1055,20 +1055,26 @@ export default function Products() {
                                 { id: 'supplier' as ColumnId, label: 'ספק', value: price.supplier_name || 'לא ידוע' },
                                 {
                                   id: 'cost_gross' as ColumnId,
-                                  label: 'מחיר עלות',
+                                  label: useVat ? 'מחיר עלות' : 'מחיר עלות',
                                   value: `₪${formatUnitPrice(Number(price.cost_price))}`,
-                                  tooltip: 'מחיר עלות כולל מע"מ',
+                                  tooltip: useVat ? 'מחיר עלות כולל מע"מ' : 'מחיר עלות',
                                 },
                                 {
                                   id: 'sell_price' as ColumnId,
                                   label: 'מחיר מכירה',
                                   value: price.sell_price ? `₪${formatUnitPrice(Number(price.sell_price))}` : '-',
                                   highlight: true,
-                                  tooltip: 'מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח + מע"מ',
+                                  tooltip: useVat
+                                    ? 'מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח + מע"מ'
+                                    : 'מחיר מכירה = מחיר עלות (אחרי הנחה) + רווח',
                                 },
                                 ...(useVat ? [{ id: 'cost_net' as ColumnId, label: 'מחיר לפני מע"מ', value: `₪${formatUnitPrice(costPriceBeforeDiscountNet)}` }] : []),
                                 ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ id: 'discount' as ColumnId, label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
-                                { id: 'cost_after_discount_gross' as ColumnId, label: 'מחיר לאחר הנחה כולל מע"מ', value: `₪${formatUnitPrice(costAfterDiscount)}` },
+                                {
+                                  id: 'cost_after_discount_gross' as ColumnId,
+                                  label: useVat ? 'מחיר לאחר הנחה כולל מע"מ' : 'מחיר לאחר הנחה',
+                                  value: `₪${formatUnitPrice(costAfterDiscount)}`,
+                                },
                                 ...(useVat ? [{ id: 'cost_after_discount_net' as ColumnId, label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
                                 ...(price.vat_rate !== null && price.vat_rate !== undefined
                                   ? [{ id: 'vat_rate' as ColumnId, label: 'שיעור מע"מ', value: `${Number(price.vat_rate).toFixed(1)}%` }]
@@ -1351,7 +1357,7 @@ export default function Products() {
             {inlineCalculatedUnitPrice > 0 && (
               <div className="p-3 bg-muted rounded-lg space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">מחיר עלות כולל מע"מ:</span>
+                  <span className="text-sm font-medium">{useVat ? 'מחיר עלות כולל מע"מ:' : 'מחיר עלות:'}</span>
                   <span className="text-lg font-bold">₪{formatUnitPrice(inlineCostAfterDiscountGross)}</span>
                 </div>
                 {useVat && inlineCostAfterDiscountGross > 0 && (

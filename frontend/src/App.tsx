@@ -508,6 +508,9 @@ function AppWithNavigation({
               אמת מספר טלפון
             </button>
           </div>
+          <div className="mx-auto w-full max-w-6xl px-4 pb-2 text-xs text-amber-800">
+            בינתיים הפיצ&apos;ר הזה עדיין תחת עיבוד.
+          </div>
         </div>
       ) : null}
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8">

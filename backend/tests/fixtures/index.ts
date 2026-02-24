@@ -75,7 +75,7 @@ export const mockSettings = {
   vat_percent: 18,
   global_margin_percent: 30,
   use_margin: true,
-  use_vat: true,
+  use_vat: false,
   decimal_precision: 2,
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
