@@ -232,12 +232,30 @@ export default function Settings() {
     }
   };
 
+  const openSupportSmsDialog = (): void => {
+    window.dispatchEvent(new Event('stockly:open-support-sms-dialog'));
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">הגדרות</h1>
         <p className="text-sm text-muted-foreground mt-1.5">שליטה בהגדרות מערכת ופרופיל משתמש</p>
       </div>
+
+      <Card className="shadow-md border-2">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold">תמיכה מהירה</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            אפשר לשלוח לנו הודעת SMS ישירות מתוך המערכת. ניתן גם לצרף קישור לתמונה/קובץ.
+          </p>
+          <Button onClick={openSupportSmsDialog} className="w-full sm:w-auto">
+            פנה לתמיכה ב-SMS
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* VAT & Margin settings */}
       <Card className="shadow-md border-2">

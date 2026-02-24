@@ -13,6 +13,9 @@ import exportRouter from './routes/export.js';
 import resetRouter from './routes/reset.js';
 import adminRouter from './routes/admin.js';
 import bootstrapRouter from './routes/bootstrap.js';
+import authRouter from './routes/auth.js';
+import publicRouter from './routes/public.js';
+import supportRouter from './routes/support.js';
 
 let hasLoggedDbHost = false;
 
@@ -103,6 +106,9 @@ export function createApp() {
   app.use('/api/tenant/reset', resetRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/bootstrap', bootstrapRouter);
+  app.use('/api/auth', authRouter);
+  app.use('/api/public', publicRouter);
+  app.use('/api/support', supportRouter);
 
   // 404 handler for undefined routes
   app.use((req, res) => {

@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../hooks/useTenant';
 import { tenantsApi } from '../lib/api';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Building2, Loader2 } from 'lucide-react';
+import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 
 export default function CreateTenant() {
   const navigate = useNavigate();
@@ -37,9 +37,9 @@ export default function CreateTenant() {
       
       // Navigate to products
       navigate('/products');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Create tenant error:', err);
-      const errorMessage = err?.message || 'שגיאה ביצירת חנות';
+      const errorMessage = err instanceof Error ? err.message : 'שגיאה ביצירת חנות';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -47,18 +47,22 @@ export default function CreateTenant() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
+    <FlatPageLayout
+      title="צור חנות חדשה"
+      description="התחל לנהל את החנות שלך"
+      maxWidthClass="max-w-md"
+    >
+      <div className="w-full rounded-xl border border-border bg-card/60 p-5">
+        <div className="mb-4">
           <div className="flex items-center gap-3">
             <Building2 className="w-8 h-8 text-primary" />
             <div>
-              <CardTitle>צור חנות חדשה</CardTitle>
-              <CardDescription>התחל לנהל את החנות שלך</CardDescription>
+              <h2 className="text-xl font-semibold">צור חנות חדשה</h2>
+              <p className="text-sm text-muted-foreground">התחל לנהל את החנות שלך</p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">שם החנות *</Label>
@@ -104,8 +108,8 @@ export default function CreateTenant() {
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </FlatPageLayout>
   );
 }

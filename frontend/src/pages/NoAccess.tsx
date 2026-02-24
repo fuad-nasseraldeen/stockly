@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '../hooks/useTenant';
 import { invitesApi } from '../lib/api';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { AlertCircle, RefreshCw, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 
 export default function NoAccess() {
   const navigate = useNavigate();
@@ -30,7 +30,7 @@ export default function NoAccess() {
       if (accepted) {
         await refetchTenants();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error checking invites:', error);
       // Ignore errors - just refetch tenants
       await refetchTenants();
@@ -40,18 +40,22 @@ export default function NoAccess() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
+    <FlatPageLayout
+      title="אין גישה לחנות"
+      description="אין לך גישה לחנות במערכת"
+      maxWidthClass="max-w-md"
+    >
+      <div className="w-full rounded-xl border border-border bg-card/60 p-5">
+        <div className="mb-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="w-8 h-8 text-destructive" />
             <div>
-              <CardTitle>אין גישה לחנות</CardTitle>
-              <CardDescription>אין לך גישה לחנות במערכת</CardDescription>
+              <h2 className="text-xl font-semibold">אין גישה לחנות</h2>
+              <p className="text-sm text-muted-foreground">אין לך גישה לחנות במערכת</p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        </div>
+        <div className="space-y-4">
           <div className="space-y-2">
             <p className="text-muted-foreground">
               כדי לקבל גישה לחנות קיימת, נא לבקש מבעל החנות להזמין אותך.
@@ -109,9 +113,9 @@ export default function NoAccess() {
               חזור
             </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </FlatPageLayout>
   );
 }
 

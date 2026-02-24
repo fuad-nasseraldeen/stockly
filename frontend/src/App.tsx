@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@supabase/supabase-js';
@@ -11,6 +11,7 @@ import { useSuperAdmin } from './hooks/useSuperAdmin';
 import { useBootstrap } from './hooks/useBootstrap';
 import { AppHeader } from './components/layout/AppHeader';
 import { BottomTabs } from './components/layout/BottomTabs';
+import { PublicAuthFooter } from './components/layout/PublicAuthFooter';
 import { FloatingActionButton } from './components/ui/FloatingActionButton';
 
 import Login from './pages/Login';
@@ -25,8 +26,20 @@ import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import PublicLanding from './pages/PublicLanding';
+import Contact from './pages/Contact';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import { OnboardingRouter } from './components/OnboardingRouter';
 import { SplashScreen } from './components/SplashScreen';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './components/ui/dialog';
+import { Label } from './components/ui/label';
+import { Input } from './components/ui/input';
+import { Button } from './components/ui/button';
+import { authApi, supportApi } from './lib/api';
+
+const SUPPORT_DIALOG_EVENT = 'stockly:open-support-sms-dialog';
+const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -124,6 +137,99 @@ function AppContent({
   onToggleTheme: () => void;
 }) {
   const location = useLocation();
+  const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
+  const [phoneValue, setPhoneValue] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpStep, setOtpStep] = useState<'phone' | 'code'>('phone');
+  const [phoneFlowLoading, setPhoneFlowLoading] = useState(false);
+  const [phoneFlowError, setPhoneFlowError] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+  const [phoneVerificationPending, setPhoneVerificationPending] = useState(false);
+
+  const toPhoneFlowErrorMessage = (err: unknown): string => {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('SECURITY_CHECK_FAILED')) {
+      return 'אימות האבטחה נכשל. אפשר לנסות שוב עכשיו או לטפל בזה מאוחר יותר.';
+    }
+    if (message.includes('INVALID_CODE')) {
+      return 'קוד האימות לא תקין או שפג תוקף הקוד.';
+    }
+    return message || 'שגיאה בשליחת קוד';
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setPhoneDialogOpen(false);
+      setPhoneVerificationPending(false);
+      return;
+    }
+
+    let isMounted = true;
+    const checkPhone = async () => {
+      try {
+        const status = await authApi.phoneStatus();
+        const reminderKey = `${PHONE_REMINDER_SESSION_KEY_PREFIX}${user.id}`;
+        const alreadyShownThisSession = sessionStorage.getItem(reminderKey) === '1';
+
+        if (isMounted) {
+          // Keep the top reminder banner visible whenever verification is required.
+          setPhoneVerificationPending(status.phoneRequired);
+        }
+
+        if (isMounted && status.phoneRequired && !alreadyShownThisSession) {
+          setPhoneDialogOpen(true);
+          sessionStorage.setItem(reminderKey, '1');
+        }
+      } catch {
+        // Keep app usable if phone status endpoint is temporarily unavailable.
+      }
+    };
+
+    void checkPhone();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendIn((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendIn]);
+
+  const requestPhoneOtp = async () => {
+    setPhoneFlowError('');
+    setPhoneFlowLoading(true);
+    try {
+      await authApi.requestOtp(phoneValue);
+      setOtpStep('code');
+      setResendIn(60);
+    } catch (err: unknown) {
+      setPhoneFlowError(toPhoneFlowErrorMessage(err));
+    } finally {
+      setPhoneFlowLoading(false);
+    }
+  };
+
+  const verifyPhoneOtp = async () => {
+    setPhoneFlowError('');
+    setPhoneFlowLoading(true);
+    try {
+      await authApi.verifyMyPhone(phoneValue, otpCode);
+      setPhoneDialogOpen(false);
+      setPhoneVerificationPending(false);
+      setPhoneValue('');
+      setOtpCode('');
+      setOtpStep('phone');
+      setResendIn(0);
+    } catch (err: unknown) {
+      setPhoneFlowError(toPhoneFlowErrorMessage(err));
+    } finally {
+      setPhoneFlowLoading(false);
+    }
+  };
 
   // Fetch bootstrap data once user is logged in
   // Bootstrap will automatically use current tenant if selected (via x-tenant-id header)
@@ -136,34 +242,146 @@ function AppContent({
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-primary/20 to-background">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key="auth-shell"
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
-            className="w-full max-w-md px-4"
-          >
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/" element={<Login />} />
-              <Route path="*" element={<Login />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
+      <div className="min-h-screen flex flex-col bg-linear-to-br from-background via-primary/20 to-background">
+        <div className="flex-1 flex items-center justify-center">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key="auth-shell"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.45, ease: 'easeOut' }}
+              className="w-full max-w-md px-4"
+            >
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/contact" element={<Contact />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
+                <Route path="/" element={<PublicLanding />} />
+                <Route path="*" element={<PublicLanding />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        <PublicAuthFooter />
       </div>
     );
   }
 
   return (
-    <OnboardingRouter>
-      <AppWithNavigation user={user} onLogout={onLogout} theme={theme} onToggleTheme={onToggleTheme} />
-    </OnboardingRouter>
+    <>
+      <OnboardingRouter>
+        <AppWithNavigation
+          user={user}
+          onLogout={onLogout}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+          phoneVerificationPending={phoneVerificationPending}
+          onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
+        />
+      </OnboardingRouter>
+
+      <Dialog open={phoneDialogOpen} onOpenChange={setPhoneDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>אימות מספר טלפון נדרש</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              כדי להמשיך להשתמש במערכת צריך לאמת מספר טלפון לחשבון שלך.
+            </p>
+            {phoneFlowError ? (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                {phoneFlowError}
+              </div>
+            ) : null}
+
+            {otpStep === 'phone' ? (
+              <div className="space-y-2">
+                <Label htmlFor="verify-phone">מספר טלפון</Label>
+                <Input
+                  id="verify-phone"
+                  type="tel"
+                  value={phoneValue}
+                  onChange={(e) => setPhoneValue(e.target.value)}
+                  placeholder="05XXXXXXXX"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="verify-phone-code">קוד אימות</Label>
+                <Input
+                  id="verify-phone-code"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6 ספרות"
+                />
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
+            {otpStep === 'phone' ? (
+              <>
+                <Button onClick={requestPhoneOtp} disabled={phoneFlowLoading || phoneValue.trim().length === 0}>
+                  {phoneFlowLoading ? 'שולח קוד...' : 'שלח קוד אימות'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPhoneDialogOpen(false);
+                  }}
+                  disabled={phoneFlowLoading}
+                >
+                  תזכיר לי מאוחר יותר
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button onClick={verifyPhoneOtp} disabled={phoneFlowLoading || otpCode.length !== 6}>
+                  {phoneFlowLoading ? 'מאמת...' : 'אמת מספר טלפון'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={requestPhoneOtp}
+                  disabled={phoneFlowLoading || resendIn > 0}
+                >
+                  {resendIn > 0 ? `שלח שוב בעוד ${resendIn} שניות` : 'שלח קוד שוב'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setOtpStep('phone');
+                    setOtpCode('');
+                    setPhoneFlowError('');
+                  }}
+                  disabled={phoneFlowLoading}
+                >
+                  שינוי מספר
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPhoneDialogOpen(false);
+                  }}
+                  disabled={phoneFlowLoading}
+                >
+                 תזכיר לי מאוחר יותר
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -198,15 +416,35 @@ function AppWithNavigation({
   onLogout,
   theme,
   onToggleTheme,
+  phoneVerificationPending,
+  onRequestPhoneVerification,
 }: {
   user: User;
   onLogout: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  phoneVerificationPending: boolean;
+  onRequestPhoneVerification: () => void;
 }) {
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
   const location = useLocation();
+  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportAttachmentFile, setSupportAttachmentFile] = useState<File | null>(null);
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportError, setSupportError] = useState('');
+  const [supportStatus, setSupportStatus] = useState('');
+
+  useEffect(() => {
+    const openDialog = () => {
+      setSupportError('');
+      setSupportStatus('');
+      setSupportDialogOpen(true);
+    };
+    window.addEventListener(SUPPORT_DIALOG_EVENT, openDialog);
+    return () => window.removeEventListener(SUPPORT_DIALOG_EVENT, openDialog);
+  }, []);
  
   // Super admin can access /admin without a tenant
   const isAdminPage = location.pathname === '/admin';
@@ -217,6 +455,38 @@ function AppWithNavigation({
     return null;
   }
 
+  const openSupportDialog = () => {
+    setSupportError('');
+    setSupportStatus('');
+    setSupportDialogOpen(true);
+  };
+
+  const sendSupportSms = async () => {
+    setSupportError('');
+    setSupportStatus('');
+
+    const message = supportMessage.trim();
+    if (message.length < 5) {
+      setSupportError('נא לכתוב הודעה קצרה (לפחות 5 תווים).');
+      return;
+    }
+
+    try {
+      setSupportSending(true);
+      await supportApi.sendSmsWithAttachment({
+        message,
+        attachment: supportAttachmentFile,
+      });
+      setSupportStatus('ההודעה נשלחה בהצלחה לתמיכה.');
+      setSupportMessage('');
+      setSupportAttachmentFile(null);
+    } catch (error) {
+      setSupportError(error instanceof Error ? error.message : 'שליחת ההודעה נכשלה');
+    } finally {
+      setSupportSending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
       <AppHeader
@@ -226,6 +496,20 @@ function AppWithNavigation({
         isDark={theme === 'dark'}
         onToggleTheme={onToggleTheme}
       />
+      {phoneVerificationPending ? (
+        <div className="w-full border-b border-amber-300 bg-amber-100 text-amber-900">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 text-sm">
+            <span>חשוב: החשבון עדיין ללא מספר טלפון מאומת. מומלץ לאמת עכשיו.</span>
+            <button
+              type="button"
+              className="rounded-md border border-amber-500 px-3 py-1 text-xs font-medium hover:bg-amber-200"
+              onClick={onRequestPhoneVerification}
+            >
+              אמת מספר טלפון
+            </button>
+          </div>
+        </div>
+      ) : null}
       <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8">
         <div className="w-full max-w-6xl">
           <Routes>
@@ -244,13 +528,105 @@ function AppWithNavigation({
               } 
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
             <Route path="/" element={<Navigate to="/products" />} />
             <Route path="*" element={<Navigate to="/products" replace />} />
           </Routes>
         </div>
       </main>
+      <div className="fixed inset-x-0 bottom-0 z-30 w-full border-t border-border/60 bg-background/80">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
+          <span>© 2026 סטוקלי</span>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/privacy"
+              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
+            >
+              מדיניות פרטיות
+            </Link>
+            <Link
+              to="/terms"
+              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
+            >
+              תנאי שימוש
+            </Link>
+          </div>
+        </div>
+      </div>
       <BottomTabs />
       <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
+      <div className="fixed bottom-24 left-4 z-40 sm:bottom-6">
+        <button
+          type="button"
+          onClick={openSupportDialog}
+          className="group h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-200 hover:scale-110 hover:shadow-xl"
+          aria-label="פתח תמיכה"
+          title="תמיכה"
+        >
+          <span className="text-lg font-bold transition-transform duration-200 group-hover:scale-110">?</span>
+        </button>
+      </div>
+
+      <Dialog
+        open={supportDialogOpen}
+        onOpenChange={(open) => {
+          setSupportDialogOpen(open);
+          if (!open) {
+            setSupportError('');
+            setSupportStatus('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>שליחת הודעת תמיכה ב-SMS</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {supportError ? (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                {supportError}
+              </div>
+            ) : null}
+            {supportStatus ? (
+              <div className="p-3 text-sm text-primary bg-primary/10 rounded-md">
+                {supportStatus}
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="support-message">הודעה</Label>
+              <textarea
+                id="support-message"
+                className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={supportMessage}
+                onChange={(e) => setSupportMessage(e.target.value)}
+                maxLength={500}
+                placeholder="כתוב כאן מה מפריע לך או מה תרצה לשפר..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="support-attachment">צרף קובץ/תמונה (אופציונלי)</Label>
+              <Input
+                id="support-attachment"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setSupportAttachmentFile(e.target.files?.[0] || null)}
+              />
+              {supportAttachmentFile ? (
+                <p className="text-xs text-muted-foreground">נבחר: {supportAttachmentFile.name}</p>
+              ) : null}
+            </div>
+          </div>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
+            <Button type="button" onClick={sendSupportSms} disabled={supportSending}>
+              {supportSending ? 'שולח...' : 'שלח לתמיכה'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setSupportDialogOpen(false)} disabled={supportSending}>
+              סגור
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

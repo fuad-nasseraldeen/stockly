@@ -27,6 +27,19 @@ FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your_anon_public_key_here
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SMS_TO_API_KEY=your_sms_to_api_key_here
+OTP_SECRET=your_long_random_secret_here
+# Optional:
+# SMS_TO_API_BASE_URL=https://api.sms.to
+# REDIS_URL=
+# REDIS_TOKEN=
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=your_smtp_username
+# SMTP_PASS=your_smtp_password_or_app_password
+# CONTACT_FROM_EMAIL=auth@stockly-il.com
+# CONTACT_RECEIVER_EMAIL=your_personal@email.com
+# TURNSTILE_SECRET_KEY=your_turnstile_secret
 ```
 
 ### הסבר המשתנים:
@@ -38,6 +51,18 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | `SUPABASE_URL` | Project URL מ-Supabase | `https://abc123.supabase.co` |
 | `SUPABASE_ANON_KEY` | Anon Public Key מ-Supabase (נדרש לאימות טוקנים) | `eyJhbGci...` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service Role Secret Key (סודי!) | `eyJhbGci...` |
+| `SMS_TO_API_KEY` | API Key לשליחת SMS דרך SMS.to | `sk_live_...` |
+| `OTP_SECRET` | סוד שרת ל-HMAC של קודי OTP (לפחות 16 תווים) | `long-random-secret` |
+| `SMS_TO_API_BASE_URL` | (אופציונלי) כתובת API override ל-SMS.to | `https://api.sms.to` |
+| `REDIS_URL` | (אופציונלי) לחיבור limiter חיצוני בעתיד | `https://...` |
+| `REDIS_TOKEN` | (אופציונלי) Bearer token ל-Upstash REST | `...` |
+| `SMTP_HOST` | שרת SMTP לטופס צור קשר | `smtp.gmail.com` |
+| `SMTP_PORT` | פורט SMTP | `587` |
+| `SMTP_USER` | משתמש SMTP | `user@example.com` |
+| `SMTP_PASS` | סיסמת SMTP / App Password | `***` |
+| `CONTACT_FROM_EMAIL` | כתובת השולח של הודעת הטופס | `auth@stockly-il.com` |
+| `CONTACT_RECEIVER_EMAIL` | כתובת היעד לקבלת פניות | `you@example.com` |
+| `TURNSTILE_SECRET_KEY` | מפתח סודי לאימות CAPTCHA בשרת | `***` |
 
 ---
 
@@ -49,6 +74,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 VITE_API_URL=http://localhost:3001
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+VITE_TURNSTILE_SITE_KEY=your_turnstile_site_key
 ```
 
 ### הסבר המשתנים:
@@ -58,6 +84,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | `VITE_API_URL` | URL של ה-Backend API | `http://localhost:3001` |
 | `VITE_SUPABASE_URL` | Project URL מ-Supabase | `https://abc123.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | Anon Public Key מ-Supabase | `eyJhbGci...` |
+| `VITE_TURNSTILE_SITE_KEY` | Site key לרכיב CAPTCHA בצד לקוח | `0x4AAAA...` |
 
 > ⚠️ **חשוב:** ב-Vite, כל משתנה חייב להתחיל ב-`VITE_` כדי להיות נגיש ב-frontend!
 

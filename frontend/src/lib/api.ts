@@ -22,6 +22,33 @@ function resolveApiBaseUrl(): string {
 export const API_URL = resolveApiBaseUrl();
 const API_TIMEOUT_MS = 20000;
 
+function toHebrewApiErrorMessage(raw: string): string {
+  const normalized = (raw || '').trim();
+  if (!normalized) return 'הבקשה נכשלה';
+
+  const code = normalized.toUpperCase();
+  if (code.includes('SECURITY_CHECK_FAILED')) {
+    return 'אימות האבטחה נכשל. נסה שוב.';
+  }
+  if (code.includes('INVALID_CODE')) {
+    return 'קוד האימות לא תקין או שפג תוקף הקוד.';
+  }
+  if (code.includes('INVALID_PHONE')) {
+    return 'מספר הטלפון שהוזן אינו תקין.';
+  }
+  if (code.includes('PHONE_MISMATCH')) {
+    return 'המספר הזה שייך לחשבון אחר.';
+  }
+  if (code.includes('EMAIL_ALREADY_EXISTS')) {
+    return 'כתובת האימייל כבר קיימת במערכת.';
+  }
+  if (code.includes('PHONE_NOT_REGISTERED')) {
+    return 'המספר הזה לא רשום במערכת. אפשר להירשם קודם.';
+  }
+
+  return normalized;
+}
+
 // Type definitions
 export type Product = {
   id: string;
@@ -252,7 +279,8 @@ export async function apiRequest<T>(
           let errorMessage = 'הבקשה נכשלה';
           try {
             const errorData = await retryResponse.json();
-            errorMessage = errorData.error || errorData.message || `שגיאה ${retryResponse.status}: ${retryResponse.statusText}`;
+            const rawMessage = errorData.error || errorData.message || `שגיאה ${retryResponse.status}: ${retryResponse.statusText}`;
+            errorMessage = toHebrewApiErrorMessage(rawMessage);
           } catch {
             errorMessage = `שגיאה ${retryResponse.status}: ${retryResponse.statusText || 'לא ניתן להתחבר לשרת'}`;
           }
@@ -266,7 +294,8 @@ export async function apiRequest<T>(
     let errorMessage = 'הבקשה נכשלה';
     try {
       const errorData = await response.json();
-      errorMessage = errorData.error || errorData.message || `שגיאה ${response.status}: ${response.statusText}`;
+      const rawMessage = errorData.error || errorData.message || `שגיאה ${response.status}: ${response.statusText}`;
+      errorMessage = toHebrewApiErrorMessage(rawMessage);
     } catch {
       // If response is not JSON, use status text
       errorMessage = `שגיאה ${response.status}: ${response.statusText || 'לא ניתן להתחבר לשרת'}`;
@@ -295,6 +324,126 @@ export const authApi = {
     apiRequest('/api/auth/logout', {
       method: 'POST',
     }),
+
+  requestOtp: (phone: string, turnstileToken?: string | null): Promise<{ ok: boolean }> =>
+    apiRequest<{ ok: boolean }>('/api/auth/otp/request', {
+      method: 'POST',
+      body: JSON.stringify({ phone, turnstileToken }),
+      skipTenantHeader: true,
+    }),
+
+  verifyOtp: (phone: string, code: string): Promise<{
+    ok: boolean;
+    user: unknown;
+    session: {
+      access_token: string;
+      refresh_token: string;
+    };
+    phoneRequired?: boolean;
+  }> =>
+    apiRequest('/api/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+      skipTenantHeader: true,
+    }),
+
+  signupWithOtp: (payload: {
+    email: string;
+    password: string;
+    fullName: string;
+    phone: string;
+    code: string;
+  }): Promise<{
+    ok: boolean;
+    user: unknown;
+    session: {
+      access_token: string;
+      refresh_token: string;
+    };
+    phoneRequired?: boolean;
+  }> =>
+    apiRequest('/api/auth/signup-with-otp', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      skipTenantHeader: true,
+    }),
+
+  phoneStatus: (): Promise<{
+    hasPhone: boolean;
+    phoneE164: string | null;
+    phoneRequired: boolean;
+  }> =>
+    apiRequest('/api/auth/phone-status', {
+      method: 'GET',
+      skipTenantHeader: true,
+    }),
+
+  verifyMyPhone: (phone: string, code: string): Promise<{
+    ok: boolean;
+    phoneE164: string;
+    phoneRequired: boolean;
+  }> =>
+    apiRequest('/api/auth/phone/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+      skipTenantHeader: true,
+    }),
+};
+
+export const publicApi = {
+  contact: (payload: { name: string; email: string; message: string; website?: string; turnstileToken: string }): Promise<{ ok: boolean }> =>
+    apiRequest<{ ok: boolean }>('/api/public/contact', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      skipTenantHeader: true,
+    }),
+};
+
+export const supportApi = {
+  sendSms: (payload: { message: string }): Promise<{ ok: boolean }> =>
+    apiRequest<{ ok: boolean }>('/api/support/sms', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      skipTenantHeader: true,
+    }),
+
+  sendSmsWithAttachment: async (payload: {
+    message: string;
+    attachment?: File | null;
+  }): Promise<{ ok: boolean }> => {
+    const token = await getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const formData = new FormData();
+    formData.append('message', payload.message);
+    if (payload.attachment) {
+      formData.append('attachment', payload.attachment);
+    }
+
+    const url = API_URL ? `${API_URL}/api/support/sms-with-attachment` : '/api/support/sms-with-attachment';
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'הבקשה נכשלה';
+      try {
+        const errorData = await response.json();
+        const rawMessage = errorData.error || errorData.message || `שגיאה ${response.status}: ${response.statusText}`;
+        errorMessage = toHebrewApiErrorMessage(rawMessage);
+      } catch {
+        errorMessage = `שגיאה ${response.status}: ${response.statusText || 'לא ניתן להתחבר לשרת'}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
 };
 
 // Products API

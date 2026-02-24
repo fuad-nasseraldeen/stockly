@@ -1,20 +1,61 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { authApi } from '../lib/api';
+import { Turnstile } from '@marsidev/react-turnstile';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
+import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function Signup() {
+  const turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpStep, setOtpStep] = useState<'phone' | 'code'>('phone');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const [genericInfo, setGenericInfo] = useState('');
+  const [otpTurnstileToken, setOtpTurnstileToken] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  const toErrorMessage = (err: unknown, fallback: string): string => {
+    if (err instanceof Error && err.message) {
+      if (err.message.includes('SECURITY_CHECK_FAILED')) {
+        return 'אימות האבטחה נכשל. נא לנסות שוב.';
+      }
+      return err.message;
+    }
+    return fallback;
+  };
+
+  const handleRequestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setGenericInfo('');
+    setOtpLoading(true);
+
+    try {
+      if (turnstileSiteKey && !otpTurnstileToken) {
+        throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
+      }
+      await authApi.requestOtp(phone, otpTurnstileToken);
+      setOtpStep('code');
+      setResendIn(60);
+      setGenericInfo('אם המספר תקין, קוד אימות נשלח אליך');
+    } catch (err: unknown) {
+      setError(toErrorMessage(err, 'שגיאה בשליחת קוד'));
+    } finally {
+      setOtpLoading(false);
+    }
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,34 +63,84 @@ export default function Signup() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      if (otpCode.length !== 6) {
+        throw new Error('יש להזין קוד אימות בן 6 ספרות');
+      }
+
+      const result = await authApi.signupWithOtp({
         email,
         password,
-        options: {
-          data: { full_name: fullName },
-        },
+        fullName,
+        phone,
+        code: otpCode,
       });
-      if (error) throw error;
+
+      const accessToken = result?.session?.access_token;
+      const refreshToken = result?.session?.refresh_token;
+      if (!accessToken || !refreshToken) {
+        throw new Error('לא התקבלה התחברות תקינה מהשרת');
+      }
+
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (setSessionError) {
+        throw setSessionError;
+      }
+
       navigate('/products');
-    } catch (err: any) {
-      setError(err.message || 'שגיאה בהרשמה');
+    } catch (err: unknown) {
+      setError(toErrorMessage(err, 'שגיאה בהרשמה'));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResend = async () => {
+    if (resendIn > 0) return;
+    setError('');
+    setGenericInfo('');
+    setOtpLoading(true);
+    try {
+      if (turnstileSiteKey && !otpTurnstileToken) {
+        throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
+      }
+      await authApi.requestOtp(phone, otpTurnstileToken);
+      setResendIn(60);
+      setGenericInfo('אם המספר תקין, קוד אימות נשלח אליך');
+    } catch (err: unknown) {
+      setError(toErrorMessage(err, 'שגיאה בשליחת קוד'));
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendIn((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendIn]);
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-transparent">
-      <Card className="w-full max-w-md shadow-xl border-2 bg-card/95 backdrop-blur">
-        <CardHeader>
-          <CardTitle>הרשמה</CardTitle>
-          <CardDescription>צור חשבון חדש</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSignup} className="space-y-4">
+    <FlatPageLayout
+      title="הרשמה"
+      description="צור חשבון חדש"
+      maxWidthClass="max-w-md"
+    >
+      <div className="rounded-xl border border-border bg-card/60 p-4">
+          <form onSubmit={otpStep === 'phone' ? handleRequestOtp : handleSignup} className="space-y-4">
             {error && (
               <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
                 {error}
+              </div>
+            )}
+            {genericInfo && (
+              <div className="p-3 text-sm text-primary bg-primary/10 rounded-md">
+                {genericInfo}
               </div>
             )}
             <div className="space-y-2">
@@ -59,7 +150,6 @@ export default function Signup() {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                placeholder="לדוגמה: פואד מרקט"
               />
             </div>
             <div className="space-y-2">
@@ -71,6 +161,18 @@ export default function Signup() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="your@email.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">מספר טלפון</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+                placeholder="05XXXXXXXX"
+                disabled={otpStep === 'code'}
               />
             </div>
             <div className="space-y-2">
@@ -95,9 +197,72 @@ export default function Signup() {
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'נרשם...' : 'הירשם'}
-            </Button>
+            {otpStep === 'phone' ? (
+              <>
+                {turnstileSiteKey ? (
+                  <div className="flex justify-center">
+                    <div className="w-full max-w-[320px]">
+                      <Turnstile
+                        siteKey={turnstileSiteKey}
+                        onSuccess={(token) => setOtpTurnstileToken(token)}
+                        onExpire={() => setOtpTurnstileToken(null)}
+                        onError={() => setOtpTurnstileToken(null)}
+                        options={{
+                          language: 'he',
+                          theme: 'light',
+                          size: 'flexible',
+                          appearance: 'interaction-only',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                <Button type="submit" className="w-full" disabled={otpLoading}>
+                  {otpLoading ? 'שולח קוד...' : 'שלח קוד אימות לטלפון'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="otp-code">קוד אימות</Label>
+                  <Input
+                    id="otp-code"
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                    placeholder="6 ספרות"
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading || otpCode.length !== 6}>
+                  {loading ? 'נרשם...' : 'השלם הרשמה'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={otpLoading || resendIn > 0}
+                  onClick={handleResend}
+                >
+                  {resendIn > 0 ? `שלח שוב בעוד ${resendIn} שניות` : 'שלח קוד שוב'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setOtpStep('phone');
+                    setOtpCode('');
+                    setGenericInfo('');
+                    setError('');
+                  }}
+                >
+                  שינוי מספר טלפון
+                </Button>
+              </>
+            )}
             <div className="text-center text-sm">
               <span className="text-muted-foreground">כבר יש לך חשבון? </span>
               <Link to="/login" className="text-primary hover:underline">
@@ -105,8 +270,7 @@ export default function Signup() {
               </Link>
             </div>
           </form>
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+    </FlatPageLayout>
   );
 }

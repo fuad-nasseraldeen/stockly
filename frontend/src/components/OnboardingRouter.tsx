@@ -6,10 +6,10 @@ import { useSuperAdmin } from '../hooks/useSuperAdmin';
 import { invitesApi } from '../lib/api';
 import NoAccess from '../pages/NoAccess';
 import CreateTenant from '../pages/CreateTenant';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Building2, Store, Shield } from 'lucide-react';
 import { TenantLoadingBar } from './TenantLoadingBar';
+import { FlatPageLayout } from './layout/FlatPageLayout';
 
 type OnboardingStep = 'loading' | 'choice' | 'ready';
 
@@ -104,15 +104,12 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
 
   const renderOnboardingChoice = (isInitialLoading: boolean) =>
     withTenantLoader(
-      <div className="min-h-screen flex items-center justify-center px-4 py-8">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">ברוכים הבאים ל-Stockly</CardTitle>
-            <CardDescription className="text-center">
-              {isInitialLoading ? 'טוען חנויות קיימות…' : 'בחר את האפשרות המתאימה לך'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+      <FlatPageLayout
+        title="ברוכים הבאים ל-Stockly"
+        description={isInitialLoading ? 'טוען חנויות קיימות…' : 'בחר את האפשרות המתאימה לך'}
+        maxWidthClass="max-w-md"
+      >
+        <div className="space-y-6 rounded-xl border border-border bg-card/60 p-5">
             {/* Super Admin Option - Only visible to super admin (fuad@owner.com) */}
             {isSuperAdmin === true && (
               <Button
@@ -184,9 +181,8 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
                 החלף משתמש (יציאה והתחברות מחדש)
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+        </div>
+      </FlatPageLayout>
     );
 
   // Handle specific routes

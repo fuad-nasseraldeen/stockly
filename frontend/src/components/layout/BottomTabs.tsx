@@ -18,7 +18,7 @@ export function BottomTabs() {
 
   return (
     <nav
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-2 sm:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-8 z-40 px-3 pb-2 sm:hidden"
       style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.5rem)' }}
       aria-label="ניווט תחתון"
     >

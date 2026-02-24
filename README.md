@@ -37,11 +37,31 @@ cd ../frontend && npm install
 PORT=3001
 FRONTEND_URL=http://localhost:5173
 SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_ANON_KEY=<anon_public_key>
 SUPABASE_SERVICE_ROLE_KEY=<service_role>
 SUPABASE_JWT_AUDIENCE=authenticated
 AWS_REGION=<region>
 AWS_ACCESS_KEY_ID=<key>
 AWS_SECRET_ACCESS_KEY=<secret>
+SMS_TO_API_KEY=<sms_to_api_key>
+OTP_SECRET=<long_random_secret>
+SUPPORT_SMS_TO=<your_e164_phone_for_support_alerts>
+SUPPORT_UPLOADS_BUCKET=<s3_bucket_name_for_support_files>
+# Optional:
+# SUPPORT_UPLOADS_PREFIX=support-uploads
+# Optional:
+# SMS_TO_API_BASE_URL=https://api.sms.to
+# REDIS_URL=
+# REDIS_TOKEN=
+# SMTP (Contact form)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=<smtp_user>
+# SMTP_PASS=<smtp_password_or_app_password>
+# CONTACT_FROM_EMAIL=<from_email>
+# CONTACT_RECEIVER_EMAIL=<your_personal_email>
+# Turnstile (Contact form anti-bot)
+# TURNSTILE_SECRET_KEY=<server_secret_key>
 ```
 
 `frontend/.env`
@@ -50,6 +70,7 @@ AWS_SECRET_ACCESS_KEY=<secret>
 VITE_API_URL=http://localhost:3001
 VITE_SUPABASE_URL=https://<project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon_key>
+VITE_TURNSTILE_SITE_KEY=<turnstile_site_key>
 ```
 
 ## מסד נתונים
