@@ -42,6 +42,15 @@ function toHebrewApiErrorMessage(raw: string): string {
   if (code.includes('EMAIL_ALREADY_EXISTS')) {
     return 'כתובת האימייל כבר קיימת במערכת.';
   }
+  if (code.includes('PHONE_ALREADY_EXISTS')) {
+    return 'מספר הטלפון כבר קיים במערכת. אפשר להתחבר לחשבון הקיים.';
+  }
+  if (code.includes('OTP_SEND_FAILED')) {
+    return 'לא הצלחנו לשלוח קוד אימות כרגע. נסה שוב בעוד כמה דקות.';
+  }
+  if (code.includes('OTP_RATE_LIMITED')) {
+    return 'בוצעו יותר מדי ניסיונות. נסה שוב בעוד כמה דקות.';
+  }
   if (code.includes('PHONE_NOT_REGISTERED')) {
     return 'המספר הזה לא רשום במערכת. אפשר להירשם קודם.';
   }
@@ -127,7 +136,8 @@ export type TenantMember = {
 
 export type TenantInvite = {
   id: string;
-  email: string;
+  email: string | null;
+  phone_e164: string | null;
   role: 'owner' | 'worker';
   expires_at: string;
   accepted_at: string | null;
@@ -325,10 +335,19 @@ export const authApi = {
       method: 'POST',
     }),
 
-  requestOtp: (phone: string, turnstileToken?: string | null): Promise<{ ok: boolean }> =>
+  requestOtp: (
+    phone: string,
+    turnstileToken?: string | null,
+    options?: { flow?: 'login' | 'signup' | 'verify_phone'; email?: string }
+  ): Promise<{ ok: boolean }> =>
     apiRequest<{ ok: boolean }>('/api/auth/otp/request', {
       method: 'POST',
-      body: JSON.stringify({ phone, turnstileToken }),
+      body: JSON.stringify({
+        phone,
+        turnstileToken,
+        flow: options?.flow,
+        email: options?.email,
+      }),
       skipTenantHeader: true,
     }),
 
@@ -624,7 +643,7 @@ export const settingsApi = {
 
 // Tenant maintenance API
 export const tenantApi = {
-  reset: (confirmation: 'DELETE'): Promise<{ message?: string }> =>
+  reset: (confirmation: 'מחק'): Promise<{ message?: string }> =>
     apiRequest('/api/tenant/reset', {
       method: 'POST',
       body: JSON.stringify({ confirmation }),
@@ -641,6 +660,25 @@ export const tenantApi = {
     }),
 };
 
+export const accountApi = {
+  delete: (payload: {
+    confirmation: 'מחק';
+    reason:
+      | 'not_satisfied'
+      | 'too_expensive'
+      | 'stopped_working_with_suppliers'
+      | 'moved_to_other_system'
+      | 'missing_features'
+      | 'other';
+    message?: string;
+  }): Promise<{ ok: boolean }> =>
+    apiRequest('/api/account/delete', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      skipTenantHeader: true,
+    }),
+};
+
 // Tenants API
 export const tenantsApi = {
   list: (): Promise<Tenant[]> => apiRequest<Tenant[]>('/api/tenants', { skipTenantHeader: true }),
@@ -651,7 +689,10 @@ export const tenantsApi = {
       body: JSON.stringify(data),
     }),
   
-  invite: (tenantId: string, data: { email: string; role?: 'owner' | 'worker' }): Promise<{ message?: string }> =>
+  invite: (
+    tenantId: string,
+    data: { email?: string; phone?: string; role?: 'owner' | 'worker' }
+  ): Promise<{ message?: string; inviteUrl?: string }> =>
     apiRequest(`/api/tenants/${tenantId}/invite`, {
       method: 'POST',
       body: JSON.stringify(data),

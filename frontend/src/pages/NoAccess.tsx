@@ -69,7 +69,7 @@ export default function NoAccess() {
                 </div>
                 <p className="font-medium mt-1 break-all">{userEmail}</p>
                 <p className="text-xs text-muted-foreground mt-2">
-                  שלח את כתובת האימייל הזו לבעל החנות כדי לקבל הזמנה
+                  שלח את כתובת האימייל הזו (או מספר טלפון מאומת) לבעל החנות כדי לקבל הזמנה
                 </p>
               </div>
             )}
@@ -80,7 +80,7 @@ export default function NoAccess() {
               </p>
               <ol className="text-sm text-blue-800 dark:text-blue-200 mt-2 space-y-1 list-decimal list-inside">
                 <li>צור קשר עם בעל החנות</li>
-                <li>בקש ממנו להזמין את כתובת האימייל שלך</li>
+                <li>בקש ממנו להזמין את כתובת האימייל או מספר הטלפון המאומת שלך</li>
                 <li>לחץ על "בדוק שוב" לאחר שתקבל הזמנה</li>
               </ol>
             </div>

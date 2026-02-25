@@ -10,7 +10,7 @@ export function PublicAuthFooter() {
             <p className="text-slate-300">
               פלטפורמת ניהול מלאי וספקים לעסקים קטנים ובינוניים בישראל.
             </p>
-            <Link to="/#about" className="text-sky-300 hover:underline">
+            <Link to="/about" className="text-sky-300 hover:underline">
               קרא עוד
             </Link>
           </div>
@@ -20,7 +20,7 @@ export function PublicAuthFooter() {
             <p className="text-slate-300">
               ניהול פשוט ומהיר של מוצרים, ספקים ותמחור במקום אחד.
             </p>
-            <Link to="/#why-stockly" className="text-sky-300 hover:underline">
+            <Link to="/about" className="text-sky-300 hover:underline">
               למה זה חשוב
             </Link>
           </div>
@@ -30,7 +30,7 @@ export function PublicAuthFooter() {
             <p className="text-slate-300">
               לבעלי עסקים, מכולות וחנויות שרוצים סדר, שליטה וחיסכון בזמן.
             </p>
-            <Link to="/#who-its-for" className="text-sky-300 hover:underline">
+            <Link to="/about" className="text-sky-300 hover:underline">
               למי השירות מתאים
             </Link>
           </div>

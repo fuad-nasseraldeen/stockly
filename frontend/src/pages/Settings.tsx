@@ -7,9 +7,10 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
-import { tenantsApi, tenantApi, settingsApi, type TenantMember, type TenantInvite } from '../lib/api';
+import { accountApi, authApi, tenantsApi, tenantApi, settingsApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { getTableLayoutProductsKey } from '../lib/table-layout-keys';
@@ -40,11 +41,35 @@ export default function Settings() {
   const [password, setPassword] = useState('');
 
   const [inviteEmail, setInviteEmail] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteTargetType, setInviteTargetType] = useState<'email' | 'phone'>('email');
   const [inviteRole, setInviteRole] = useState<'owner' | 'worker'>('worker');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [profilePhoneE164, setProfilePhoneE164] = useState<string | null>(null);
+  const [phoneStatusLoading, setPhoneStatusLoading] = useState(false);
+  const [profilePhoneStep, setProfilePhoneStep] = useState<'idle' | 'phone' | 'code'>('idle');
+  const [profilePhoneInput, setProfilePhoneInput] = useState('');
+  const [profilePhoneCode, setProfilePhoneCode] = useState('');
+  const [profilePhoneLoading, setProfilePhoneLoading] = useState(false);
+  const [profilePhoneError, setProfilePhoneError] = useState<string | null>(null);
+  const [profilePhoneMessage, setProfilePhoneMessage] = useState<string | null>(null);
+  const [profilePhoneResendIn, setProfilePhoneResendIn] = useState(0);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetConfirmationText, setResetConfirmationText] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deleteReason, setDeleteReason] = useState<
+    'not_satisfied' | 'too_expensive' | 'stopped_working_with_suppliers' | 'moved_to_other_system' | 'missing_features' | 'other'
+  >('not_satisfied');
+  const [deleteMessage, setDeleteMessage] = useState('');
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [dangerActionMessage, setDangerActionMessage] = useState<string | null>(null);
 
   const removeMember = useMutation({
     mutationFn: (userId: string) => tenantApi.removeMember(userId),
@@ -80,6 +105,14 @@ export default function Settings() {
     setUseVat(settings.use_vat === true);
     setDecimalPrecision(settings.decimal_precision != null ? String(settings.decimal_precision) : '2');
   }, [settings]);
+
+  useEffect(() => {
+    if (profilePhoneResendIn <= 0) return;
+    const timer = window.setInterval(() => {
+      setProfilePhoneResendIn((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [profilePhoneResendIn]);
 
   const [savingVat, setSavingVat] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -199,6 +232,72 @@ export default function Settings() {
     }
   };
 
+  const toPhoneFlowErrorMessage = (err: unknown): string => {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('INVALID_CODE')) return 'קוד האימות לא תקין או שפג תוקף הקוד.';
+    if (message.includes('INVALID_PHONE')) return 'מספר הטלפון שהוזן אינו תקין.';
+    if (message.includes('PHONE_MISMATCH')) return 'המספר שייך כבר לחשבון אחר.';
+    return message || 'שגיאה בתהליך אימות הטלפון';
+  };
+
+  const loadPhoneStatus = async (): Promise<void> => {
+    try {
+      setPhoneStatusLoading(true);
+      const status = await authApi.phoneStatus();
+      setProfilePhoneE164(status.phoneE164);
+    } catch {
+      setProfilePhoneE164(null);
+    } finally {
+      setPhoneStatusLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadPhoneStatus();
+  }, []);
+
+  const startPhoneChange = (): void => {
+    setProfilePhoneStep('phone');
+    setProfilePhoneInput(profilePhoneE164 || '');
+    setProfilePhoneCode('');
+    setProfilePhoneError(null);
+    setProfilePhoneMessage(null);
+  };
+
+  const requestProfilePhoneOtp = async (): Promise<void> => {
+    setProfilePhoneError(null);
+    setProfilePhoneMessage(null);
+    try {
+      setProfilePhoneLoading(true);
+      await authApi.requestOtp(profilePhoneInput);
+      setProfilePhoneStep('code');
+      setProfilePhoneResendIn(60);
+    } catch (error) {
+      setProfilePhoneError(toPhoneFlowErrorMessage(error));
+    } finally {
+      setProfilePhoneLoading(false);
+    }
+  };
+
+  const verifyProfilePhoneOtp = async (): Promise<void> => {
+    setProfilePhoneError(null);
+    setProfilePhoneMessage(null);
+    try {
+      setProfilePhoneLoading(true);
+      await authApi.verifyMyPhone(profilePhoneInput, profilePhoneCode);
+      await loadPhoneStatus();
+      setProfilePhoneStep('idle');
+      setProfilePhoneInput('');
+      setProfilePhoneCode('');
+      setProfilePhoneResendIn(0);
+      setProfilePhoneMessage('מספר הטלפון אומת ועודכן בהצלחה');
+    } catch (error) {
+      setProfilePhoneError(toPhoneFlowErrorMessage(error));
+    } finally {
+      setProfilePhoneLoading(false);
+    }
+  };
+
   const handleSendInvite = async (): Promise<void> => {
     if (!currentTenant) {
       setInviteError('אין טננט פעיל');
@@ -206,8 +305,14 @@ export default function Settings() {
     }
 
     const email = inviteEmail.trim();
-    if (!email) {
+    const phone = invitePhone.trim();
+
+    if (inviteTargetType === 'email' && !email) {
       setInviteError('נא להזין כתובת אימייל');
+      return;
+    }
+    if (inviteTargetType === 'phone' && !phone) {
+      setInviteError('נא להזין מספר טלפון');
       return;
     }
 
@@ -218,15 +323,16 @@ export default function Settings() {
       setInviteUrl(null);
 
       const result = await tenantsApi.invite(currentTenant.id, {
-        email,
+        ...(inviteTargetType === 'email' ? { email } : { phone }),
         role: inviteRole,
       });
 
-      setInviteMessage('ההזמנה נוצרה בהצלחה. שלח את הקישור או ודא שהמוזמן מתחבר עם האימייל הזה.');
+      setInviteMessage('ההזמנה נוצרה בהצלחה. שלח את הקישור למוזמן או בקש ממנו להתחבר עם אותו יעד הזמנה.');
       if ((result as any)?.inviteUrl) {
         setInviteUrl((result as any).inviteUrl);
       }
       setInviteEmail('');
+      setInvitePhone('');
     } catch (error: any) {
       console.error('Error sending invite:', error);
       setInviteError(error?.message || 'שגיאה ביצירת הזמנה');
@@ -239,7 +345,56 @@ export default function Settings() {
     window.dispatchEvent(new Event('stockly:open-support-sms-dialog'));
   };
 
+  const handleResetTenantData = async (): Promise<void> => {
+    if (resetConfirmationText.trim() !== 'מחק') {
+      setResetMessage('יש להקליד "מחק" בדיוק כדי לאשר איפוס נתונים');
+      return;
+    }
+    try {
+      setResetLoading(true);
+      setResetMessage(null);
+      setDangerActionMessage(null);
+      await tenantApi.reset('מחק');
+      setResetDialogOpen(false);
+      setResetConfirmationText('');
+      setDangerActionMessage('כל נתוני החנות אופסו בהצלחה');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
+        queryClient.invalidateQueries({ queryKey: ['categories'] }),
+        queryClient.invalidateQueries({ queryKey: ['settings'] }),
+      ]);
+    } catch (error) {
+      setResetMessage(error instanceof Error ? error.message : 'שגיאה באיפוס נתונים');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async (): Promise<void> => {
+    if (deleteConfirmationText.trim() !== 'מחק') {
+      setDeleteAccountError('יש להקליד "מחק" בדיוק כדי לאשר מחיקת חשבון');
+      return;
+    }
+    try {
+      setDeleteAccountLoading(true);
+      setDeleteAccountError(null);
+      await accountApi.delete({
+        confirmation: 'מחק',
+        reason: deleteReason,
+        message: deleteMessage.trim() || undefined,
+      });
+      await supabase.auth.signOut();
+      window.location.href = '/about';
+    } catch (error) {
+      setDeleteAccountError(error instanceof Error ? error.message : 'שגיאה במחיקת החשבון');
+    } finally {
+      setDeleteAccountLoading(false);
+    }
+  };
+
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">הגדרות</h1>
@@ -257,6 +412,43 @@ export default function Settings() {
           <Button onClick={openSupportSmsDialog} className="w-full sm:w-auto">
             פנה לתמיכה ב-SMS
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-md border-2 border-destructive/40">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold text-destructive">אזור פעולות רגישות</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            פעולות אלה בלתי הפיכות. מומלץ לוודא לפני אישור.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setResetDialogOpen(true);
+                setResetMessage(null);
+              }}
+            >
+              אפס/מחק את כל נתוני החנות
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-destructive text-destructive hover:bg-destructive/10"
+              onClick={() => {
+                setDeleteAccountDialogOpen(true);
+                setDeleteAccountError(null);
+              }}
+            >
+              מחק את החשבון שלי
+            </Button>
+          </div>
+          {dangerActionMessage ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">{dangerActionMessage}</p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -418,17 +610,34 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                הזמן עובדים או שותפים לחנות הנוכחית באמצעות כתובת אימייל. המוזמן יצטרך להתחבר עם אותו אימייל כדי לקבל גישה.
+                הזמן עובדים או שותפים לחנות הנוכחית באמצעות אימייל או מספר טלפון מאומת.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="inviteTargetType">סוג הזמנה</Label>
+                  <select
+                    id="inviteTargetType"
+                    className="border-input bg-background px-3 py-2 rounded-md text-sm w-full"
+                    value={inviteTargetType}
+                    onChange={(e) => setInviteTargetType(e.target.value as 'email' | 'phone')}
+                  >
+                    <option value="email">אימייל</option>
+                    <option value="phone">טלפון</option>
+                  </select>
+                </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="inviteEmail">אימייל של המוזמן</Label>
+                  <Label htmlFor="inviteTargetValue">
+                    {inviteTargetType === 'email' ? 'אימייל של המוזמן' : 'טלפון של המוזמן'}
+                  </Label>
                   <Input
-                    id="inviteEmail"
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="name@example.com"
+                    id="inviteTargetValue"
+                    type={inviteTargetType === 'email' ? 'email' : 'tel'}
+                    value={inviteTargetType === 'email' ? inviteEmail : invitePhone}
+                    onChange={(e) => {
+                      if (inviteTargetType === 'email') setInviteEmail(e.target.value);
+                      else setInvitePhone(e.target.value);
+                    }}
+                    placeholder={inviteTargetType === 'email' ? 'name@example.com' : '05XXXXXXXX'}
                   />
                 </div>
                 <div className="space-y-2">
@@ -470,7 +679,7 @@ export default function Settings() {
                     <p className="font-medium mb-1">קישור הזמנה:</p>
                     <p>{inviteUrl}</p>
                     <p className="mt-1 text-muted-foreground">
-                      שלח קישור זה למוזמן, או שהוא יכול פשוט להתחבר עם האימייל שהזנת – המערכת תזהה את ההזמנה אוטומטית.
+                      שלח קישור זה למוזמן, או שהוא יכול להתחבר עם אותו אימייל/טלפון שהוזן בהזמנה והמערכת תזהה אוטומטית.
                     </p>
                   </div>
                 )}
@@ -537,7 +746,7 @@ export default function Settings() {
                         className="flex items-center justify-between border rounded-md px-3 py-2"
                       >
                         <div className="flex flex-col gap-0.5">
-                          <span className="font-medium break-all">{inv.email}</span>
+                          <span className="font-medium break-all">{inv.email || inv.phone_e164 || 'יעד לא ידוע'}</span>
                           <span className="text-xs text-muted-foreground">
                             {inv.role === 'owner' ? 'בעלים (הזמנה)' : 'עובד (הזמנה)'}
                           </span>
@@ -589,6 +798,111 @@ export default function Settings() {
               />
             </div>
           </div>
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div className="space-y-2">
+              <Label htmlFor="profilePhoneE164">מספר טלפון מאומת</Label>
+              <Input
+                id="profilePhoneE164"
+                value={phoneStatusLoading ? 'טוען...' : (profilePhoneE164 || 'לא הוגדר עדיין')}
+                disabled
+                className="bg-muted cursor-not-allowed"
+              />
+              <p className="text-xs text-muted-foreground">
+                המספר הזה משמש להתחברות/אימות ולזיהוי הזמנות לפי טלפון.
+              </p>
+            </div>
+
+            {profilePhoneError ? (
+              <p className="text-xs text-destructive">{profilePhoneError}</p>
+            ) : null}
+            {profilePhoneMessage ? (
+              <p className="text-xs text-emerald-700 dark:text-emerald-400">{profilePhoneMessage}</p>
+            ) : null}
+
+            {profilePhoneStep === 'idle' ? (
+              <Button type="button" variant="outline" onClick={startPhoneChange}>
+                {profilePhoneE164 ? 'החלף מספר טלפון' : 'אמת מספר טלפון'}
+              </Button>
+            ) : null}
+
+            {profilePhoneStep === 'phone' ? (
+              <div className="space-y-2">
+                <Label htmlFor="profilePhoneInput">מספר טלפון חדש</Label>
+                <Input
+                  id="profilePhoneInput"
+                  type="tel"
+                  value={profilePhoneInput}
+                  onChange={(e) => setProfilePhoneInput(e.target.value)}
+                  placeholder="05XXXXXXXX"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={requestProfilePhoneOtp}
+                    disabled={profilePhoneLoading || profilePhoneInput.trim().length === 0}
+                  >
+                    {profilePhoneLoading ? 'שולח קוד...' : 'שלח קוד אימות'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setProfilePhoneStep('idle');
+                      setProfilePhoneInput('');
+                      setProfilePhoneError(null);
+                    }}
+                    disabled={profilePhoneLoading}
+                  >
+                    ביטול
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {profilePhoneStep === 'code' ? (
+              <div className="space-y-2">
+                <Label htmlFor="profilePhoneCode">קוד אימות</Label>
+                <Input
+                  id="profilePhoneCode"
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={profilePhoneCode}
+                  onChange={(e) => setProfilePhoneCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6 ספרות"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={verifyProfilePhoneOtp}
+                    disabled={profilePhoneLoading || profilePhoneCode.length !== 6}
+                  >
+                    {profilePhoneLoading ? 'מאמת...' : 'אמת מספר'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={requestProfilePhoneOtp}
+                    disabled={profilePhoneLoading || profilePhoneResendIn > 0}
+                  >
+                    {profilePhoneResendIn > 0 ? `שלח שוב בעוד ${profilePhoneResendIn} שניות` : 'שלח קוד שוב'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setProfilePhoneStep('phone');
+                      setProfilePhoneCode('');
+                      setProfilePhoneError(null);
+                    }}
+                    disabled={profilePhoneLoading}
+                  >
+                    שינוי מספר
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="password">סיסמה חדשה</Label>
             <div className="relative">
@@ -620,6 +934,93 @@ export default function Settings() {
       </Card>
 
     </div>
+    <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>איפוס/מחיקת כל נתוני החנות</DialogTitle>
+          <DialogDescription>
+            פעולה זו מוחקת את כל המוצרים, הספקים והיסטוריית המחירים בחנות הנוכחית. כדי לאשר, הקלד "מחק".
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="reset-confirm">אישור מחיקה</Label>
+          <Input
+            id="reset-confirm"
+            value={resetConfirmationText}
+            onChange={(e) => setResetConfirmationText(e.target.value)}
+            placeholder='הקלד: מחק'
+          />
+          {resetMessage ? <p className="text-xs text-destructive">{resetMessage}</p> : null}
+        </div>
+        <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
+          <Button type="button" variant="destructive" onClick={handleResetTenantData} disabled={resetLoading}>
+            {resetLoading ? 'מוחק נתונים...' : 'מחק את כל הנתונים'}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setResetDialogOpen(false)} disabled={resetLoading}>
+            ביטול
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={deleteAccountDialogOpen} onOpenChange={setDeleteAccountDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>מחיקת החשבון שלי</DialogTitle>
+          <DialogDescription>
+            פעולה זו מוחקת את חשבון המשתמש. לפני המחיקה, נבקש ממך לבחור סיבה. כדי לאשר, הקלד "מחק".
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="delete-reason">סיבת עזיבה</Label>
+            <select
+              id="delete-reason"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={deleteReason}
+              onChange={(e) => setDeleteReason(e.target.value as typeof deleteReason)}
+            >
+              <option value="not_satisfied">לא מרוצה מהאפליקציה</option>
+              <option value="too_expensive">יקר לי כרגע</option>
+              <option value="stopped_working_with_suppliers">הפסקתי לעבוד עם ספקים</option>
+              <option value="moved_to_other_system">עברתי למערכת אחרת</option>
+              <option value="missing_features">חסרות לי יכולות</option>
+              <option value="other">אחר</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="delete-message">הודעה נוספת (אופציונלי)</Label>
+            <textarea
+              id="delete-message"
+              className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={deleteMessage}
+              onChange={(e) => setDeleteMessage(e.target.value)}
+              maxLength={500}
+              placeholder="אפשר לרשום כאן מה היה חסר לך או למה החלטת לעזוב..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="delete-confirm">אישור מחיקה</Label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirmationText}
+              onChange={(e) => setDeleteConfirmationText(e.target.value)}
+              placeholder='הקלד: מחק'
+            />
+          </div>
+          {deleteAccountError ? <p className="text-xs text-destructive">{deleteAccountError}</p> : null}
+        </div>
+        <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
+          <Button type="button" variant="destructive" onClick={handleDeleteAccount} disabled={deleteAccountLoading}>
+            {deleteAccountLoading ? 'מוחק חשבון...' : 'מחק את החשבון שלי'}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setDeleteAccountDialogOpen(false)} disabled={deleteAccountLoading}>
+            ביטול
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

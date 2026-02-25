@@ -712,8 +712,8 @@ export default function ImportExport() {
       setError('בחר ספק קיים או הקלד ספק חדש לפני Apply');
       return;
     }
-    if (mode === 'overwrite' && overwriteConfirm !== 'DELETE') {
-      setError('במצב החלפה יש להקליד DELETE');
+    if (mode === 'overwrite' && overwriteConfirm !== 'מחק') {
+      setError('במצב החלפה יש להקליד "מחק"');
       return;
     }
     setLoadingPhase('apply');
@@ -1835,17 +1835,17 @@ export default function ImportExport() {
 
             {mode === 'overwrite' ? (
               <div className="space-y-2 rounded-lg border border-destructive/30 p-3">
-                <Label htmlFor="overwrite-confirm">הקלד DELETE לאישור</Label>
+                <Label htmlFor="overwrite-confirm">הקלד "מחק" לאישור</Label>
                 <Input
                   id="overwrite-confirm"
                   value={overwriteConfirm}
                   onChange={(e) => setOverwriteConfirm(e.target.value)}
-                  placeholder="DELETE"
+                  placeholder="מחק"
                 />
               </div>
             ) : null}
 
-            <Button onClick={handleApply} disabled={loading || (mode === 'overwrite' && overwriteConfirm !== 'DELETE')}>
+            <Button onClick={handleApply} disabled={loading || (mode === 'overwrite' && overwriteConfirm !== 'מחק')}>
               {loading ? 'מייבא...' : 'Apply Import'}
             </Button>
 

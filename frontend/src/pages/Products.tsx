@@ -124,6 +124,15 @@ export default function Products() {
   const totalPages = productsData?.totalPages || 0;
   const currentPage = productsData?.page || 1;
 
+  const goToPage = (nextPage: number): void => {
+    setPage(nextPage);
+    window.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: 'smooth',
+    });
+  };
+
   const { data: suppliers = [] } = useSuppliers();
   const { data: categories = [] } = useCategories();
   const { data: settings } = useSettings();
@@ -1178,7 +1187,7 @@ export default function Products() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
             >
               קודם
@@ -1189,7 +1198,7 @@ export default function Products() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
             >
               הבא

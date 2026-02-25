@@ -28,6 +28,10 @@ export default function Login() {
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message) {
+      const raw = err.message.toLowerCase();
+      if (raw.includes('invalid login credentials')) {
+        return 'האימייל לא רשום במערכת או שהסיסמה שגויה.';
+      }
       if (err.message.includes('SECURITY_CHECK_FAILED')) {
         return 'אימות האבטחה נכשל. נא לנסות שוב.';
       }
@@ -260,7 +264,7 @@ export default function Login() {
                           language: 'he',
                           theme: 'light',
                           size: 'flexible',
-                          appearance: 'interaction-only',
+                          appearance: 'always',
                         }}
                       />
                     </div>

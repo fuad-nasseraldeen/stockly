@@ -27,6 +27,7 @@ import Admin from './pages/Admin';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import PublicLanding from './pages/PublicLanding';
+import About from './pages/About';
 import Contact from './pages/Contact';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
@@ -37,6 +38,7 @@ import { Label } from './components/ui/label';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { authApi, supportApi } from './lib/api';
+import { RouteScrollToTop } from './components/RouteScrollToTop';
 
 const SUPPORT_DIALOG_EVENT = 'stockly:open-support-sms-dialog';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
@@ -114,6 +116,7 @@ function App() {
   return (
     <BrowserRouter>
       <TenantProvider>
+        <RouteScrollToTop />
         <AppContent
           user={user}
           onLogout={handleLogout}
@@ -259,6 +262,7 @@ function AppContent({
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/contact" element={<Contact />} />
+                <Route path="/about" element={<About />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/" element={<PublicLanding />} />
@@ -533,6 +537,7 @@ function AppWithNavigation({
             <Route path="/settings" element={<Settings />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/about" element={<About />} />
             <Route path="/" element={<Navigate to="/products" />} />
             <Route path="*" element={<Navigate to="/products" replace />} />
           </Routes>
@@ -553,6 +558,12 @@ function AppWithNavigation({
               className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
             >
               תנאי שימוש
+            </Link>
+            <Link
+              to="/about"
+              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
+            >
+              Why Stockly
             </Link>
           </div>
         </div>

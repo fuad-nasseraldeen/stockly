@@ -46,7 +46,10 @@ export default function Signup() {
       if (turnstileSiteKey && !otpTurnstileToken) {
         throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
       }
-      await authApi.requestOtp(phone, otpTurnstileToken);
+      await authApi.requestOtp(phone, otpTurnstileToken, {
+        flow: 'signup',
+        email,
+      });
       setOtpStep('code');
       setResendIn(60);
       setGenericInfo('אם המספר תקין, קוד אימות נשלח אליך');
@@ -107,7 +110,10 @@ export default function Signup() {
       if (turnstileSiteKey && !otpTurnstileToken) {
         throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
       }
-      await authApi.requestOtp(phone, otpTurnstileToken);
+      await authApi.requestOtp(phone, otpTurnstileToken, {
+        flow: 'signup',
+        email,
+      });
       setResendIn(60);
       setGenericInfo('אם המספר תקין, קוד אימות נשלח אליך');
     } catch (err: unknown) {
@@ -211,7 +217,7 @@ export default function Signup() {
                           language: 'he',
                           theme: 'light',
                           size: 'flexible',
-                          appearance: 'interaction-only',
+                          appearance: 'always',
                         }}
                       />
                     </div>
