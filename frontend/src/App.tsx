@@ -24,6 +24,8 @@ import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
 import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
+import SupportChat from './pages/SupportChat';
+import AdminSupportInbox from './pages/AdminSupportInbox';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import PublicLanding from './pages/PublicLanding';
@@ -37,10 +39,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from './components/ui/label';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
-import { authApi, supportApi } from './lib/api';
+import { authApi } from './lib/api';
 import { RouteScrollToTop } from './components/RouteScrollToTop';
-
-const SUPPORT_DIALOG_EVENT = 'stockly:open-support-sms-dialog';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 
 function App() {
@@ -440,22 +440,7 @@ function AppWithNavigation({
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
   const location = useLocation();
-  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
-  const [supportMessage, setSupportMessage] = useState('');
-  const [supportAttachmentFile, setSupportAttachmentFile] = useState<File | null>(null);
-  const [supportSending, setSupportSending] = useState(false);
-  const [supportError, setSupportError] = useState('');
-  const [supportStatus, setSupportStatus] = useState('');
-
-  useEffect(() => {
-    const openDialog = () => {
-      setSupportError('');
-      setSupportStatus('');
-      setSupportDialogOpen(true);
-    };
-    window.addEventListener(SUPPORT_DIALOG_EVENT, openDialog);
-    return () => window.removeEventListener(SUPPORT_DIALOG_EVENT, openDialog);
-  }, []);
+  const navigate = useNavigate();
  
   // Super admin can access /admin without a tenant
   const isAdminPage = location.pathname === '/admin';
@@ -465,38 +450,6 @@ function AppWithNavigation({
   if (!canAccess) {
     return null;
   }
-
-  const openSupportDialog = () => {
-    setSupportError('');
-    setSupportStatus('');
-    setSupportDialogOpen(true);
-  };
-
-  const sendSupportSms = async () => {
-    setSupportError('');
-    setSupportStatus('');
-
-    const message = supportMessage.trim();
-    if (message.length < 5) {
-      setSupportError('נא לכתוב הודעה קצרה (לפחות 5 תווים).');
-      return;
-    }
-
-    try {
-      setSupportSending(true);
-      await supportApi.sendSmsWithAttachment({
-        message,
-        attachment: supportAttachmentFile,
-      });
-      setSupportStatus('ההודעה נשלחה בהצלחה לתמיכה.');
-      setSupportMessage('');
-      setSupportAttachmentFile(null);
-    } catch (error) {
-      setSupportError(error instanceof Error ? error.message : 'שליחת ההודעה נכשלה');
-    } finally {
-      setSupportSending(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
@@ -533,6 +486,7 @@ function AppWithNavigation({
             <Route path="/categories" element={<Categories />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/import-export" element={<ImportExport />} />
+            <Route path="/support" element={<SupportChat />} />
             <Route 
               path="/admin" 
               element={
@@ -540,6 +494,14 @@ function AppWithNavigation({
                   <Admin />
                 </AdminRouteGuard>
               } 
+            />
+            <Route
+              path="/admin/support"
+              element={
+                <AdminRouteGuard>
+                  <AdminSupportInbox />
+                </AdminRouteGuard>
+              }
             />
             <Route path="/settings" element={<Settings />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -580,7 +542,7 @@ function AppWithNavigation({
       <div className="fixed bottom-24 left-4 z-40 sm:bottom-6">
         <button
           type="button"
-          onClick={openSupportDialog}
+          onClick={() => navigate('/support')}
           className="group h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-200 hover:scale-110 hover:shadow-xl"
           aria-label="פתח תמיכה"
           title="תמיכה"
@@ -588,66 +550,6 @@ function AppWithNavigation({
           <span className="text-lg font-bold transition-transform duration-200 group-hover:scale-110">?</span>
         </button>
       </div>
-
-      <Dialog
-        open={supportDialogOpen}
-        onOpenChange={(open) => {
-          setSupportDialogOpen(open);
-          if (!open) {
-            setSupportError('');
-            setSupportStatus('');
-          }
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>שליחת הודעת תמיכה ב-SMS</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {supportError ? (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
-                {supportError}
-              </div>
-            ) : null}
-            {supportStatus ? (
-              <div className="p-3 text-sm text-primary bg-primary/10 rounded-md">
-                {supportStatus}
-              </div>
-            ) : null}
-            <div className="space-y-2">
-              <Label htmlFor="support-message">הודעה</Label>
-              <textarea
-                id="support-message"
-                className="min-h-28 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={supportMessage}
-                onChange={(e) => setSupportMessage(e.target.value)}
-                maxLength={500}
-                placeholder="כתוב כאן מה מפריע לך או מה תרצה לשפר..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="support-attachment">צרף קובץ/תמונה (אופציונלי)</Label>
-              <Input
-                id="support-attachment"
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => setSupportAttachmentFile(e.target.files?.[0] || null)}
-              />
-              {supportAttachmentFile ? (
-                <p className="text-xs text-muted-foreground">נבחר: {supportAttachmentFile.name}</p>
-              ) : null}
-            </div>
-          </div>
-          <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
-            <Button type="button" onClick={sendSupportSms} disabled={supportSending}>
-              {supportSending ? 'שולח...' : 'שלח לתמיכה'}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setSupportDialogOpen(false)} disabled={supportSending}>
-              סגור
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -341,10 +341,6 @@ export default function Settings() {
     }
   };
 
-  const openSupportSmsDialog = (): void => {
-    window.dispatchEvent(new Event('stockly:open-support-sms-dialog'));
-  };
-
   const handleResetTenantData = async (): Promise<void> => {
     if (resetConfirmationText.trim() !== 'מחק') {
       setResetMessage('יש להקליד "מחק" בדיוק כדי לאשר איפוס נתונים');
@@ -407,10 +403,10 @@ export default function Settings() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            אפשר לשלוח לנו הודעת SMS ישירות מתוך המערכת. ניתן גם לצרף קישור לתמונה/קובץ.
+            אפשר לפתוח שיחת תמיכה דו-כיוונית ישירות מתוך המערכת, כולל צירוף קובץ או תמונה.
           </p>
-          <Button onClick={openSupportSmsDialog} className="w-full sm:w-auto">
-            פנה לתמיכה ב-SMS
+          <Button onClick={() => navigate('/support')} className="w-full sm:w-auto">
+            פתח צ׳אט תמיכה
           </Button>
         </CardContent>
       </Card>

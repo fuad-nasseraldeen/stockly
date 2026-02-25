@@ -144,6 +144,27 @@ export type TenantInvite = {
   created_at: string;
 };
 
+export type SupportThread = {
+  id: string;
+  user_id: string;
+  tenant_id: string | null;
+  status: 'open' | 'closed';
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+};
+
+export type SupportMessage = {
+  id: string;
+  thread_id: string;
+  sender_type: 'user' | 'support';
+  sender_user_id: string | null;
+  message: string | null;
+  attachment_url: string | null;
+  created_at: string;
+  read_at: string | null;
+};
+
 async function getAuthToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || null;
@@ -463,6 +484,60 @@ export const supportApi = {
 
     return response.json();
   },
+};
+
+export const supportChatApi = {
+  getMyThread: (): Promise<SupportThread> =>
+    apiRequest('/api/support-chat/thread', {
+      method: 'GET',
+      skipTenantHeader: true,
+    }),
+
+  getMyMessages: (threadId: string): Promise<SupportMessage[]> =>
+    apiRequest(`/api/support-chat/messages?threadId=${encodeURIComponent(threadId)}`, {
+      method: 'GET',
+      skipTenantHeader: true,
+    }),
+
+  sendMyMessage: async (payload: {
+    threadId?: string;
+    message?: string;
+    attachment?: File | null;
+  }): Promise<SupportMessage> => {
+    const token = await getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const form = new FormData();
+    if (payload.threadId) form.append('threadId', payload.threadId);
+    if (payload.message) form.append('message', payload.message);
+    if (payload.attachment) form.append('attachment', payload.attachment);
+    const url = API_URL ? `${API_URL}/api/support-chat/messages` : '/api/support-chat/messages';
+    const response = await fetch(url, { method: 'POST', headers, body: form });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'שגיאה בשליחת הודעה' }));
+      throw new Error(toHebrewApiErrorMessage(errorData.error || 'שגיאה בשליחת הודעה'));
+    }
+    return response.json();
+  },
+
+  adminThreads: (): Promise<SupportThread[]> =>
+    apiRequest('/api/support-chat/admin/threads', {
+      method: 'GET',
+      skipTenantHeader: true,
+    }),
+
+  adminMessages: (threadId: string): Promise<SupportMessage[]> =>
+    apiRequest(`/api/support-chat/admin/messages?threadId=${encodeURIComponent(threadId)}`, {
+      method: 'GET',
+      skipTenantHeader: true,
+    }),
+
+  adminSendMessage: (threadId: string, message: string): Promise<SupportMessage> =>
+    apiRequest('/api/support-chat/admin/messages', {
+      method: 'POST',
+      body: JSON.stringify({ threadId, message }),
+      skipTenantHeader: true,
+    }),
 };
 
 // Products API

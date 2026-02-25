@@ -8,6 +8,12 @@ import { Label } from '../components/ui/label';
 
 const GENERIC_SUCCESS_MESSAGE = 'אם האימייל קיים במערכת, נשלח אליו קישור לאיפוס סיסמה.';
 
+function getResetPasswordRedirectUrl(): string {
+  const configuredBaseUrl = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
+  const baseUrl = configuredBaseUrl || window.location.origin;
+  return `${baseUrl}/reset-password`;
+}
+
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,7 +25,7 @@ export default function ForgotPassword() {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: getResetPasswordRedirectUrl(),
       });
 
       if (error) {

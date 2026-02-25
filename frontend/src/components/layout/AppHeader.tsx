@@ -20,6 +20,7 @@ const navItems: Array<{ path: string; label: string }> = [
   { path: '/suppliers', label: 'ספקים' },
   { path: '/categories', label: 'קטגוריות' },
   { path: '/import-export', label: 'ייבוא' },
+  { path: '/support', label: 'תמיכה' },
   { path: '/settings', label: 'הגדרות' },
 ];
 

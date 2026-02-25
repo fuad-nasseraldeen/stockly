@@ -17,6 +17,7 @@ import authRouter from './routes/auth.js';
 import publicRouter from './routes/public.js';
 import supportRouter from './routes/support.js';
 import accountRouter from './routes/account.js';
+import supportChatRouter from './routes/support-chat.js';
 
 let hasLoggedDbHost = false;
 
@@ -132,6 +133,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/public', publicRouter);
   app.use('/api/support', supportRouter);
+  app.use('/api/support-chat', supportChatRouter);
   app.use('/api/account', accountRouter);
 
   // 404 handler for undefined routes

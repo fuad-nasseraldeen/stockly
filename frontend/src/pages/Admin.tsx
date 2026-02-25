@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant } from '../hooks/useAdmin';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';
 import { Button } from '../components/ui/button';
@@ -192,6 +193,11 @@ export default function Admin() {
         <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
           צפה בכל החנויות, המשתמשים והפעילות • ניהול חסימות
         </p>
+        <div className="mt-3">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/support">Inbox תמיכה</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Tenants & Users Overview */}
