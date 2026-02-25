@@ -9,18 +9,18 @@ export default function Signup() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const oauthRedirectTo = (() => {
     const configured = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
-    if (configured) return `${configured}/`;
+    if (configured) return configured;
     if (typeof window !== 'undefined') {
       const host = window.location.hostname.toLowerCase();
       if (host === 'localhost' || host === '127.0.0.1') {
-        return `${window.location.origin.replace(/\/+$/, '')}/`;
+        return window.location.origin.replace(/\/+$/, '');
       }
       if (host.endsWith('stockly-il.com')) {
-        return 'https://www.stockly-il.com/';
+        return 'https://www.stockly-il.com';
       }
-      return `${window.location.origin.replace(/\/+$/, '')}/`;
+      return window.location.origin.replace(/\/+$/, '');
     }
-    return 'https://www.stockly-il.com/';
+    return 'https://www.stockly-il.com';
   })();
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
