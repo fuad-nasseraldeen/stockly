@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
 import { FlatPageLayout } from '../components/layout/FlatPageLayout';
@@ -7,7 +7,6 @@ import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 export default function Signup() {
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
-  const navigate = useNavigate();
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message) return err.message;
