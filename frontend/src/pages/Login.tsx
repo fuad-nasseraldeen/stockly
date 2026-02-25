@@ -21,8 +21,21 @@ export default function Login() {
   const [otpTurnstileToken, setOtpTurnstileToken] = useState<string | null>(null);
   const [captchaConfirmed, setCaptchaConfirmed] = useState(false);
   const navigate = useNavigate();
-  const appUrl = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
-  const oauthRedirectTo = `${appUrl || window.location.origin}/`;
+  const oauthRedirectTo = (() => {
+    const configured = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
+    if (configured) return `${configured}/`;
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return `${window.location.origin.replace(/\/+$/, '')}/`;
+      }
+      if (host.endsWith('stockly-il.com')) {
+        return 'https://www.stockly-il.com/';
+      }
+      return `${window.location.origin.replace(/\/+$/, '')}/`;
+    }
+    return 'https://www.stockly-il.com/';
+  })();
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message) {
