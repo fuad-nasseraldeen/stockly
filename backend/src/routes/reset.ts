@@ -8,7 +8,7 @@ const router = Router();
 const resetSchema = z.object({
   confirmation: z
     .string()
-    .refine((val) => val === 'DELETE', { message: 'יש להקליד DELETE לאישור' }),
+    .refine((val) => val === 'מחק', { message: 'יש להקליד "מחק" לאישור' }),
 });
 
 // Reset tenant data (delete all data, recreate defaults)
@@ -18,8 +18,8 @@ router.post('/', requireAuth, requireTenant, ownerOnly, async (req, res) => {
     const user = (req as any).user;
     const body = resetSchema.parse(req.body);
 
-    if (body.confirmation !== 'DELETE') {
-      return res.status(400).json({ error: 'יש להקליד DELETE לאישור' });
+    if (body.confirmation !== 'מחק') {
+      return res.status(400).json({ error: 'יש להקליד "מחק" לאישור' });
     }
 
     // Delete in FK-safe order

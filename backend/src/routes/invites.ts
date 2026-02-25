@@ -4,29 +4,59 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-// Accept all pending invites for the logged-in user's email
+async function getProfilePhone(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('phone_e164')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return null;
+  return (data?.phone_e164 as string | null) ?? null;
+}
+
+// Accept all pending invites for the logged-in user (email and/or verified phone)
 router.post('/accept', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
-    
-    if (!user.email) {
-      return res.status(400).json({ error: 'אין כתובת אימייל למשתמש' });
+    const userEmail = user.email ? String(user.email).toLowerCase() : null;
+    const userPhone = await getProfilePhone(user.id);
+
+    if (!userEmail && !userPhone) {
+      return res.status(400).json({ error: 'למשתמש אין אימייל או טלפון מאומת לזיהוי הזמנות' });
     }
 
-    const userEmail = user.email.toLowerCase();
+    const nowIso = new Date().toISOString();
+    const inviteRows: any[] = [];
 
-    // Find all pending invites for this email
-    const { data: invites, error: invitesError } = await supabase
-      .from('invites')
-      .select('*')
-      .ilike('email', userEmail)
-      .is('accepted_at', null)
-      .gt('expires_at', new Date().toISOString());
-
-    if (invitesError) {
-      console.error('Error fetching invites:', invitesError);
-      return res.status(500).json({ error: 'שגיאה בטעינת הזמנות' });
+    if (userEmail) {
+      const { data, error } = await supabase
+        .from('invites')
+        .select('*')
+        .ilike('email', userEmail)
+        .is('accepted_at', null)
+        .gt('expires_at', nowIso);
+      if (error) {
+        console.error('Error fetching invites by email:', error);
+        return res.status(500).json({ error: 'שגיאה בטעינת הזמנות' });
+      }
+      inviteRows.push(...(data || []));
     }
+
+    if (userPhone) {
+      const { data, error } = await supabase
+        .from('invites')
+        .select('*')
+        .eq('phone_e164', userPhone)
+        .is('accepted_at', null)
+        .gt('expires_at', nowIso);
+      if (error) {
+        console.error('Error fetching invites by phone:', error);
+        return res.status(500).json({ error: 'שגיאה בטעינת הזמנות' });
+      }
+      inviteRows.push(...(data || []));
+    }
+
+    const invites = Array.from(new Map(inviteRows.map((inv) => [inv.id, inv])).values());
 
     if (!invites || invites.length === 0) {
       return res.json({

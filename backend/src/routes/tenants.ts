@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
+import { normalizePhoneToE164 } from '../lib/phone.js';
 import { requireAuth, requireTenant, ownerOnly } from '../middleware/auth.js';
 
 const router = Router();
@@ -10,8 +11,12 @@ const createTenantSchema = z.object({
 });
 
 const inviteSchema = z.object({
-  email: z.string().email('כתובת אימייל לא תקינה'),
+  email: z.string().trim().email('כתובת אימייל לא תקינה').optional(),
+  phone: z.string().trim().min(1, 'מספר טלפון לא תקין').optional(),
   role: z.enum(['owner', 'worker']).default('worker'),
+}).refine((value) => Boolean(value.email || value.phone), {
+  message: 'נא להזין אימייל או מספר טלפון',
+  path: ['email'],
 });
 
 async function getPrimaryOwner(tenantId: string): Promise<string | null> {
@@ -25,6 +30,17 @@ async function getPrimaryOwner(tenantId: string): Promise<string | null> {
 
   if (error || !data || data.length === 0) return null;
   return data[0].user_id as string;
+}
+
+async function getProfilePhone(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('phone_e164')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) return null;
+  return (data?.phone_e164 as string | null) ?? null;
 }
 
 // Get user's tenants
@@ -187,6 +203,12 @@ router.post('/:id/invite', requireAuth, requireTenant, ownerOnly, async (req, re
   try {
     const tenant = (req as any).tenant;
     const body = inviteSchema.parse(req.body);
+    const normalizedEmail = body.email?.trim().toLowerCase() || null;
+    const normalizedPhone = body.phone ? normalizePhoneToE164(body.phone) : null;
+
+    if (body.phone && !normalizedPhone) {
+      return res.status(400).json({ error: 'מספר טלפון לא תקין' });
+    }
 
     // Generate token
     const token = crypto.randomUUID();
@@ -199,7 +221,8 @@ router.post('/:id/invite', requireAuth, requireTenant, ownerOnly, async (req, re
       .from('invites')
       .insert({
         tenant_id: tenant.tenantId,
-        email: body.email.toLowerCase(),
+        email: normalizedEmail,
+        phone_e164: normalizedPhone,
         role: body.role,
         token,
         invited_by: (req as any).user.id,
@@ -209,6 +232,9 @@ router.post('/:id/invite', requireAuth, requireTenant, ownerOnly, async (req, re
       .single();
 
     if (error || !invite) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'כבר קיימת הזמנה פעילה ליעד הזה' });
+      }
       return res.status(500).json({ error: 'שגיאה ביצירת הזמנה' });
     }
 
@@ -254,10 +280,15 @@ router.post('/accept-invite', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'הזמנה פגה תוקף' });
     }
 
-    // Check email matches
-    const userEmail = user.email?.toLowerCase();
-    if (userEmail !== invite.email.toLowerCase()) {
-      return res.status(403).json({ error: 'הזמנה מיועדת לכתובת אימייל אחרת' });
+    const userEmail = user.email?.toLowerCase() || null;
+    const inviteEmail = typeof invite.email === 'string' ? invite.email.toLowerCase() : null;
+    const invitePhone = typeof invite.phone_e164 === 'string' ? invite.phone_e164 : null;
+    const profilePhone = await getProfilePhone(user.id);
+
+    const emailMatches = Boolean(inviteEmail && userEmail && userEmail === inviteEmail);
+    const phoneMatches = Boolean(invitePhone && profilePhone && profilePhone === invitePhone);
+    if (!emailMatches && !phoneMatches) {
+      return res.status(403).json({ error: 'ההזמנה מיועדת לחשבון אחר' });
     }
 
     // Create membership
@@ -353,7 +384,7 @@ router.get('/invites', requireAuth, requireTenant, ownerOnly, async (req, res) =
 
     const { data, error } = await supabase
       .from('invites')
-      .select('id,email,role,expires_at,accepted_at,created_at')
+      .select('id,email,phone_e164,role,expires_at,accepted_at,created_at')
       .eq('tenant_id', tenant.tenantId)
       .is('accepted_at', null)
       .order('created_at', { ascending: true });

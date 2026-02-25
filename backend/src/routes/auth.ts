@@ -29,10 +29,15 @@ const OTP_LOCKOUT_MS = 15 * 60_000;
 const INVALID_CODE_ERROR = { error: 'INVALID_CODE' } as const;
 const PHONE_MISMATCH_ERROR = { error: 'PHONE_MISMATCH' } as const;
 const PHONE_NOT_REGISTERED_ERROR = { error: 'PHONE_NOT_REGISTERED' } as const;
+const PHONE_ALREADY_EXISTS_ERROR = { error: 'PHONE_ALREADY_EXISTS' } as const;
+const OTP_SEND_FAILED_ERROR = { error: 'OTP_SEND_FAILED' } as const;
+const OTP_RATE_LIMITED_ERROR = { error: 'OTP_RATE_LIMITED' } as const;
 
 const requestOtpSchema = z.object({
   phone: z.string().min(1, 'phone is required'),
   turnstileToken: z.string().optional().nullable(),
+  flow: z.enum(['login', 'signup', 'verify_phone']).optional(),
+  email: z.string().trim().email('email is required').optional(),
 });
 
 const verifyOtpSchema = z.object({
@@ -164,6 +169,15 @@ async function hasRegisteredProfilePhone(phoneE164: string): Promise<boolean> {
   return Boolean(data && data.length > 0);
 }
 
+function isPhoneDuplicateError(message: string): boolean {
+  const lower = (message || '').toLowerCase();
+  return (
+    lower.includes('duplicate key') ||
+    lower.includes('profiles_phone_e164_unique_idx') ||
+    lower.includes('phone_e164')
+  );
+}
+
 async function expireActiveChallenges(phoneE164: string): Promise<void> {
   const nowIso = new Date().toISOString();
   const { error } = await supabase
@@ -219,6 +233,7 @@ async function signInExistingUserByEmailOtp(email: string): Promise<{ session: a
 router.post('/otp/request', async (req, res) => {
   try {
     const body = requestOtpSchema.parse(req.body);
+    const flow = body.flow || 'login';
     const phoneE164 = normalizePhoneToE164(body.phone);
     if (!phoneE164) {
       return res.status(400).json({ error: 'INVALID_PHONE' });
@@ -228,10 +243,24 @@ router.post('/otp/request', async (req, res) => {
     const authedUserId = await getOptionalAuthedUserId(req);
 
     // Public login flow: do not send OTP to unregistered phone numbers.
-    if (!authedUserId) {
+    if (flow === 'login' && !authedUserId) {
       const isRegistered = await hasRegisteredProfilePhone(phoneE164);
       if (!isRegistered) {
         return res.status(404).json(PHONE_NOT_REGISTERED_ERROR);
+      }
+    }
+
+    if (flow === 'signup') {
+      if (!body.email) {
+        return res.status(400).json({ error: 'email is required for signup flow' });
+      }
+      const existingUserId = await resolveExistingUserIdByEmail(body.email);
+      if (existingUserId) {
+        return res.status(400).json({ error: 'EMAIL_ALREADY_EXISTS' });
+      }
+      const phoneTaken = await hasRegisteredProfilePhone(phoneE164);
+      if (phoneTaken) {
+        return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
       }
     }
 
@@ -252,6 +281,9 @@ router.post('/otp/request', async (req, res) => {
 
     if (ipLimited || phoneLimited) {
       await logOtpRequest({ phoneE164, ipAddress, sent: false });
+      if (flow === 'signup') {
+        return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+      }
       return res.json({ ok: true });
     }
 
@@ -262,12 +294,18 @@ router.post('/otp/request', async (req, res) => {
       const lockedUntilMs = latest.locked_until ? new Date(latest.locked_until).getTime() : 0;
       if (lockedUntilMs > now) {
         await logOtpRequest({ phoneE164, ipAddress, sent: false });
+        if (flow === 'signup') {
+          return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+        }
         return res.json({ ok: true });
       }
 
       const lastSentAtMs = new Date(latest.last_sent_at).getTime();
       if (now - lastSentAtMs < OTP_COOLDOWN_MS) {
         await logOtpRequest({ phoneE164, ipAddress, sent: false });
+        if (flow === 'signup') {
+          return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+        }
         return res.json({ ok: true });
       }
     }
@@ -275,6 +313,9 @@ router.post('/otp/request', async (req, res) => {
     const dailyCapReached = await isOtpPhoneDailyCapReached(phoneE164);
     if (dailyCapReached) {
       await logOtpRequest({ phoneE164, ipAddress, sent: false });
+      if (flow === 'signup') {
+        return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+      }
       return res.json({ ok: true });
     }
 
@@ -297,6 +338,9 @@ router.post('/otp/request', async (req, res) => {
     if (insertError) {
       console.error('[otp] failed to insert challenge:', insertError);
       await logOtpRequest({ phoneE164, ipAddress, sent: false });
+      if (flow === 'signup') {
+        return res.status(500).json(OTP_SEND_FAILED_ERROR);
+      }
       return res.json({ ok: true });
     }
 
@@ -306,6 +350,9 @@ router.post('/otp/request', async (req, res) => {
     } catch (smsError) {
       console.error('[otp] failed to send SMS:', smsError);
       await logOtpRequest({ phoneE164, ipAddress, sent: false });
+      if (flow === 'signup') {
+        return res.status(503).json(OTP_SEND_FAILED_ERROR);
+      }
     }
 
     return res.json({ ok: true });
@@ -470,6 +517,11 @@ router.post('/signup-with-otp', async (req, res) => {
       return res.status(400).json({ error: 'EMAIL_ALREADY_EXISTS' });
     }
 
+    const existingPhone = await hasRegisteredProfilePhone(phoneE164);
+    if (existingPhone) {
+      return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
+    }
+
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email: body.email,
       password: body.password,
@@ -484,7 +536,17 @@ router.post('/signup-with-otp', async (req, res) => {
       return res.status(400).json({ error: createError?.message || 'SIGNUP_FAILED' });
     }
 
-    await setProfilePhoneVerified(created.user.id, phoneE164);
+    try {
+      await setProfilePhoneVerified(created.user.id, phoneE164);
+    } catch (phoneError) {
+      const message = phoneError instanceof Error ? phoneError.message : String(phoneError || '');
+      if (isPhoneDuplicateError(message)) {
+        // Best effort cleanup if phone became occupied between validation and update.
+        await supabase.auth.admin.deleteUser(created.user.id);
+        return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
+      }
+      throw phoneError;
+    }
 
     const { data: signedIn, error: signInError } = await supabaseAuthClient.auth.signInWithPassword({
       email: body.email,

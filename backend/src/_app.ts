@@ -16,6 +16,7 @@ import bootstrapRouter from './routes/bootstrap.js';
 import authRouter from './routes/auth.js';
 import publicRouter from './routes/public.js';
 import supportRouter from './routes/support.js';
+import accountRouter from './routes/account.js';
 
 let hasLoggedDbHost = false;
 
@@ -55,6 +56,25 @@ function logDbHostOnce(): void {
   console.info(`[runtime-db] host=${host} source=${source}`);
 }
 
+function getBuildInfo() {
+  return {
+    env: process.env.NODE_ENV || 'development',
+    commit:
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.GIT_COMMIT_SHA ||
+      process.env.COMMIT_SHA ||
+      'unknown',
+    branch:
+      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.GIT_COMMIT_REF ||
+      'unknown',
+    deployedAt:
+      process.env.VERCEL_GIT_COMMIT_TIMESTAMP ||
+      process.env.BUILD_TIME ||
+      null,
+  };
+}
+
 export function createApp() {
   const app = express();
 
@@ -91,7 +111,10 @@ export function createApp() {
 
   app.get('/health', (req, res) => {
     logDbHostOnce();
-    res.json({ status: 'ok' });
+    res.json({
+      status: 'ok',
+      build: getBuildInfo(),
+    });
   });
 
   // API Routes
@@ -109,6 +132,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/public', publicRouter);
   app.use('/api/support', supportRouter);
+  app.use('/api/account', accountRouter);
 
   // 404 handler for undefined routes
   app.use((req, res) => {
