@@ -21,6 +21,8 @@ export default function Login() {
   const [otpTurnstileToken, setOtpTurnstileToken] = useState<string | null>(null);
   const [captchaConfirmed, setCaptchaConfirmed] = useState(false);
   const navigate = useNavigate();
+  const appUrl = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
+  const oauthRedirectTo = `${appUrl || window.location.origin}/`;
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message) {
@@ -52,7 +54,7 @@ export default function Login() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: oauthRedirectTo,
         },
       });
       if (error) throw error;

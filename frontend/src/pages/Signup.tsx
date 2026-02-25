@@ -7,6 +7,8 @@ import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 export default function Signup() {
   const [error, setError] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+  const appUrl = (import.meta.env.VITE_APP_URL ?? '').trim().replace(/\/+$/, '');
+  const oauthRedirectTo = `${appUrl || window.location.origin}/`;
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof Error && err.message) return err.message;
@@ -20,7 +22,7 @@ export default function Signup() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: oauthRedirectTo,
         },
       });
       if (error) throw error;
