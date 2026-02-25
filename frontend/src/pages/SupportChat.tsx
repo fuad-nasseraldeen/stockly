@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { supportChatApi, type SupportMessage, type SupportThread } from '../lib/api';
 
 export default function SupportChat() {
@@ -13,6 +11,15 @@ export default function SupportChat() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const sortedMessages = useMemo(
+    () =>
+      [...messages].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      ),
+    [messages]
+  );
 
   const load = async () => {
     try {
@@ -45,6 +52,10 @@ export default function SupportChat() {
     return () => window.clearInterval(interval);
   }, [thread?.id]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [sortedMessages.length]);
+
   const send = async () => {
     const trimmed = message.trim();
     if (!trimmed && !attachment) return;
@@ -71,66 +82,85 @@ export default function SupportChat() {
   }
 
   return (
-    <div className="space-y-4">
-      <Card className="shadow-md border-2">
-        <CardHeader>
-          <CardTitle className="text-lg font-bold">תמיכה - שיחה עם הצוות</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
-          <div className="max-h-[55vh] overflow-y-auto rounded-md border bg-muted/20 p-3 space-y-2">
-            {messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground">אין הודעות עדיין. אפשר לשלוח לנו שאלה ונענה כאן.</p>
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-6 sm:-mt-8 bg-white pb-20 dark:bg-background sm:pb-8 border-t">
+      <div className="mx-auto grid w-full max-w-4xl grid-cols-1">
+        <section className="flex flex-col">
+          <div className="border-b px-4 py-3">
+            <h1 className="text-lg font-bold">תמיכה</h1>
+            <p className="text-xs text-muted-foreground">שיחה עם צוות התמיכה</p>
+            {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+          </div>
+
+          <div className="max-h-[60vh] overflow-y-auto px-3 py-4 sm:px-4 md:max-h-[calc(100vh-320px)]">
+            {sortedMessages.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                אין הודעות עדיין. אפשר להתחיל לכתוב ונענה כאן.
+              </div>
             ) : (
-              messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`rounded-md px-3 py-2 text-sm ${
-                    m.sender_type === 'user'
-                      ? 'mr-auto max-w-[85%] bg-primary text-primary-foreground'
-                      : 'ml-auto max-w-[85%] bg-background border'
-                  }`}
-                >
-                  {m.message ? <p className="whitespace-pre-wrap">{m.message}</p> : null}
-                  {m.attachment_url ? (
-                    <a className="underline text-xs" href={m.attachment_url} target="_blank" rel="noreferrer">
-                      קובץ מצורף
-                    </a>
-                  ) : null}
-                  <p className="mt-1 text-[10px] opacity-70">
-                    {new Date(m.created_at).toLocaleString('he-IL')}
-                  </p>
-                </div>
-              ))
+              <div className="space-y-3">
+                {sortedMessages.map((m) => {
+                  const isMe = m.sender_type === 'user';
+                  return (
+                    <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                          isMe
+                            ? 'bg-blue-600 text-white'
+                            : 'border bg-slate-100 text-slate-900 dark:bg-muted dark:text-foreground'
+                        }`}
+                      >
+                        <p className={`mb-1 text-[11px] font-semibold ${isMe ? 'text-blue-100' : 'text-muted-foreground'}`}>
+                          {isMe ? 'אני:' : 'תמיכה:'}
+                        </p>
+                        {m.message ? <p className="whitespace-pre-wrap">{m.message}</p> : null}
+                        {m.attachment_url ? (
+                          <a
+                            className={`mt-1 inline-block text-xs underline ${isMe ? 'text-blue-100' : 'text-primary'}`}
+                            href={m.attachment_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            קובץ מצורף
+                          </a>
+                        ) : null}
+                        <p className={`mt-1 text-[10px] ${isMe ? 'text-blue-100/90' : 'text-muted-foreground'}`}>
+                          {new Date(m.created_at).toLocaleString('he-IL')}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="support-chat-message">הודעה חדשה</Label>
-            <textarea
-              id="support-chat-message"
-              className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="כתוב כאן את ההודעה שלך..."
-              maxLength={2000}
-            />
+          <div className="border-t bg-white px-3 py-3 dark:bg-background sm:px-4">
+            <div className="mb-2">
+              <Input
+                id="support-chat-attachment"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setAttachment(e.target.files?.[0] || null)}
+              />
+              {attachment ? <p className="mt-1 text-xs text-muted-foreground">נבחר: {attachment.name}</p> : null}
+            </div>
+            <div className="flex items-end gap-2">
+              <textarea
+                id="support-chat-message"
+                className="min-h-12 flex-1 rounded-xl border bg-background px-3 py-2 text-sm"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="כתוב הודעה..."
+                maxLength={2000}
+              />
+              <Button onClick={send} disabled={sending || (!message.trim() && !attachment)} className="h-11 rounded-xl px-5">
+                {sending ? 'שולח...' : 'שלח'}
+              </Button>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="support-chat-attachment">קובץ/תמונה (אופציונלי)</Label>
-            <Input
-              id="support-chat-attachment"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(e) => setAttachment(e.target.files?.[0] || null)}
-            />
-            {attachment ? <p className="text-xs text-muted-foreground">נבחר: {attachment.name}</p> : null}
-          </div>
-          <Button onClick={send} disabled={sending || (!message.trim() && !attachment)}>
-            {sending ? 'שולח...' : 'שלח הודעה'}
-          </Button>
-        </CardContent>
-      </Card>
+        </section>
+      </div>
     </div>
   );
 }

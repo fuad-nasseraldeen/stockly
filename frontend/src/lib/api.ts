@@ -148,6 +148,9 @@ export type SupportThread = {
   id: string;
   user_id: string;
   tenant_id: string | null;
+  user_full_name?: string | null;
+  user_email?: string | null;
+  tenant_name?: string | null;
   status: 'open' | 'closed';
   created_at: string;
   updated_at: string;

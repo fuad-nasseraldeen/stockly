@@ -169,6 +169,21 @@ async function hasRegisteredProfilePhone(phoneE164: string): Promise<boolean> {
   return Boolean(data && data.length > 0);
 }
 
+async function getProfileUserIdByPhone(phoneE164: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('phone_e164', phoneE164)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[auth] failed to load profile by phone:', error);
+    return null;
+  }
+
+  return (data?.user_id as string | undefined) || null;
+}
+
 function isPhoneDuplicateError(message: string): boolean {
   const lower = (message || '').toLowerCase();
   return (
@@ -241,6 +256,16 @@ router.post('/otp/request', async (req, res) => {
 
     const ipAddress = getClientIp(req);
     const authedUserId = await getOptionalAuthedUserId(req);
+
+    if (flow === 'verify_phone') {
+      if (!authedUserId) {
+        return res.status(401).json({ error: 'UNAUTHORIZED' });
+      }
+      const existingPhoneOwnerId = await getProfileUserIdByPhone(phoneE164);
+      if (existingPhoneOwnerId && existingPhoneOwnerId !== authedUserId) {
+        return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
+      }
+    }
 
     // Public login flow: do not send OTP to unregistered phone numbers.
     if (flow === 'login' && !authedUserId) {
@@ -644,12 +669,25 @@ router.post('/phone/verify', requireAuth, async (req, res) => {
       return res.status(409).json(PHONE_MISMATCH_ERROR);
     }
 
+    const existingPhoneOwnerId = await getProfileUserIdByPhone(phoneE164);
+    if (existingPhoneOwnerId && existingPhoneOwnerId !== user.id) {
+      return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
+    }
+
     await supabase
       .from('otp_challenges')
       .update({ expires_at: now.toISOString() })
       .eq('id', challenge.id);
 
-    await setProfilePhoneVerified(user.id, phoneE164);
+    try {
+      await setProfilePhoneVerified(user.id, phoneE164);
+    } catch (phoneError) {
+      const message = phoneError instanceof Error ? phoneError.message : String(phoneError || '');
+      if (isPhoneDuplicateError(message)) {
+        return res.status(400).json(PHONE_ALREADY_EXISTS_ERROR);
+      }
+      throw phoneError;
+    }
 
     return res.json({ ok: true, phoneE164, phoneRequired: false });
   } catch (error) {

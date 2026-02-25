@@ -7,16 +7,11 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { FlatPageLayout } from '../components/layout/FlatPageLayout';
-import { Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [authMode, setAuthMode] = useState<'email' | 'phone'>('email');
   const [phone, setPhone] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpStep, setOtpStep] = useState<'phone' | 'code'>('phone');
@@ -24,6 +19,7 @@ export default function Login() {
   const [resendIn, setResendIn] = useState(0);
   const [genericInfo, setGenericInfo] = useState('');
   const [otpTurnstileToken, setOtpTurnstileToken] = useState<string | null>(null);
+  const [captchaConfirmed, setCaptchaConfirmed] = useState(false);
   const navigate = useNavigate();
 
   const toErrorMessage = (err: unknown, fallback: string): string => {
@@ -48,19 +44,21 @@ export default function Login() {
     return () => window.clearInterval(timer);
   }, [resendIn]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setError('');
-    setLoading(true);
-
+    setGenericInfo('');
+    setGoogleLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
       if (error) throw error;
-      navigate('/products');
     } catch (err: unknown) {
-      setError(toErrorMessage(err, 'שגיאה בהתחברות'));
-    } finally {
-      setLoading(false);
+      setError(toErrorMessage(err, 'שגיאה בהתחברות עם Google'));
+      setGoogleLoading(false);
     }
   };
 
@@ -73,6 +71,9 @@ export default function Login() {
     try {
       if (turnstileSiteKey && !otpTurnstileToken) {
         throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
+      }
+      if (turnstileSiteKey && !captchaConfirmed) {
+        throw new Error('יש לאשר ידנית את אימות האבטחה לפני שליחת הקוד');
       }
       await authApi.requestOtp(phone, otpTurnstileToken);
       setOtpStep('code');
@@ -126,6 +127,9 @@ export default function Login() {
       if (turnstileSiteKey && !otpTurnstileToken) {
         throw new Error('נא להשלים אימות אבטחה לפני שליחת הקוד');
       }
+      if (turnstileSiteKey && !captchaConfirmed) {
+        throw new Error('יש לאשר ידנית את אימות האבטחה לפני שליחת הקוד');
+      }
       await authApi.requestOtp(phone, otpTurnstileToken);
       setResendIn(60);
       setGenericInfo('If the number is valid, you’ll receive a code');
@@ -139,94 +143,17 @@ export default function Login() {
   return (
     <FlatPageLayout
       title={`היי,\nטוב לראות אותך שוב`}
-      description="שנתחבר?"
+      description="המשך עם Google או טלפון"
       maxWidthClass="max-w-md"
       titleClassName="whitespace-pre-line text-3xl font-semibold tracking-tight text-center leading-tight"
       descriptionClassName="mt-1 text-sm text-muted-foreground text-center"
     >
       <div className="rounded-xl border border-border bg-card/60 p-4">
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={authMode === 'email' ? 'default' : 'outline'}
-              className="flex-1"
-              onClick={() => {
-                setAuthMode('email');
-                setError('');
-                setGenericInfo('');
-              }}
-            >
-              אימייל וסיסמה
-            </Button>
-            <Button
-              type="button"
-              variant={authMode === 'phone' ? 'default' : 'outline'}
-              className="flex-1"
-              onClick={() => {
-                setAuthMode('phone');
-                setError('');
-                setGenericInfo('');
-              }}
-            >
-              המשך עם טלפון
+          <div className="mb-3">
+            <Button type="button" variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={googleLoading}>
+              {googleLoading ? 'מעביר ל-Google...' : 'המשך עם Google'}
             </Button>
           </div>
-
-          {authMode === 'email' ? (
-          <form onSubmit={handleLogin} className="space-y-4 mt-4">
-            {error && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">אימייל</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="your@email.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">סיסמה</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'הסתר סיסמה' : 'הצג סיסמה'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'מתחבר...' : 'התחבר'}
-            </Button>
-            <div className="text-center text-sm">
-              <Link to="/forgot-password" className="text-primary hover:underline">
-                שכחתי סיסמה?
-              </Link>
-            </div>
-            <div className="text-center text-sm">
-              <span className="text-muted-foreground">אין לך חשבון? </span>
-              <Link to="/signup" className="text-primary hover:underline">
-                הירשם כאן
-              </Link>
-            </div>
-          </form>
-          ) : (
           <form onSubmit={otpStep === 'phone' ? handleRequestOtp : handleVerifyOtp} className="space-y-4 mt-4">
             {error && (
               <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
@@ -257,9 +184,18 @@ export default function Login() {
                     <div className="w-full max-w-[320px]">
                       <Turnstile
                         siteKey={turnstileSiteKey}
-                        onSuccess={(token) => setOtpTurnstileToken(token)}
-                        onExpire={() => setOtpTurnstileToken(null)}
-                        onError={() => setOtpTurnstileToken(null)}
+                        onSuccess={(token) => {
+                          setOtpTurnstileToken(token);
+                          setCaptchaConfirmed(false);
+                        }}
+                        onExpire={() => {
+                          setOtpTurnstileToken(null);
+                          setCaptchaConfirmed(false);
+                        }}
+                        onError={() => {
+                          setOtpTurnstileToken(null);
+                          setCaptchaConfirmed(false);
+                        }}
                         options={{
                           language: 'he',
                           theme: 'light',
@@ -269,6 +205,17 @@ export default function Login() {
                       />
                     </div>
                   </div>
+                ) : null}
+                {turnstileSiteKey ? (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={captchaConfirmed}
+                      onChange={(e) => setCaptchaConfirmed(e.target.checked)}
+                      disabled={!otpTurnstileToken}
+                    />
+                    <span>אישרתי ידנית את אימות האבטחה</span>
+                  </label>
                 ) : null}
                 <Button type="submit" className="w-full" disabled={otpLoading}>
                   {otpLoading ? 'שולח קוד...' : 'שלח קוד אימות'}
@@ -310,14 +257,20 @@ export default function Login() {
                     setOtpCode('');
                     setGenericInfo('');
                     setError('');
+                    setCaptchaConfirmed(false);
                   }}
                 >
                   שינוי מספר טלפון
                 </Button>
               </>
             )}
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">אין לך חשבון? </span>
+              <Link to="/signup" className="text-primary hover:underline">
+                הירשם כאן
+              </Link>
+            </div>
           </form>
-          )}
       </div>
     </FlatPageLayout>
   );

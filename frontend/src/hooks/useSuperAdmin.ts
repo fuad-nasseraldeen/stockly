@@ -34,10 +34,11 @@ import { supabase } from '../lib/supabase';
  */
 export function useSuperAdmin(enabled = true) {
   const location = useLocation();
-  // Treat both /admin and /onboarding as "admin context" so we can:
+  // Treat /admin and all nested admin routes as "admin context" so we can:
   // - Guard the /admin route itself
+  // - Guard nested routes like /admin/support
   // - Show the super admin option on the onboarding screen
-  const isAdminContext = location.pathname === '/admin' || location.pathname === '/onboarding';
+  const isAdminContext = location.pathname.startsWith('/admin') || location.pathname === '/onboarding';
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Get user email once on mount/route change

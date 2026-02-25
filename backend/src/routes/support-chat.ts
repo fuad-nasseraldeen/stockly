@@ -202,12 +202,50 @@ router.post('/messages', requireAuth, upload.single('attachment'), async (req, r
 
 router.get('/admin/threads', requireAuth, requireSuperAdmin, async (_req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: threads, error } = await supabase
       .from('support_threads')
       .select('id,user_id,tenant_id,status,created_at,updated_at,last_message_at')
       .order('last_message_at', { ascending: false });
     if (error) return res.status(500).json({ error: 'שגיאה בטעינת שיחות' });
-    return res.json(data || []);
+
+    const userIds = [...new Set((threads || []).map((t: any) => t.user_id).filter(Boolean))];
+    const tenantIds = [...new Set((threads || []).map((t: any) => t.tenant_id).filter(Boolean))] as string[];
+
+    const [profilesRes, tenantsRes, authUsersRes] = await Promise.all([
+      userIds.length > 0
+        ? supabase.from('profiles').select('user_id, full_name').in('user_id', userIds)
+        : Promise.resolve({ data: [], error: null } as any),
+      tenantIds.length > 0
+        ? supabase.from('tenants').select('id, name').in('id', tenantIds)
+        : Promise.resolve({ data: [], error: null } as any),
+      supabase.auth.admin.listUsers(),
+    ]);
+
+    const profilesMap = new Map<string, { full_name: string | null }>();
+    (profilesRes.data || []).forEach((p: any) => {
+      profilesMap.set(p.user_id, { full_name: p.full_name || null });
+    });
+
+    const tenantsMap = new Map<string, { name: string }>();
+    (tenantsRes.data || []).forEach((t: any) => {
+      tenantsMap.set(t.id, { name: t.name || '' });
+    });
+
+    const emailsMap = new Map<string, string | null>();
+    (authUsersRes.data?.users || []).forEach((u: any) => {
+      if (userIds.includes(u.id)) {
+        emailsMap.set(u.id, u.email || null);
+      }
+    });
+
+    const enriched = (threads || []).map((t: any) => ({
+      ...t,
+      user_full_name: profilesMap.get(t.user_id)?.full_name || null,
+      user_email: emailsMap.get(t.user_id) || null,
+      tenant_name: t.tenant_id ? tenantsMap.get(t.tenant_id)?.name || null : null,
+    }));
+
+    return res.json(enriched);
   } catch (error) {
     console.error('[support-chat] admin threads failed:', error);
     return res.status(500).json({ error: 'שגיאת שרת' });

@@ -269,7 +269,7 @@ export default function Settings() {
     setProfilePhoneMessage(null);
     try {
       setProfilePhoneLoading(true);
-      await authApi.requestOtp(profilePhoneInput);
+      await authApi.requestOtp(profilePhoneInput, null, { flow: 'verify_phone' });
       setProfilePhoneStep('code');
       setProfilePhoneResendIn(60);
     } catch (error) {

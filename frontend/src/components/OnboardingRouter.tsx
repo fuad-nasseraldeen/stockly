@@ -21,7 +21,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
   const isOnboardingRoute = location.pathname === '/onboarding';
-  const isAdminRoute = location.pathname === '/admin';
+  const isAdminRoute = location.pathname.startsWith('/admin');
   const isAdminContext = isAdminRoute || isOnboardingRoute;
   // Check super admin both on /admin and on /onboarding (כדי שכפתור ניהול יופיע במסך האונבורדינג)
   const { data: isSuperAdmin } = useSuperAdmin(isAdminContext);
@@ -76,8 +76,8 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     // and we won't block the UI on background refetches.
     if (isLoading) return 'loading';
 
-    // Super admin can access admin page even without tenants
-    if (isSuperAdmin === true && location.pathname === '/admin') return 'ready';
+    // Super admin can access all admin routes even without tenants
+    if (isSuperAdmin === true && location.pathname.startsWith('/admin')) return 'ready';
 
     if (tenants.length >= 1) return 'ready';
 
@@ -193,8 +193,8 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     return withTenantLoader(<NoAccess />);
   }
 
-  // Super admin can access /admin even without tenants
-  if (isSuperAdmin === true && location.pathname === '/admin') {
+  // Super admin can access /admin and nested admin routes even without tenants
+  if (isSuperAdmin === true && location.pathname.startsWith('/admin')) {
     return withTenantLoader(<>{children}</>);
   }
 

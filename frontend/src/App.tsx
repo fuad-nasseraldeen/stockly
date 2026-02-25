@@ -213,7 +213,7 @@ function AppContent({
     setPhoneFlowError('');
     setPhoneFlowLoading(true);
     try {
-      await authApi.requestOtp(phoneValue);
+      await authApi.requestOtp(phoneValue, null, { flow: 'verify_phone' });
       setOtpStep('code');
       setResendIn(60);
     } catch (err: unknown) {
@@ -443,7 +443,7 @@ function AppWithNavigation({
   const navigate = useNavigate();
  
   // Super admin can access /admin without a tenant
-  const isAdminPage = location.pathname === '/admin';
+  const isAdminPage = location.pathname.startsWith('/admin');
   const canAccess = isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
   
   // Only show navigation if we have a tenant or if super admin accessing admin page
@@ -462,7 +462,7 @@ function AppWithNavigation({
       />
       {phoneVerificationPending ? (
         <div className="w-full border-b border-amber-300 bg-amber-100 text-amber-900">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 text-sm">
+          <div className="mx-auto mt-2 flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 text-sm">
             <span>חשוב: החשבון עדיין ללא מספר טלפון מאומת. מומלץ לאמת עכשיו.</span>
             <button
               type="button"
@@ -471,9 +471,6 @@ function AppWithNavigation({
             >
               אמת מספר טלפון
             </button>
-          </div>
-          <div className="mx-auto w-full max-w-6xl px-4 pb-2 text-xs text-amber-800">
-            בינתיים הפיצ&apos;ר הזה עדיין תחת עיבוד.
           </div>
         </div>
       ) : null}
