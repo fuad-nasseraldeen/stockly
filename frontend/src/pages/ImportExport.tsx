@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useHelpCenter } from '../contexts/HelpCenterContext';
 
 import {
   importApi,
@@ -24,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Loader2, RotateCcw, Upload, X } from 'lucide-react';
+import { InfoTooltip } from '../components/help/InfoTooltip';
 
 type WizardStep = 1 | 2 | 3 | 4;
 type ImportMode = 'merge' | 'overwrite';
@@ -271,6 +273,7 @@ function formatElapsed(seconds: number): string {
 }
 
 export default function ImportExport() {
+  const { openHelp } = useHelpCenter();
   const { currentTenant } = useTenant();
   const queryClient = useQueryClient();
   const { data: categories = [] } = useCategories();
@@ -657,9 +660,21 @@ export default function ImportExport() {
   };
 
   const handleValidate = async () => {
-    if (!file || !preview) return;
-    if (useManualSupplier && !effectiveManualSupplierName) {
-      setError('בחר ספק קיים או הקלד ספק חדש לפני Validate');
+    if (!file || !preview) {
+      setError('חסר קובץ או תצוגה מקדימה. העלה את הקובץ מחדש ורענן תצוגה.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    const hasSupplierFromMapping = Object.entries(mapping).some(
+      ([key, value]) => (key === 'supplier' || /^supplier_\d+$/.test(key)) && typeof value === 'number',
+    );
+    const hasSupplierFromManualColumn = manualColumns.some(
+      (col) => col.fieldKey === 'supplier' || /^supplier_\d+$/.test(col.fieldKey || ''),
+    );
+    const needsFixedSupplier = !hasSupplierFromMapping && !hasSupplierFromManualColumn;
+    if (needsFixedSupplier && !effectiveManualSupplierName) {
+      setError('בחר ספק קיים או הקלד ספק חדש למעלה, או הוסף עמודה/מיפוי של ספק');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -674,10 +689,12 @@ export default function ImportExport() {
     const hasUnconfiguredManualColumn = manualColumns.some((col) => !String(col.fieldKey || '').trim());
     if (hasUnconfiguredManualColumn) {
       setError('נוספה עמודה ידנית שלא הוגדרה. בחר שדה או הסר את העמודה.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (!hasMappedPriceField && !hasManualPriceValue) {
       setError('חובה למפות לפחות עמודת מחיר אחת או להזין מחיר ידני לפחות בשורה אחת');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -700,6 +717,7 @@ export default function ImportExport() {
       setStep(3);
     } catch (e: unknown) {
       setError(getErrorMessage(e, 'שגיאה בבדיקת המיפוי'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
       setLoadingPhase(null);
@@ -708,8 +726,16 @@ export default function ImportExport() {
 
   const handleApply = async () => {
     if (!file) return;
-    if (useManualSupplier && !effectiveManualSupplierName) {
-      setError('בחר ספק קיים או הקלד ספק חדש לפני Apply');
+    const hasSupplierFromMappingApply = Object.entries(mapping).some(
+      ([key, value]) => (key === 'supplier' || /^supplier_\d+$/.test(key)) && typeof value === 'number',
+    );
+    const hasSupplierFromManualColumnApply = manualColumns.some(
+      (col) => col.fieldKey === 'supplier' || /^supplier_\d+$/.test(col.fieldKey || ''),
+    );
+    const needsFixedSupplierApply = !hasSupplierFromMappingApply && !hasSupplierFromManualColumnApply;
+    if (needsFixedSupplierApply && !effectiveManualSupplierName) {
+      setError('בחר ספק קיים או הקלד ספק חדש למעלה, או הוסף עמודה/מיפוי של ספק');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (mode === 'overwrite' && overwriteConfirm !== 'מחק') {
@@ -946,6 +972,18 @@ export default function ImportExport() {
   const hasGlobalNewSupplier = manualSupplierNewName.trim().length > 0;
   const highlightPriceError = !!error && (error.includes('חובה למפות לפחות עמודת מחיר אחת') || error.includes('לא נמצאה עמודת מחיר ממופה'));
   const highlightManualColumnError = !!error && error.includes('נוספה עמודה ידנית שלא הוגדרה');
+  const pdfLoadingTips = useMemo(
+    () => [
+      'קבצי PDF יכולים לקחת יותר זמן. אפשר להמתין, התהליך רץ.',
+      'מנתח את המבנה של ה-PDF...',
+      'אם ה-PDF מייצוא – המערכת מנסה גם חילוץ טקסט חלופי.',
+      'מטפלים גם ב-PDF עם טקסט בלבד (לא רק טבלאות מובנות).',
+      'התהליך רץ בשרת – אל תסגור את הדף.',
+      'PDF גדול? זה לוקח כמה שניות. כמעט סיימנו.',
+    ],
+    [],
+  );
+
   const loadingView = useMemo(() => {
     const elapsedSeconds = loadingElapsedMs / 1000;
     const elapsed = formatElapsed(Math.floor(elapsedSeconds));
@@ -953,34 +991,41 @@ export default function ImportExport() {
     if (loadingPhase === 'preview') {
       const isPdf = sourceType === 'pdf';
       // Tune perceived delay to ~3.5-4s before reaching near-complete.
-      const targetSeconds = isPdf ? 4 : 3.5;
+      const targetSeconds = isPdf ? 5 : 3.5;
       const progress = Math.min(94, 8 + (elapsedSeconds / targetSeconds) * 86);
+      const hint = isPdf
+        ? pdfLoadingTips[Math.floor(elapsedSeconds / 5) % pdfLoadingTips.length]
+        : 'קורא גיליון ובונה תצוגה מקדימה...';
       return {
         title: isPdf ? 'מנתח PDF ומכין תצוגה מקדימה...' : 'טוען Excel/CSV ומכין תצוגה מקדימה...',
-        hint: isPdf ? 'קבצי PDF יכולים לקחת יותר זמן. אפשר להמתין, התהליך רץ.' : 'קורא גיליון ובונה תצוגה מקדימה...',
+        hint,
         progress,
         elapsed,
       };
     }
 
     if (loadingPhase === 'validate') {
+      const validateTips = ['בודק מיפוי שדות...', 'מבצע ולידציה לפני ייבוא.', 'מאמת שורות...'];
+      const hint = validateTips[Math.floor(elapsedSeconds / 3) % validateTips.length];
       const progress = Math.min(96, 10 + (elapsedSeconds / 3.8) * 86);
       return {
         title: 'בודק מיפוי שדות ושורות...',
-        hint: 'מבצע ולידציה לפני ייבוא.',
+        hint,
         progress,
         elapsed,
       };
     }
 
+    const applyTips = ['שומר מוצרים ומחירים...', 'נא להמתין לסיום.', 'מעדכן את המאגר...'];
+    const hint = applyTips[Math.floor(elapsedSeconds / 4) % applyTips.length];
     const progress = Math.min(98, 12 + (elapsedSeconds / 4) * 86);
     return {
       title: 'מייבא נתונים למערכת...',
-      hint: 'שומר מוצרים ומחירים. נא להמתין לסיום.',
+      hint,
       progress,
       elapsed,
     };
-  }, [loadingElapsedMs, loadingPhase, sourceType]);
+  }, [loadingElapsedMs, loadingPhase, sourceType, pdfLoadingTips]);
 
   return (
     <div className="space-y-6">
@@ -989,6 +1034,13 @@ export default function ImportExport() {
         <p className="text-sm text-muted-foreground">
           שלב {step}/4 - העלאה, Preview, מיפוי שדות, ולידציה וייבוא לפי Mapping בלבד.
         </p>
+        <button
+          type="button"
+          onClick={() => openHelp('import-guide')}
+          className="mt-2 text-sm text-primary underline underline-offset-2 hover:opacity-90"
+        >
+          ייבוא מתקדם? פתח מדריך ייבוא מלא
+        </button>
       </div>
 
       {error ? (
@@ -1194,7 +1246,10 @@ export default function ImportExport() {
             ) : null}
 
             <div className="rounded-xl border bg-muted/20 p-3 text-sm">
-              <div className="font-semibold">איך משתמשים (מאוד פשוט):</div>
+              <div className="flex items-center gap-2 font-semibold">
+                <span>איך משתמשים (מאוד פשוט):</span>
+                <InfoTooltip content='שדה חובה = חייב להיות ממופה, שדה אופציונלי = אפשר להשאיר ריק. שים לב לפורמטים: מחיר מספרי, הנחה באחוזים, וספק בשם קיים או חדש.' />
+              </div>
               <ol className="mt-2 list-decimal space-y-1 pr-5 text-muted-foreground">
                 <li>מעל כל עמודה בוחרים מה היא: שם מוצר / מחיר / ספק / לא רלוונטי.</li>
                 <li>אם עמודה לא רלוונטית, לחץ "הסר עמודה" והיא תיעלם מהדמיה.</li>
@@ -1204,6 +1259,13 @@ export default function ImportExport() {
               <div className="mt-2 text-xs text-muted-foreground">
                 דוגמה: עמודה C = שם מוצר, עמודה H = מחיר, עמודה A = לא רלוונטי.
               </div>
+              <button
+                type="button"
+                onClick={() => openHelp('import-guide')}
+                className="mt-2 text-xs text-primary underline underline-offset-2"
+              >
+                טעויות נפוצות בייבוא? לחץ למאמר המלא
+              </button>
             </div>
             {preview?.warnings && preview.warnings.length > 0 ? (
               <div className="rounded-xl border border-amber-400/40 bg-amber-100/30 p-3 text-xs text-amber-800 dark:text-amber-300">
@@ -1727,7 +1789,12 @@ export default function ImportExport() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Button onClick={handleValidate} disabled={loading} className="gap-2">
+              <Button
+                type="button"
+                onClick={() => void handleValidate()}
+                disabled={loading}
+                className="gap-2"
+              >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 Validate Mapping
               </Button>

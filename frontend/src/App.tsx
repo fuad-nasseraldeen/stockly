@@ -41,12 +41,21 @@ import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 import { authApi } from './lib/api';
 import { RouteScrollToTop } from './components/RouteScrollToTop';
+import { HelpCenterProvider, useHelpCenter } from './contexts/HelpCenterContext';
+import { helpContent, WELCOME_VIDEO_URL } from './help/content';
+import { getHelpArticleIdFromSearch } from './help/navigation';
+import { WelcomeModal } from './components/help/WelcomeModal';
+import { SupportButton } from './components/SupportButton';
+import { AccessibilityBar } from './components/AccessibilityBar';
+import { HelpDrawer } from './components/help/HelpDrawer';
+import { loadAccessibilityPreferences, applyAccessibilityToDocument } from './lib/accessibility';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInitialSplash, setShowInitialSplash] = useState(true);
+  const queryClient = useQueryClient();
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light' || savedTheme === 'dark') {
@@ -54,7 +63,10 @@ function App() {
     }
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
-  const queryClient = useQueryClient();
+  useEffect(() => {
+    const prefs = loadAccessibilityPreferences();
+    applyAccessibilityToDocument(prefs);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession()
@@ -83,26 +95,17 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Intro splash – בכל רענון מלא של האפליקציה
-  // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
-
   const handleLogout = async () => {
-    // CRITICAL: Sign out from Supabase first
     await supabase.auth.signOut();
-    
-    // CRITICAL: Clear tenantId from module-level variable and localStorage
-    // This prevents cross-tenant data leakage when switching users
     setTenantIdForApi(null);
     localStorage.removeItem('currentTenantId');
-    
-    // CRITICAL: Clear React Query cache to prevent cached tenant/admin data from leaking to next user
     queryClient.clear();
-    
     setUser(null);
-    
-    // Navigate to login page (replace: true to prevent back button issues)
     window.location.href = '/login';
   };
+
+  // Intro splash – בכל רענון מלא של האפליקציה
+  // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
 
   // Splash פתיחה – לפני שמגיעים בכלל למסכי לוגאין/רישום
   if (showInitialSplash && !user) {
@@ -279,6 +282,7 @@ function AppContent({
           </AnimatePresence>
         </div>
         <PublicAuthFooter />
+        <AccessibilityBar />
       </div>
     );
   }
@@ -286,14 +290,17 @@ function AppContent({
   return (
     <>
       <OnboardingRouter>
-        <AppWithNavigation
-          user={user}
-          onLogout={onLogout}
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          phoneVerificationPending={phoneVerificationPending}
-          onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
-        />
+        <HelpCenterProvider userId={user.id}>
+          <AppWithNavigation
+            user={user}
+            onLogout={onLogout}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            phoneVerificationPending={phoneVerificationPending}
+            onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
+          />
+          <HelpCenterShell />
+        </HelpCenterProvider>
       </OnboardingRouter>
 
       <Dialog open={phoneDialogOpen} onOpenChange={setPhoneDialogOpen}>
@@ -396,6 +403,57 @@ function AppContent({
   );
 }
 
+function HelpCenterShell() {
+  const location = useLocation();
+  const {
+    openHelp,
+    closeHelp,
+    isDrawerOpen,
+    filteredArticles,
+    markWelcomeSeen,
+    selectedArticle,
+    selectedCategoryId,
+    searchTerm,
+    setSearchTerm,
+    setSelectedCategoryId,
+    setSelectedArticleId,
+    welcomeOpen,
+  } = useHelpCenter();
+
+  const isRtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+
+  useEffect(() => {
+    const articleId = getHelpArticleIdFromSearch(location.search);
+    if (articleId) {
+      openHelp(articleId);
+    }
+  }, [location.search, openHelp]);
+
+  return (
+    <>
+      <WelcomeModal
+        open={welcomeOpen}
+        videoUrl={WELCOME_VIDEO_URL}
+        onStart={() => void markWelcomeSeen()}
+        onSkip={() => void markWelcomeSeen()}
+      />
+      <HelpDrawer
+        open={isDrawerOpen}
+        isRtl={isRtl}
+        categories={helpContent.categories}
+        articles={filteredArticles}
+        selectedCategoryId={selectedCategoryId}
+        selectedArticle={selectedArticle}
+        searchTerm={searchTerm}
+        onClose={closeHelp}
+        onSearchChange={setSearchTerm}
+        onCategoryChange={setSelectedCategoryId}
+        onArticleSelect={setSelectedArticleId}
+      />
+    </>
+  );
+}
+
 /**
  * AdminRouteGuard - Protects /admin route
  * 
@@ -440,7 +498,6 @@ function AppWithNavigation({
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
   const location = useLocation();
-  const navigate = useNavigate();
  
   // Super admin can access /admin without a tenant
   const isAdminPage = location.pathname.startsWith('/admin');
@@ -453,20 +510,20 @@ function AppWithNavigation({
 
   return (
     <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
-      <AppHeader
-        user={user}
-        onLogout={onLogout}
-        isSuperAdmin={isSuperAdmin === true}
+        <AppHeader
+            user={user}
+            onLogout={onLogout}
+            isSuperAdmin={isSuperAdmin === true}
         isDark={theme === 'dark'}
         onToggleTheme={onToggleTheme}
       />
       {phoneVerificationPending ? (
-        <div className="w-full border-b border-amber-300 bg-amber-100 text-amber-900">
+        <div className="w-full border-b-2 border-red-300 bg-red-50 text-red-900 dark:border-red-400 dark:bg-red-950/40 dark:text-red-200">
           <div className="mx-auto mt-2 flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2 text-sm">
             <span>חשוב: החשבון עדיין ללא מספר טלפון מאומת. מומלץ לאמת עכשיו.</span>
             <button
               type="button"
-              className="rounded-md border border-amber-500 px-3 py-1 text-xs font-medium hover:bg-amber-200"
+              className="rounded-md border-2 border-red-400 px-3 py-1 text-xs font-medium transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground dark:border-red-500 dark:hover:border-primary dark:hover:bg-primary dark:hover:text-primary-foreground"
               onClick={onRequestPhoneVerification}
             >
               אמת מספר טלפון
@@ -529,24 +586,15 @@ function AppWithNavigation({
               to="/about"
               className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
             >
-              Why Stockly
+              למה Stockly
             </Link>
           </div>
         </div>
       </div>
       <BottomTabs />
       <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
-      <div className="fixed bottom-24 left-4 z-40 sm:bottom-6">
-        <button
-          type="button"
-          onClick={() => navigate('/support')}
-          className="group h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg transition-all duration-200 hover:scale-110 hover:shadow-xl"
-          aria-label="פתח תמיכה"
-          title="תמיכה"
-        >
-          <span className="text-lg font-bold transition-transform duration-200 group-hover:scale-110">?</span>
-        </button>
-      </div>
+      <SupportButton />
+      <AccessibilityBar />
     </div>
   );
 }

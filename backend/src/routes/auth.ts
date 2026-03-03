@@ -325,13 +325,19 @@ router.post('/otp/request', async (req, res) => {
         return res.json({ ok: true });
       }
 
-      const lastSentAtMs = new Date(latest.last_sent_at).getTime();
-      if (now - lastSentAtMs < OTP_COOLDOWN_MS) {
-        await logOtpRequest({ phoneE164, ipAddress, sent: false });
-        if (flow === 'signup') {
-          return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+      const expiresAtMs = new Date(latest.expires_at).getTime();
+      const isChallengeExpired = expiresAtMs <= now;
+      // Only apply cooldown when there's an active (non-expired) challenge.
+      // If user verified and logged out, the challenge is expired - allow new send immediately.
+      if (!isChallengeExpired) {
+        const lastSentAtMs = new Date(latest.last_sent_at).getTime();
+        if (now - lastSentAtMs < OTP_COOLDOWN_MS) {
+          await logOtpRequest({ phoneE164, ipAddress, sent: false });
+          if (flow === 'signup') {
+            return res.status(429).json(OTP_RATE_LIMITED_ERROR);
+          }
+          return res.json({ ok: true });
         }
-        return res.json({ ok: true });
       }
     }
 

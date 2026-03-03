@@ -103,17 +103,17 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
                 />
               </button>
               <TenantSwitcher />
-              <span className="hidden max-w-[150px] truncate text-xs text-muted-foreground lg:inline">
-                {user.email}
-              </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onLogout}
-                className="hidden min-h-[44px] rounded-full px-4 text-xs sm:inline-flex"
+                className="min-h-[44px] rounded-full px-2 text-xs sm:px-3"
               >
                 יציאה
               </Button>
+              <span className="hidden max-w-[150px] truncate text-xs text-muted-foreground lg:inline">
+                {user.email}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"

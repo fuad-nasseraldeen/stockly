@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
+import { GoogleIcon } from '../components/ui/google-icon';
 import { FlatPageLayout } from '../components/layout/FlatPageLayout';
 
 export default function Signup() {
@@ -57,8 +58,15 @@ export default function Signup() {
             {error}
           </div>
         )}
-        <Button type="button" className="w-full" onClick={handleGoogleSignup} disabled={googleLoading}>
-          {googleLoading ? 'מעביר ל-Google...' : 'המשך עם Google'}
+        <Button type="button" className="w-full [&_svg]:size-[15px]" onClick={handleGoogleSignup} disabled={googleLoading}>
+          {googleLoading ? (
+            'מעביר ל-Google...'
+          ) : (
+            <span className="inline-flex items-center gap-2 flex-row-reverse">
+              המשך עם Google
+              <GoogleIcon />
+            </span>
+          )}
         </Button>
         <p className="mt-3 text-center text-xs text-muted-foreground">
           הרשמה וכניסה נעשות דרך Google בלבד.

@@ -10,15 +10,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Eye, EyeOff, Send, Users, Loader2 } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
-import { accountApi, authApi, tenantsApi, tenantApi, settingsApi, type TenantMember, type TenantInvite } from '../lib/api';
+import { accountApi, authApi, tenantsApi, tenantApi, settingsApi, setTenantIdForApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { getTableLayoutProductsKey } from '../lib/table-layout-keys';
 import { FieldLayoutEditor } from '../components/FieldLayoutEditor/FieldLayoutEditor';
 import type { FieldOption, PinnedFieldIds } from '../components/FieldLayoutEditor/fieldLayoutTypes';
 import { emptyPinnedFieldIds, normalizePinnedFieldIds, parsePinnedFieldIdsFromSavedLayout } from '../components/FieldLayoutEditor/fieldLayoutUtils';
+import { useHelpCenter } from '../contexts/HelpCenterContext';
+import { InfoTooltip } from '../components/help/InfoTooltip';
 
 export default function Settings() {
+  const { openHelp, resetWelcome, supportButtonHidden, showSupportButton } = useHelpCenter();
   const navigate = useNavigate();
   const { data: settings, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
@@ -405,9 +408,26 @@ export default function Settings() {
           <p className="text-sm text-muted-foreground">
             אפשר לפתוח שיחת תמיכה דו-כיוונית ישירות מתוך המערכת, כולל צירוף קובץ או תמונה.
           </p>
-          <Button onClick={() => navigate('/support')} className="w-full sm:w-auto">
-            פתח צ׳אט תמיכה
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => navigate('/support')} className="w-full sm:w-auto">
+              פתח צ׳אט תמיכה
+            </Button>
+            {supportButtonHidden ? (
+              <Button variant="outline" onClick={() => void showSupportButton()} className="w-full sm:w-auto">
+                הצג כפתור תמיכה בפינה
+              </Button>
+            ) : (
+              <span className="flex items-center self-center text-sm text-muted-foreground">
+                כפתור התמיכה מוצג בפינה
+              </span>
+            )}
+            <Button variant="outline" onClick={() => openHelp('add-participant')} className="w-full sm:w-auto">
+              מדריך הזמנת משתמשים
+            </Button>
+            <Button variant="outline" onClick={() => void resetWelcome()} className="w-full sm:w-auto">
+              אפס חלון ברוכים הבאים
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -456,7 +476,10 @@ export default function Settings() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="useVatToggle">חשב מע&quot;מ</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="useVatToggle">חשב מע&quot;מ</Label>
+                <InfoTooltip content='לעוסק פטור מומלץ לכבות מע"מ. במצב זה המערכת תתייחס לכל מחיר כמחיר סופי ולא תציג שדות מע"מ.' />
+              </div>
               <label
                 htmlFor="useVatToggle"
                 className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
@@ -506,7 +529,10 @@ export default function Settings() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="decimalPrecision">דיוק עשרוני למחירים</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="decimalPrecision">דיוק עשרוני למחירים</Label>
+                <InfoTooltip content='ברירת המחדל היא 2 ספרות. העלה דיוק רק אם באמת צריך (למשל יחידות משקל/נפח) כדי למנוע רעש במספרים.' />
+              </div>
               <Input
                 id="decimalPrecision"
                 type="number"
@@ -520,6 +546,13 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 כמה ספרות אחרי הנקודה יישמרו במחירים (ברירת מחדל: 2). בתצוגה אפסים לא משמעותיים בסוף יוסתרו.
               </p>
+              <button
+                type="button"
+                onClick={() => openHelp('decimal-places')}
+                className="text-xs text-primary underline underline-offset-2"
+              >
+                פתח מדריך דיוק עשרוני
+              </button>
             </div>
           </div>
           <div className="space-y-4">
@@ -926,6 +959,21 @@ export default function Settings() {
           {profileMessage && (
             <p className="text-xs mt-2 text-muted-foreground">{profileMessage}</p>
           )}
+          <div className="mt-4 pt-4 border-t border-border">
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                setTenantIdForApi(null);
+                localStorage.removeItem('currentTenantId');
+                queryClient.clear();
+                window.location.href = '/login';
+              }}
+            >
+              יציאה מהחשבון
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

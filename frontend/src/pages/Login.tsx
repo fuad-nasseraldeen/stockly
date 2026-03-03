@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { authApi } from '../lib/api';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { Button } from '../components/ui/button';
+import { GoogleIcon } from '../components/ui/google-icon';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { FlatPageLayout } from '../components/layout/FlatPageLayout';
@@ -165,8 +166,15 @@ export default function Login() {
     >
       <div className="rounded-xl border border-border bg-card/60 p-4">
           <div className="mb-3">
-            <Button type="button" variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={googleLoading}>
-              {googleLoading ? 'מעביר ל-Google...' : 'המשך עם Google'}
+            <Button type="button" variant="outline" className="w-full [&_svg]:size-[15px]" onClick={handleGoogleLogin} disabled={googleLoading}>
+              {googleLoading ? (
+                'מעביר ל-Google...'
+              ) : (
+                <span className="inline-flex items-center gap-2 flex-row-reverse">
+                  המשך עם Google
+                  <GoogleIcon />
+                </span>
+              )}
             </Button>
           </div>
           <form onSubmit={otpStep === 'phone' ? handleRequestOtp : handleVerifyOtp} className="space-y-4 mt-4">

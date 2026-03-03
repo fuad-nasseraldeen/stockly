@@ -292,19 +292,24 @@ function buildRowsFromTable(table: Block, blockById: Map<string, Block>): string
   }));
 }
 
-function getAwsRegion(): string {
-  const region = (process.env.AWS_REGION || '').trim();
-  if (!region) {
-    throw new Error('Missing AWS_REGION');
-  }
-  return region;
+function getTextractRegion(): string {
+  // Textract is not available in il-central-1. Use TEXTRACT_REGION if set, else fallback to eu-west-1 when AWS_REGION is Israel.
+  const textractRegion = (process.env.TEXTRACT_REGION || '').trim();
+  if (textractRegion) return textractRegion;
+
+  const awsRegion = (process.env.AWS_REGION || '').trim();
+  if (!awsRegion) throw new Error('Missing AWS_REGION');
+
+  // il-central-1 (Israel) does not support Textract - use eu-west-1
+  if (awsRegion === 'il-central-1') return 'eu-west-1';
+  return awsRegion;
 }
 
 export async function extractPdfTablesWithTextract(
   pdfBytes: Buffer,
   options: PdfExtractOptions = {},
 ): Promise<ExtractedPdfResult> {
-  const client = new TextractClient({ region: getAwsRegion() });
+  const client = new TextractClient({ region: getTextractRegion() });
   let response;
   try {
     response = await client.send(
@@ -350,7 +355,7 @@ export async function extractPdfTablesWithTextract(
     throw new Error(`טווח עמודים גדול מדי. מקסימום ${options.maxPages} עמודים ל-preview`);
   }
 
-  const tables = blocks
+  let tables = blocks
     .filter((b): b is Block => b.BlockType === 'TABLE')
     .filter((t) => {
       const page = t.Page || 1;
@@ -375,13 +380,31 @@ export async function extractPdfTablesWithTextract(
     })
     .filter((t) => t.rows.length > 0);
 
+  // Textract returned 0 tables – try fallback parser (helps with exported PDFs)
+  let finalPagesDetected = pagesDetected;
   if (!tables.length) {
-    warnings.push('לא נמצאו טבלאות ב-PDF בטווח העמודים שנבחר');
+    try {
+      const fallbackResult = await tryExtractTextTableFromPdf(pdfBytes);
+      if (fallbackResult && fallbackResult.tables.length > 0) {
+        tables = fallbackResult.tables
+          .filter((t) => t.pageStart >= pageFrom && t.pageEnd <= pageTo)
+          .map((t, idx) => ({ ...t, tableIndex: idx }));
+        if (tables.length > 0) {
+          finalPagesDetected = fallbackResult.pagesDetected;
+          warnings.push(...fallbackResult.warnings);
+        }
+      }
+      if (!tables.length) {
+        warnings.push('לא נמצאו טבלאות ב-PDF בטווח העמודים שנבחר');
+      }
+    } catch {
+      warnings.push('לא נמצאו טבלאות ב-PDF בטווח העמודים שנבחר');
+    }
   }
 
   return {
     tables,
-    pagesDetected,
+    pagesDetected: finalPagesDetected,
     warnings,
   };
 }

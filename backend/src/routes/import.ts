@@ -263,13 +263,24 @@ function toUserImportError(error: unknown): { status: number; message: string } 
   const raw = String(message || '');
 
   if (raw.includes('Missing AWS_REGION')) {
-    return { status: 400, message: 'Missing AWS_REGION' };
+    return { status: 400, message: 'חסר AWS_REGION בהגדרות השרת. ייבוא PDF דורש AWS Textract.' };
+  }
+  if (
+    raw.includes('Missing credentials') ||
+    raw.includes('CredentialsError') ||
+    raw.includes('AWS_ACCESS_KEY_ID') ||
+    raw.includes('AWS_SECRET_ACCESS_KEY')
+  ) {
+    return {
+      status: 400,
+      message: 'חסרות הרשאות AWS. ייבוא PDF דורש AWS_ACCESS_KEY_ID ו-AWS_SECRET_ACCESS_KEY.',
+    };
   }
   if (raw.includes('sourceType=pdf דורש קובץ PDF חוקי')) {
-    return { status: 400, message: 'sourceType=pdf requires a valid PDF file' };
+    return { status: 400, message: 'נדרש קובץ PDF חוקי' };
   }
   if (raw.includes('sourceType=excel לא יכול לקבל PDF')) {
-    return { status: 400, message: 'sourceType=excel cannot accept a PDF file' };
+    return { status: 400, message: 'מצב Excel לא תומך בקבצי PDF' };
   }
 
   if (raw.includes('AccessDeniedException') || raw.includes('textract:AnalyzeDocument')) {
@@ -289,6 +300,15 @@ function toUserImportError(error: unknown): { status: number; message: string } 
         ? raw
         : 'ה-PDF לא נתמך על ידי Textract בפורמט הנוכחי. נסה לשמור מחדש (Print to PDF) או לפצל לעמודים בודדים.',
     };
+  }
+  if (raw.includes('InvalidParameterException') || raw.includes('InvalidS3ObjectException')) {
+    return { status: 400, message: 'קובץ ה-PDF לא תקין או לא נתמך. נסה קובץ אחר.' };
+  }
+  if (raw.includes('ThrottlingException') || raw.includes('TooManyRequestsException')) {
+    return { status: 429, message: 'יותר מדי בקשות ל-Textract. נסה שוב בעוד דקה.' };
+  }
+  if (raw.includes('PDF import is temporarily unavailable')) {
+    return { status: 503, message: 'ייבוא PDF לא זמין כרגע בשרת. נסה שוב מאוחר יותר.' };
   }
 
   if (
@@ -753,6 +773,8 @@ function buildPdfDerivedRows(rows: unknown[][]): unknown[][] {
   ];
 
   const output: unknown[][] = [[...header, ...derivedHeader]];
+  const hasKnownStructure = codeIdx >= 0 || descIdx >= 0;
+
   for (const rawRow of rows.slice(1)) {
     const row = Array.isArray(rawRow) ? rawRow.map((c) => normalizePdfCellText(c)) : [];
     const code = codeIdx >= 0 ? String(row[codeIdx] || '').trim() : '';
@@ -764,7 +786,7 @@ function buildPdfDerivedRows(rows: unknown[][]): unknown[][] {
     const lineTotalRaw = lineTotalIdx >= 0 ? row[lineTotalIdx] : '';
 
     const summaryRow = /סה["']?\s*כ/i.test(`${desc} ${packagesRaw} ${lineTotalRaw}`);
-    if (!code || summaryRow) continue;
+    if (hasKnownStructure && (!code || summaryRow)) continue;
 
     const packagesCount = parseFirstNumberFromText(packagesRaw);
     const packageType = detectPackageTypeFromText(packagesRaw, qtyPerPackageRaw);
@@ -1540,7 +1562,9 @@ router.post('/preview', requireAuth, requireTenant, upload.single('file'), async
       warnings: source.warnings || [],
     });
   } catch (error) {
-    console.error('Import preview error:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    console.error('Import preview error:', errMsg, errStack ? `\n${errStack}` : '');
     const normalized = toUserImportError(error);
     return res.status(normalized.status).json({ error: normalized.message });
   }

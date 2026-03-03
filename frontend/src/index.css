@@ -88,3 +88,47 @@
     @apply font-semibold tracking-tight;
   }
 }
+
+/* Accessibility - applied via classes on html */
+html {
+  font-size: calc(100% * var(--a11y-font-scale, 1));
+}
+.a11y-contrast-high {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.2 0 0);
+  --border: oklch(0.2 0 0);
+}
+.dark.a11y-contrast-high {
+  --background: oklch(0.1 0 0);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.15 0 0);
+  --card-foreground: oklch(1 0 0);
+  --muted: oklch(0.2 0 0);
+  --muted-foreground: oklch(0.9 0 0);
+  --border: oklch(0.9 0 0 / 50%);
+}
+.a11y-contrast-invert {
+  filter: invert(1) hue-rotate(180deg);
+}
+.a11y-contrast-invert img,
+.a11y-contrast-invert video {
+  filter: invert(1) hue-rotate(180deg);
+}
+.a11y-letter-spacing * {
+  letter-spacing: 0.12em;
+}
+.a11y-line-height * {
+  line-height: 1.8 !important;
+}
+.a11y-underline-links a {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+.a11y-large-cursor,
+.a11y-large-cursor * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath fill='black' stroke='white' stroke-width='1' d='M4 4 L4 24 L10 20 L14 28 L18 26 L14 18 L24 24 Z'/%3E%3C/svg%3E") 0 0, auto !important;
+}
