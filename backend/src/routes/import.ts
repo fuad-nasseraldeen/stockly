@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
+import { runRecalcPricesForTenant } from '../lib/recalc-prices.js';
 
 type PdfExtractorModule = typeof import('../import/extractors/pdfExtractor.js');
 let pdfExtractorModulePromise: Promise<PdfExtractorModule> | null = null;
@@ -2323,6 +2324,13 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     const categoryStats: Record<string, { total: number }> = {};
     for (const [category, productSet] of productsByCategory.entries()) {
       categoryStats[category] = { total: productSet.size };
+    }
+
+    // Apply current settings (margin, VAT) to all products including newly imported – behind the scenes
+    try {
+      await runRecalcPricesForTenant(tenant.tenantId, user.id, { retries: 1 });
+    } catch (recalcErr) {
+      console.error('Import: recalc prices after import failed (non-fatal)', recalcErr);
     }
 
     return res.json({

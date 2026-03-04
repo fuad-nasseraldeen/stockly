@@ -705,6 +705,12 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  /** Recalculate all product prices with current settings (margin, VAT). Use when imported products have old margin. */
+  recalculatePrices: (): Promise<{ success: boolean; updated: number; message: string }> =>
+    apiRequest<{ success: boolean; updated: number; message: string }>('/api/settings/recalculate-prices', {
+      method: 'POST',
+    }),
   // User preferences API
   getPreference: <T = unknown>(key: string): Promise<T | null> =>
     apiRequest<T | null>(`/api/settings/preferences/${key}`),

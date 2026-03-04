@@ -60,6 +60,9 @@ export function useUpdateSettings() {
     mutationFn: settingsApi.update,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      // Recalc runs on server – invalidate products so UI shows updated prices
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product'] });
     },
   });
 }

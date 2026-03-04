@@ -118,6 +118,8 @@ export default function Settings() {
   }, [profilePhoneResendIn]);
 
   const [savingVat, setSavingVat] = useState(false);
+  const [recalcLoading, setRecalcLoading] = useState(false);
+  const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [savingFieldLayout, setSavingFieldLayout] = useState(false);
@@ -489,6 +491,44 @@ export default function Settings() {
                 <span>מחשב מחירי מכירה לכל המוצרים והספקים. זה יכול לקחת כמה רגעים.</span>
               </div>
             )}
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setRecalcMessage(null);
+                  setRecalcLoading(true);
+                  try {
+                    const res = await settingsApi.recalculatePrices();
+                    setRecalcMessage(res.message || (res.updated > 0 ? `עודכנו ${res.updated} מחירים` : 'כל המחירים כבר מעודכנים'));
+                    if (res.updated > 0) {
+                      await Promise.all([
+                        queryClient.invalidateQueries({ queryKey: ['products'] }),
+                        queryClient.invalidateQueries({ queryKey: ['settings'] }),
+                      ]);
+                    }
+                  } catch (e) {
+                    setRecalcMessage(e instanceof Error ? e.message : 'שגיאה בחישוב מחדש');
+                  } finally {
+                    setRecalcLoading(false);
+                  }
+                }}
+                disabled={recalcLoading || isLoading}
+                title="מחיל את הרווח והמע״מ הנוכחיים על כל המוצרים (כולל מיובאים)"
+              >
+                {recalcLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin ml-2" />
+                    מחשב מחדש...
+                  </>
+                ) : (
+                  'חשב מחדש את כל המחירים'
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">שימושי כששינית רווח/מע״מ ומוצרים מיובאים נשארו עם הערכים הישנים</p>
+              {recalcMessage && (
+                <p className="text-sm text-muted-foreground">{recalcMessage}</p>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {/* בוקס 1: חשב מע"מ */}

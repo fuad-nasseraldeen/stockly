@@ -2,18 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
-import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
+import { clampDecimalPrecision } from '../lib/pricing.js';
+import { runRecalcPricesForTenant } from '../lib/recalc-prices.js';
 
 const router = Router();
-
-// Helper function for bulk operations
-function chunk<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}
 
 router.get('/', requireAuth, requireTenant, async (req, res) => {
   const tenant = (req as any).tenant;
@@ -92,132 +84,38 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
 
   if (error || !data) return res.status(400).json({ error: 'לא ניתן לעדכן הגדרות' });
 
-  // After updating VAT / global margin / use_margin / use_vat, recalculate prices for all products for this tenant
-  // FAST VERSION: Bulk operations instead of one-by-one inserts
+  // After updating VAT / global margin / use_margin / use_vat – recalculate all prices (including imported)
   try {
-    const newVat = Number(data.vat_percent);
-    const newMargin = Number(data.global_margin_percent ?? global_margin_percent ?? 0);
-    const newUseMargin = data.use_margin === true; // Default to false if not set
-    const newUseVat = data.use_vat === true;
-    const decimalPrecision = clampDecimalPrecision((data as any).decimal_precision, 2);
-
-    // Get ALL current prices (paginate to overcome PostgREST 1000-row default)
-    const currentRows: any[] = [];
-    let offset = 0;
-    const pageSize = 1000;
-    while (true) {
-      const { data: page, error: pageErr } = await supabase
-        .from('product_supplier_current_price')
-        .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,sell_price')
-        .eq('tenant_id', tenant.tenantId)
-        .range(offset, offset + pageSize - 1);
-      if (pageErr) break;
-      if (!page || page.length === 0) break;
-      currentRows.push(...page);
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
-
-    if (currentRows.length > 0) {
-      const pairKeys = new Set(currentRows.map((r: any) => `${r.product_id}||${r.supplier_id}`));
-      const latestPriceByPair = new Map<string, { cost_price: number; discount_percent: number | null; margin_percent: number; sell_price: number }>();
-
-      // Fetch price_entries paginated; first occurrence per pair (ordered by created_at DESC) = latest
-      let peOffset = 0;
-      const pePageSize = 1000;
-      while (latestPriceByPair.size < pairKeys.size) {
-        const { data: pePage } = await supabase
-          .from('price_entries')
-          .select('product_id,supplier_id,cost_price,discount_percent,margin_percent,sell_price,created_at')
-          .eq('tenant_id', tenant.tenantId)
-          .order('created_at', { ascending: false })
-          .range(peOffset, peOffset + pePageSize - 1);
-        if (!pePage || pePage.length === 0) break;
-        for (const p of pePage) {
-          const key = `${p.product_id}||${p.supplier_id}`;
-          if (pairKeys.has(key) && !latestPriceByPair.has(key)) {
-            latestPriceByPair.set(key, {
-              cost_price: Number(p.cost_price),
-              discount_percent: p.discount_percent === null ? null : Number(p.discount_percent),
-              margin_percent: Number(p.margin_percent ?? 0),
-              sell_price: Number(p.sell_price),
-            });
-          }
-        }
-        if (pePage.length < pePageSize) break;
-        peOffset += pePageSize;
-      }
-
-      // Build all price entries to insert (when sell_price OR margin_percent changed - e.g. imported products with old margin)
-      const priceRowsToInsert: any[] = [];
-
-      for (const row of currentRows as any[]) {
-        const cost = Number(row.cost_price);
-        if (!Number.isFinite(cost) || cost < 0) continue;
-
-        const discountPercent = Number(row.discount_percent ?? 0);
-        const costAfterDiscount = row.cost_price_after_discount
-          ? Number(row.cost_price_after_discount)
-          : calcCostAfterDiscount(cost, discountPercent, decimalPrecision);
-
-        // Recalculate sell price with new settings
-        const sellPrice = calcSellPrice({
-          cost_price: cost,
-          margin_percent: newMargin,
-          vat_percent: newVat,
-          cost_price_after_discount: costAfterDiscount,
-          use_margin: newUseMargin,
-          use_vat: newUseVat,
-          precision: decimalPrecision,
-        });
-
-        const newMarginRounded = roundToPrecision(newMargin, decimalPrecision);
-        const key = `${row.product_id}||${row.supplier_id}`;
-        const current = latestPriceByPair.get(key);
-
-        // Insert if: sell_price changed OR margin_percent changed (e.g. imported products had margin=0, now we have 5%)
-        const same =
-          current &&
-          Number(current.cost_price) === cost &&
-          Number(current.discount_percent ?? 0) === discountPercent &&
-          Number(current.sell_price) === sellPrice &&
-          Number(current.margin_percent) === newMarginRounded;
-
-        if (!same) {
-          priceRowsToInsert.push({
-            tenant_id: tenant.tenantId,
-            product_id: row.product_id,
-            supplier_id: row.supplier_id,
-            cost_price: cost,
-            discount_percent: roundToPrecision(discountPercent, decimalPrecision),
-            cost_price_after_discount: costAfterDiscount,
-            margin_percent: roundToPrecision(newMargin, decimalPrecision),
-            sell_price: sellPrice,
-            created_by: user.id,
-          });
-        }
-      }
-
-      // Bulk insert in chunks of 500
-      if (priceRowsToInsert.length > 0) {
-        for (const part of chunk(priceRowsToInsert, 500)) {
-          const { error: insertError } = await supabase
-            .from('price_entries')
-            .insert(part);
-          
-          if (insertError) {
-            console.error('Bulk price insert failed:', insertError);
-            // Continue with next chunk even if one fails
-          }
-        }
-      }
-    }
+    await runRecalcPricesForTenant(tenant.tenantId, user.id, { retries: 1 });
   } catch (err) {
     console.error('Error recalculating prices after settings update', err);
     // לא מפילים את הבקשה – ההגדרות עודכנו, רק הרה-חישוב נכשל
   }
 
-  return res.json(data ? { ...data, decimal_precision: (data as any).decimal_precision ?? 2 } : data);
+  return res.json(data ? { ...data, decimal_precision: (data as Record<string, unknown>).decimal_precision ?? 2 } : data);
+});
+
+/**
+ * POST /api/settings/recalculate-prices
+ * Recalculates all product prices using current settings (global margin, VAT, etc.).
+ * Fallback when auto-recalc failed or user wants to force refresh.
+ */
+router.post('/recalculate-prices', requireAuth, requireTenant, async (req, res) => {
+  const reqAny = req as unknown as { tenant: { tenantId: string }; user: { id: string } };
+  const tenant = reqAny.tenant;
+  const user = reqAny.user;
+
+  try {
+    const { updated } = await runRecalcPricesForTenant(tenant.tenantId, user.id, { retries: 1 });
+    return res.json({
+      success: true,
+      updated,
+      message: updated > 0 ? `עודכנו ${updated} מחירים בהצלחה` : 'כל המחירים כבר מעודכנים',
+    });
+  } catch (err) {
+    console.error('Error recalculating prices:', err);
+    return res.status(500).json({ error: 'שגיאה בחישוב מחירים מחדש' });
+  }
 });
 
 // User preferences endpoints
