@@ -28,3 +28,15 @@ export function formatNumberTrimmed(value: number, precision: number): string {
   return parseFloat(value.toFixed(safePrecision)).toString();
 }
 
+/** step attribute for price inputs - respects decimal_precision */
+export function priceInputStep(precision: number): string {
+  const p = clampDecimalPrecision(precision);
+  return p === 0 ? '1' : `0.${'0'.repeat(p - 1)}1`;
+}
+
+/** placeholder for price inputs - respects decimal_precision */
+export function priceInputPlaceholder(precision: number): string {
+  const p = clampDecimalPrecision(precision);
+  return p === 0 ? '0' : `0.${'0'.repeat(p)}`;
+}
+

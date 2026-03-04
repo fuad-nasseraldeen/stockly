@@ -26,9 +26,9 @@ function DraggableField({
     <button
       ref={setNodeRef}
       type="button"
-      className={`flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-right ${
+      className={`flex min-h-11 w-full items-center justify-between rounded-xl border-2 px-3 py-2.5 text-right transition-colors ${
         isDragging ? 'opacity-50' : 'opacity-100'
-      } ${isPinned ? 'border-primary/40 bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}
+      } ${isPinned ? 'border-primary/50 bg-primary/10' : 'border-border bg-background hover:bg-muted/50 hover:border-muted-foreground/30'}`}
       style={style}
       {...listeners}
       {...attributes}
@@ -36,8 +36,8 @@ function DraggableField({
       <span className="max-h-10 overflow-hidden whitespace-normal break-words text-right text-sm leading-tight">
         {field.label}
       </span>
-      <div className="flex items-center gap-2">
-        {isPinned ? <span className="text-xs text-muted-foreground">מקובע</span> : null}
+      <div className="flex items-center gap-2 shrink-0">
+        {isPinned ? <span className="text-xs text-primary font-medium">נבחר</span> : null}
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </div>
     </button>
@@ -49,8 +49,8 @@ export function FieldLibrary({ allFields, pinnedFieldIds }: FieldLibraryProps) {
 
   return (
     <div className="space-y-2">
-      <div className="text-sm font-semibold">ספריית שדות (גרור לעמודות למעלה)</div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="text-sm font-medium text-foreground">שדות זמינים – גרור לעמודה או לחץ על עמודה לבחירה</div>
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
         {allFields.map((field) => (
           <DraggableField key={field.id} field={field} isPinned={pinnedSet.has(field.id)} />
         ))}

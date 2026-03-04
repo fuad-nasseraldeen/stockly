@@ -37,7 +37,7 @@ const updateSchema = z.object({
     .coerce
     .number()
     .min(0, 'אחוז רווח חייב להיות 0 או יותר')
-    .max(500, 'אחוז רווח לא יכול להיות מעל 500')
+    .max(100, 'אחוז רווח לא יכול להיות מעל 100')
     .optional(),
   use_margin: z
     .coerce
@@ -52,7 +52,7 @@ const updateSchema = z.object({
     .number()
     .int('דיוק עשרוני חייב להיות מספר שלם')
     .min(0, 'דיוק עשרוני חייב להיות 0 או יותר')
-    .max(8, 'דיוק עשרוני לא יכול להיות מעל 8')
+    .max(5, 'דיוק עשרוני לא יכול להיות מעל 5')
     .optional(),
 });
 
@@ -101,42 +101,54 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
     const newUseVat = data.use_vat === true;
     const decimalPrecision = clampDecimalPrecision((data as any).decimal_precision, 2);
 
-    // Get current price per product+supplier
-    const { data: currentRows, error: currentErr } = await supabase
-      .from('product_supplier_current_price')
-      .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,sell_price')
-      .eq('tenant_id', tenant.tenantId);
-
-    if (!currentErr && currentRows && currentRows.length > 0) {
-      // Preload latest prices to check if they changed
-      const productIds = Array.from(new Set(currentRows.map((r: any) => r.product_id)));
-      const supplierIds = Array.from(new Set(currentRows.map((r: any) => r.supplier_id)));
-
-      // Get latest prices for comparison
-      const { data: latestPrices } = await supabase
-        .from('price_entries')
-        .select('product_id,supplier_id,cost_price,discount_percent,sell_price,created_at')
+    // Get ALL current prices (paginate to overcome PostgREST 1000-row default)
+    const currentRows: any[] = [];
+    let offset = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data: page, error: pageErr } = await supabase
+        .from('product_supplier_current_price')
+        .select('product_id,supplier_id,cost_price,discount_percent,cost_price_after_discount,sell_price')
         .eq('tenant_id', tenant.tenantId)
-        .in('product_id', productIds)
-        .in('supplier_id', supplierIds)
-        .order('created_at', { ascending: false });
+        .range(offset, offset + pageSize - 1);
+      if (pageErr) break;
+      if (!page || page.length === 0) break;
+      currentRows.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
 
-      // Build map of latest prices per pair
-      const latestPriceByPair = new Map<string, { cost_price: number; discount_percent: number | null; sell_price: number }>();
-      if (latestPrices) {
-        for (const p of latestPrices) {
+    if (currentRows.length > 0) {
+      const pairKeys = new Set(currentRows.map((r: any) => `${r.product_id}||${r.supplier_id}`));
+      const latestPriceByPair = new Map<string, { cost_price: number; discount_percent: number | null; margin_percent: number; sell_price: number }>();
+
+      // Fetch price_entries paginated; first occurrence per pair (ordered by created_at DESC) = latest
+      let peOffset = 0;
+      const pePageSize = 1000;
+      while (latestPriceByPair.size < pairKeys.size) {
+        const { data: pePage } = await supabase
+          .from('price_entries')
+          .select('product_id,supplier_id,cost_price,discount_percent,margin_percent,sell_price,created_at')
+          .eq('tenant_id', tenant.tenantId)
+          .order('created_at', { ascending: false })
+          .range(peOffset, peOffset + pePageSize - 1);
+        if (!pePage || pePage.length === 0) break;
+        for (const p of pePage) {
           const key = `${p.product_id}||${p.supplier_id}`;
-          if (!latestPriceByPair.has(key)) {
+          if (pairKeys.has(key) && !latestPriceByPair.has(key)) {
             latestPriceByPair.set(key, {
               cost_price: Number(p.cost_price),
               discount_percent: p.discount_percent === null ? null : Number(p.discount_percent),
+              margin_percent: Number(p.margin_percent ?? 0),
               sell_price: Number(p.sell_price),
             });
           }
         }
+        if (pePage.length < pePageSize) break;
+        peOffset += pePageSize;
       }
 
-      // Build all price entries to insert (only if sell_price changed)
+      // Build all price entries to insert (when sell_price OR margin_percent changed - e.g. imported products with old margin)
       const priceRowsToInsert: any[] = [];
 
       for (const row of currentRows as any[]) {
@@ -159,17 +171,18 @@ router.put('/', requireAuth, requireTenant, async (req, res) => {
           precision: decimalPrecision,
         });
 
-        // Check if price actually changed
+        const newMarginRounded = roundToPrecision(newMargin, decimalPrecision);
         const key = `${row.product_id}||${row.supplier_id}`;
         const current = latestPriceByPair.get(key);
 
+        // Insert if: sell_price changed OR margin_percent changed (e.g. imported products had margin=0, now we have 5%)
         const same =
           current &&
           Number(current.cost_price) === cost &&
           Number(current.discount_percent ?? 0) === discountPercent &&
-          Number(current.sell_price) === sellPrice;
+          Number(current.sell_price) === sellPrice &&
+          Number(current.margin_percent) === newMarginRounded;
 
-        // Only insert if price changed
         if (!same) {
           priceRowsToInsert.push({
             tenant_id: tenant.tenantId,

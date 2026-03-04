@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { TenantSwitcher } from '../TenantSwitcher';
 import { useTenant } from '../../hooks/useTenant';
+import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 type AppHeaderProps = {
   user: User;
@@ -24,10 +25,21 @@ const navItems: Array<{ path: string; label: string }> = [
   { path: '/settings', label: 'הגדרות' },
 ];
 
+const isOnSettings = (pathname: string) =>
+  pathname === '/settings' || pathname.startsWith('/settings/');
+
 export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme }: AppHeaderProps) {
   const location = useLocation();
   const { currentTenant } = useTenant();
+  const { hasUnsavedChanges, requestNavigation } = useUnsavedChanges();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleNavClick = (e: React.MouseEvent, path: string) => {
+    if (isOnSettings(location.pathname) && hasUnsavedChanges && path !== '/settings') {
+      e.preventDefault();
+      requestNavigation(path);
+    }
+  };
 
   const isActive = (path: string) =>
     path === '/products'
@@ -69,7 +81,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
                   size="sm"
                   className={isActive(item.path) ? 'bg-accent' : ''}
                 >
-                  <Link to={item.path} className="px-3 py-2 text-sm font-medium">
+                  <Link to={item.path} onClick={(e) => handleNavClick(e, item.path)} className="px-3 py-2 text-sm font-medium">
                     {item.label}
                   </Link>
                 </Button>
@@ -150,7 +162,10 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
                 <Link
                   key={item.path}
                   to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => {
+                    handleNavClick(e, item.path);
+                    setMobileMenuOpen(false);
+                  }}
                   className={`min-h-[44px] rounded-xl px-4 py-3 text-base font-medium transition-colors ${
                     isActive(item.path) ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted'
                   }`}

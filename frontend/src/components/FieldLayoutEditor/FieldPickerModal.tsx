@@ -48,7 +48,7 @@ export function FieldPickerModal({
         <DialogHeader>
           <DialogTitle>בחר שדה לעמודה</DialogTitle>
           <DialogDescription>
-            בחירה של שדה שכבר בשימוש תבצע החלפה בין העמודות.
+            בחר שדה מהרשימה. שדה שכבר בשימוש בעמודה אחרת יוחלף אוטומטית.
           </DialogDescription>
         </DialogHeader>
 
@@ -70,7 +70,7 @@ export function FieldPickerModal({
                 className="flex min-h-11 w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-right hover:bg-muted/50"
               >
                 <span>{field.label}</span>
-                {used ? <span className="text-xs text-muted-foreground">Already used</span> : null}
+                {used ? <span className="text-xs text-muted-foreground">בשימוש בעמודה אחרת</span> : null}
               </button>
             );
           })}

@@ -14,13 +14,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ArrowRight, ArrowLeft, Plus, X, FileText, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
+import { InfoTooltip } from '../components/help/InfoTooltip';
 import type { Settings as SettingsType } from '../lib/column-resolver';
 import { netToGross } from '../lib/pricing-rules';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
 import { grossToNet } from '../lib/pricing-rules';
-import { formatNumberTrimmed, getDecimalPrecision } from '../lib/number-format';
+import { formatNumberTrimmed, getDecimalPrecision, priceInputPlaceholder, priceInputStep } from '../lib/number-format';
 
 export default function EditProduct() {
   const { id } = useParams<{ id: string }>();
@@ -594,25 +595,17 @@ export default function EditProduct() {
                       const isExpanded = expandedPriceId === priceId;
                       
                       // Calculate values for display
+                      const costBeforeDiscount = Number(price.cost_price);
                       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
                       const packageQty = Number(price.package_quantity) || 1;
                       const cartonPrice = costAfterDiscount * packageQty;
+                      const sellPriceCarton = useMargin && price.sell_price ? Number(price.sell_price) * packageQty : 0;
                       const costPriceNet = useVat && costAfterDiscount > 0 && vatPercent > 0
                         ? grossToNet(costAfterDiscount, vatPercent / 100)
                         : costAfterDiscount;
-                      
-                      // Prepare fields for accordion content (with labels) - including carton price
-                      const fields = [
-                        { label: 'מחיר לאריזה', value: `₪${formatCostPrice(cartonPrice)}`, highlight: true },
-                        { label: useVat ? 'מחיר עלות כולל מע"מ' : 'מחיר עלות', value: `₪${formatUnitPrice(costAfterDiscount)}` },
-                        ...(useVat ? [{ label: 'מחיר עלות ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
-                        ...(price.discount_percent && Number(price.discount_percent) > 0 ? [{ label: 'אחוז הנחה', value: `${Number(price.discount_percent).toFixed(1)}%` }] : []),
-                        { label: useVat ? 'מחיר לאחר הנחה כולל מע"מ' : 'מחיר לאחר הנחה', value: `₪${formatUnitPrice(costAfterDiscount)}` },
-                        ...(useVat ? [{ label: 'מחיר לאחר הנחה ללא מע"מ', value: `₪${formatUnitPrice(costPriceNet)}` }] : []),
-                        { label: 'כמות יחידות באריזה', value: `${packageQty} יחידות` },
-                        ...(useMargin && price.sell_price ? [{ label: 'מחיר מכירה', value: `₪${formatUnitPrice(Number(price.sell_price))}`, highlight: true }] : []),
-                        ...(useMargin && price.margin_percent ? [{ label: 'אחוז רווח', value: `${Number(price.margin_percent).toFixed(1)}%` }] : []),
-                      ];
+                      const priceDate = price.created_at
+                        ? new Date(price.created_at).toLocaleDateString('he-IL', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                        : '';
                       
                       return (
                         <React.Fragment key={priceId}>
@@ -663,17 +656,78 @@ export default function EditProduct() {
                           </TableRow>
                           {isExpanded && (
                             <TableRow>
-                              <TableCell colSpan={4} className="p-0 border-b border-border">
-                                <div className="p-4 bg-muted/30">
-                                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                                    {fields.map((field, idx) => (
-                                      <div key={idx} className="flex items-center gap-2 border-b border-border/50 pb-2">
-                                        <span className="text-sm font-medium text-muted-foreground">{field.label}</span>
-                                        <span className={`text-sm font-semibold ${field.highlight ? 'text-primary' : 'text-foreground'}`}>{field.value}</span>
+                              <TableCell colSpan={4} className="p-0 border-b border-border overflow-hidden">
+                                <div className="p-2 sm:p-4 bg-muted/30 space-y-2 sm:space-y-4">
+                                  {/* Date - top left, separate line */}
+                                  {priceDate && (
+                                    <div className="text-left">
+                                      <span className="text-xs text-muted-foreground">תאריך עדכון: {priceDate}</span>
+                                    </div>
+                                  )}
+                                  {/* Settings - prominent (אחוז רווח only if use_margin, אחוז הנחה, כמות באריזה) */}
+                                  <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                    {useMargin && price.margin_percent != null && (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-sm font-semibold text-primary">אחוז רווח:</span>
+                                        <span className="text-sm font-bold">{Number(price.margin_percent).toFixed(1)}%</span>
                                       </div>
-                                    ))}
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-semibold text-primary">אחוז הנחה:</span>
+                                      <span className="text-sm font-bold">{price.discount_percent && Number(price.discount_percent) > 0 ? `${Number(price.discount_percent).toFixed(1)}%` : '0%'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-semibold text-primary">כמות באריזה:</span>
+                                      <span className="text-sm font-bold">{packageQty} יחידות</span>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+                                  {/* Main prices - 1 col mobile, 2 cols desktop */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-x-6 sm:gap-y-3">
+                                    <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                      <span className="text-sm font-medium shrink-0">מחיר עלות</span>
+                                      <span className="text-sm font-bold text-foreground truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
+                                    </div>
+                                    {useMargin && price.sell_price != null && (
+                                      <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                        <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
+                                        <span className="text-sm font-bold text-primary truncate">₪{formatUnitPrice(Number(price.sell_price))}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                      <span className="text-sm font-medium shrink-0">מחיר לאריזה</span>
+                                      <span className="text-sm font-bold text-foreground truncate">₪{formatCostPrice(cartonPrice)}</span>
+                                    </div>
+                                    {useMargin && sellPriceCarton > 0 && (
+                                      <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                        <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה לאריזה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
+                                        <span className="text-sm font-bold text-primary truncate">₪{formatCostPrice(sellPriceCarton)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Other prices - 1 per row, muted */}
+                                  <div className="space-y-2 pt-2 border-t border-border/50">
+                                    {useVat && (
+                                      <>
+                                        <div className="flex justify-between items-center text-sm text-muted-foreground">
+                                          <span>מחיר לפני מע&quot;מ</span>
+                                          <span>₪{formatUnitPrice(costPriceNet)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm text-muted-foreground">
+                                          <span>מחיר אחרי מע&quot;מ</span>
+                                          <span>₪{formatUnitPrice(costAfterDiscount)}</span>
+                                        </div>
+                                      </>
+                                    )}
+                                    <div className="flex justify-between items-center text-sm text-muted-foreground">
+                                      <span>מחיר לפני הנחה</span>
+                                      <span>₪{formatUnitPrice(costBeforeDiscount)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm text-muted-foreground">
+                                      <span>מחיר לאחר הנחה</span>
+                                      <span>₪{formatUnitPrice(costAfterDiscount)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-end gap-2 pt-2 sm:pt-4 border-t border-border/50">
                                     <Button
                                       variant="outline"
                                       size="sm"
@@ -802,11 +856,11 @@ export default function EditProduct() {
                 <Input
                   id="priceCost"
                   type="number"
-                  step="0.0001"
+                  step={priceInputStep(decimalPrecision)}
                   min="0"
                   value={newPriceCost}
                   onChange={(e) => handleUnitPriceInputChange(e.target.value)}
-                  placeholder="0.0000"
+                  placeholder={priceInputPlaceholder(decimalPrecision)}
                 />
               </div>
               <div className="space-y-2">
@@ -814,11 +868,11 @@ export default function EditProduct() {
                 <Input
                   id="priceCartonPrice"
                   type="number"
-                  step="0.0001"
+                  step={priceInputStep(decimalPrecision)}
                   min="0"
                   value={newPriceCartonPrice}
                   onChange={(e) => handleCartonPriceInputChange(e.target.value)}
-                  placeholder="0.0000"
+                  placeholder={priceInputPlaceholder(decimalPrecision)}
                 />
               </div>
             </div>

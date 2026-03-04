@@ -42,6 +42,7 @@ import { Button } from './components/ui/button';
 import { authApi } from './lib/api';
 import { RouteScrollToTop } from './components/RouteScrollToTop';
 import { HelpCenterProvider, useHelpCenter } from './contexts/HelpCenterContext';
+import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
 import { helpContent, WELCOME_VIDEO_URL } from './help/content';
 import { getHelpArticleIdFromSearch } from './help/navigation';
 import { WelcomeModal } from './components/help/WelcomeModal';
@@ -291,6 +292,7 @@ function AppContent({
     <>
       <OnboardingRouter>
         <HelpCenterProvider userId={user.id}>
+          <UnsavedChangesProvider>
           <AppWithNavigation
             user={user}
             onLogout={onLogout}
@@ -300,6 +302,7 @@ function AppContent({
             onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
           />
           <HelpCenterShell />
+          </UnsavedChangesProvider>
         </HelpCenterProvider>
       </OnboardingRouter>
 
@@ -531,8 +534,8 @@ function AppWithNavigation({
           </div>
         </div>
       ) : null}
-      <main className="w-full flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8">
-        <div className="w-full max-w-6xl">
+      <main className="w-full min-w-0 flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8 overflow-x-hidden">
+        <div className="w-full max-w-6xl min-w-0">
           <Routes>
             <Route path="/products" element={<Products />} />
             <Route path="/products/new" element={<NewProduct />} />

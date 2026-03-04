@@ -4,7 +4,7 @@ export function clampDecimalPrecision(value: unknown, fallback: number = DEFAULT
   if (value === null || value === undefined || value === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(8, Math.max(0, Math.floor(parsed)));
+  return Math.min(5, Math.max(0, Math.floor(parsed)));
 }
 
 export function roundToPrecision(n: number, precision: number = DEFAULT_DECIMAL_PRECISION): number {

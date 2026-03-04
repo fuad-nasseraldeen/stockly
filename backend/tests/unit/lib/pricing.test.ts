@@ -19,9 +19,9 @@ describe('pricing utilities', () => {
   });
 
   describe('clampDecimalPrecision', () => {
-    it('clamps values to valid range 0..8', () => {
+    it('clamps values to valid range 0..5', () => {
       expect(clampDecimalPrecision(-2, 2)).toBe(0);
-      expect(clampDecimalPrecision(12, 2)).toBe(8);
+      expect(clampDecimalPrecision(12, 2)).toBe(5);
       expect(clampDecimalPrecision('x', 2)).toBe(2);
     });
   });

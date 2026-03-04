@@ -7,7 +7,7 @@ type InfoTooltipProps = {
 export function InfoTooltip({ content }: InfoTooltipProps) {
   return (
     <Tooltip content={content}>
-      <span className="text-xs text-muted-foreground">ℹ</span>
+      <span className="text-xs text-muted-foreground"></span>
     </Tooltip>
   );
 }

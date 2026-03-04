@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Package, Settings as SettingsIcon, Tags, Truck } from 'lucide-react';
+import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 const tabs: Array<{ path: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { path: '/products', label: 'מוצרים', icon: Package },
@@ -8,13 +9,24 @@ const tabs: Array<{ path: string; label: string; icon: React.ComponentType<{ cla
   { path: '/settings', label: 'הגדרות', icon: SettingsIcon },
 ];
 
+const isOnSettings = (pathname: string) =>
+  pathname === '/settings' || pathname.startsWith('/settings/');
+
 export function BottomTabs() {
   const location = useLocation();
+  const { hasUnsavedChanges, requestNavigation } = useUnsavedChanges();
 
   const isTabActive = (path: string) =>
     path === '/products'
       ? location.pathname === '/products' || location.pathname.startsWith('/products/')
       : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const handleTabClick = (e: React.MouseEvent, path: string) => {
+    if (isOnSettings(location.pathname) && hasUnsavedChanges && path !== '/settings') {
+      e.preventDefault();
+      requestNavigation(path);
+    }
+  };
 
   return (
     <nav
@@ -45,6 +57,7 @@ export function BottomTabs() {
               <Link
                 key={tab.path}
                 to={tab.path}
+                onClick={(e) => handleTabClick(e, tab.path)}
                 className={`flex min-h-[44px] flex-col items-center justify-center rounded-[999px] text-[11px] font-medium transition-all duration-200 ${
                   active
                     ? 'bg-primary/12 text-primary shadow-[inset_0_0_0_1px_rgb(59_130_246/0.25)]'
@@ -66,6 +79,7 @@ export function BottomTabs() {
               <Link
                 key={tab.path}
                 to={tab.path}
+                onClick={(e) => handleTabClick(e, tab.path)}
                 className={`flex min-h-[44px] flex-col items-center justify-center rounded-[999px] text-[11px] font-medium transition-all duration-200 ${
                   active
                     ? 'bg-primary/12 text-primary shadow-[inset_0_0_0_1px_rgb(59_130_246/0.25)]'

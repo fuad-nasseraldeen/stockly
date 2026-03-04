@@ -1,35 +1,37 @@
-import type { FieldOption, PinnedFieldIds } from './fieldLayoutTypes';
+import type { FieldOption, PinnedFieldId, PinnedFieldIds } from './fieldLayoutTypes';
 
-export const PINNED_SLOTS_COUNT = 3;
+const DEFAULT_SLOTS_COUNT = 3;
 
 function isFieldId(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function emptyPinnedFieldIds(): PinnedFieldIds {
-  return [null, null, null];
+  return Array.from({ length: DEFAULT_SLOTS_COUNT }, () => null);
 }
 
 export function normalizePinnedFieldIds(input: unknown, allFields: FieldOption[]): PinnedFieldIds {
   const validIds = new Set(allFields.map((field) => field.id));
-  const result: Array<string | null> = [null, null, null];
 
   if (!Array.isArray(input)) {
-    return result as PinnedFieldIds;
+    return emptyPinnedFieldIds();
   }
 
   const used = new Set<string>();
-  for (let index = 0; index < PINNED_SLOTS_COUNT; index += 1) {
-    const raw = input[index];
+  const result: PinnedFieldId[] = [];
+  for (const raw of input) {
     if (!isFieldId(raw) || !validIds.has(raw) || used.has(raw)) {
-      result[index] = null;
+      result.push(null);
       continue;
     }
     used.add(raw);
-    result[index] = raw;
+    result.push(raw);
   }
 
-  return result as PinnedFieldIds;
+  if (result.length === 0) {
+    return emptyPinnedFieldIds();
+  }
+  return result;
 }
 
 export function parsePinnedFieldIdsFromSavedLayout(
@@ -56,7 +58,7 @@ export function parsePinnedFieldIdsFromSavedLayout(
     const preferred = (legacy.order ?? []).filter(
       (id): id is string => isFieldId(id) && id !== 'actions' && visible[id] !== false
     );
-    return normalizePinnedFieldIds(preferred.slice(0, 3), allFields);
+    return normalizePinnedFieldIds(preferred, allFields);
   }
 
   return emptyPinnedFieldIds();
@@ -67,11 +69,11 @@ export function assignPinnedField(
   slotIndex: number,
   nextFieldId: string | null
 ): PinnedFieldIds {
-  if (slotIndex < 0 || slotIndex >= PINNED_SLOTS_COUNT) {
-    return [...pinnedFieldIds] as PinnedFieldIds;
+  if (slotIndex < 0 || slotIndex >= pinnedFieldIds.length) {
+    return [...pinnedFieldIds];
   }
 
-  const next = [...pinnedFieldIds] as PinnedFieldIds;
+  const next = [...pinnedFieldIds];
 
   if (!nextFieldId) {
     next[slotIndex] = null;
@@ -87,6 +89,22 @@ export function assignPinnedField(
   }
 
   next[slotIndex] = nextFieldId;
+  return next;
+}
+
+export const MIN_PINNED_SLOTS = 2;
+
+export function addPinnedSlot(pinnedFieldIds: PinnedFieldIds): PinnedFieldIds {
+  return [...pinnedFieldIds, null];
+}
+
+export function removePinnedSlot(
+  pinnedFieldIds: PinnedFieldIds,
+  slotIndex: number
+): PinnedFieldIds {
+  if (pinnedFieldIds.length <= MIN_PINNED_SLOTS) return pinnedFieldIds;
+  const next = [...pinnedFieldIds];
+  next.splice(slotIndex, 1);
   return next;
 }
 

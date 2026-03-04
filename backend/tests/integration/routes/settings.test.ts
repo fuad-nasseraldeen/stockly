@@ -99,12 +99,22 @@ describe('PUT /api/settings', () => {
       if (table === 'product_supplier_current_price') {
         return {
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+          eq: vi.fn().mockReturnThis(),
+          range: vi.fn().mockResolvedValue({ data: [], error: null }),
+        };
+      }
+      if (table === 'price_entries') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          range: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
       }
       return {
         select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+        eq: vi.fn().mockReturnThis(),
+        range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
     });
 

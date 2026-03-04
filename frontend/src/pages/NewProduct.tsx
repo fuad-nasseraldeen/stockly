@@ -11,7 +11,8 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { ArrowRight, ArrowLeft, Plus, Info } from 'lucide-react';
-import { formatNumberTrimmed, getDecimalPrecision, roundToPrecision } from '../lib/number-format';
+import { InfoTooltip } from '../components/help/InfoTooltip';
+import { formatNumberTrimmed, getDecimalPrecision, priceInputPlaceholder, priceInputStep, roundToPrecision } from '../lib/number-format';
 
 export default function NewProduct() {
   const navigate = useNavigate();
@@ -58,6 +59,9 @@ export default function NewProduct() {
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const defaultMargin = selectedCategory ? Number(selectedCategory.default_margin_percent) : (settings?.global_margin_percent ?? 0);
   const marginToUse = defaultMargin; // Use default margin from category or settings
+  const marginTooltip = selectedCategory
+    ? 'מחיר עלות + הנחה + רווח (לפי קטגוריה)'
+    : 'מחיר עלות + הנחה + רווח (גלובלי)';
   const defaultVatPercent = settings?.vat_percent ? Number(settings.vat_percent) : 18;
   const vatPercent = defaultVatPercent; // Use VAT from settings
   const useMargin = settings?.use_margin === true; // Default to false if not set
@@ -85,11 +89,19 @@ export default function NewProduct() {
     useVat && rawCost > 0 && vatPercent > 0 && costIncludesVat === 'with'
       ? rawCost / (1 + vatPercent / 100)
       : rawCost;
-  
-  // Calculate cost after discount (default: no discount on create)
-  const costAfterDiscount = discountPercentValue > 0
-    ? roundToPrecision(costBeforeVat * (1 - discountPercentValue / 100), decimalPrecision)
-    : roundToPrecision(costBeforeVat, decimalPrecision);
+
+  // When cost includes VAT: apply discount directly to gross (no net conversion)
+  const costAfterDiscountGrossDisplay =
+    discountPercentValue > 0 ? roundToPrecision(rawCost * (1 - discountPercentValue / 100), decimalPrecision) : rawCost;
+
+  // When cost does NOT include VAT: apply discount to net
+  const costAfterDiscount =
+    discountPercentValue > 0
+      ? roundToPrecision(costBeforeVat * (1 - discountPercentValue / 100), decimalPrecision)
+      : roundToPrecision(costBeforeVat, decimalPrecision);
+
+  // For display: when cost includes VAT, use gross; otherwise use net
+  const costAfterDiscountForDisplay = costIncludesVat === 'with' ? costAfterDiscountGrossDisplay : costAfterDiscount;
 
   // Calculate sell price - check if use_margin and use_vat are enabled
   const calculateSellPrice = (cost: number, margin: number, vat: number, useMargin: boolean, useVat: boolean) => {
@@ -120,7 +132,13 @@ export default function NewProduct() {
     return roundToPrecision(withMargin + (withMargin * vat / 100), decimalPrecision);
   };
 
-  const sellPrice = calculateSellPrice(costAfterDiscount, marginToUse, vatPercent, useMargin, useVat);
+  // When cost includes VAT: no VAT to add – price is already gross
+  const sellPrice =
+    costIncludesVat === 'with' && useVat
+      ? roundToPrecision(costAfterDiscountGrossDisplay * (1 + marginToUse / 100), decimalPrecision)
+      : calculateSellPrice(costAfterDiscount, marginToUse, vatPercent, useMargin, useVat);
+
+  const sellPriceCarton = packageQty > 0 ? roundToPrecision(sellPrice * packageQty, decimalPrecision) : 0;
 
   const handleAddSupplier = async (): Promise<void> => {
     if (!newSupplierName.trim()) return;
@@ -191,14 +209,31 @@ export default function NewProduct() {
   const finalCartonPrice = effectiveCartonPrice;
   
 
+  const hasValidPrice = rawCost > 0;
+  const validationErrors = {
+    name: !name.trim(),
+    supplier: !supplierId,
+    price: !hasValidPrice,
+  };
+  const isFormValid = !validationErrors.name && !validationErrors.supplier && !validationErrors.price;
+
   const handleSubmit = async (): Promise<void> => {
-    if (!supplierId || !costPrice || Number(costPrice) <= 0) {
-      setProductError('חובה לבחור ספק ולהזין מחיר');
+    if (!supplierId) {
+      setSupplierError('חובה לבחור ספק');
+      return;
+    }
+    if (!hasValidPrice) {
+      setProductError('חובה להזין מחיר עלות ליחידה או מחיר אריזה');
+      return;
+    }
+    if (!name.trim()) {
+      setProductError('חובה להזין שם מוצר');
       return;
     }
 
+    setSupplierError(null);
+    setProductError(null);
     try {
-      setProductError(null);
 
       // Create product with first price (cost_price נשמר ככולל מע\"מ כאשר מע\"מ פעיל)
       await createProduct.mutateAsync({
@@ -240,7 +275,11 @@ export default function NewProduct() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="הזן שם מוצר"
                 required
+                className={validationErrors.name ? 'border-red-500' : ''}
               />
+              {validationErrors.name && (
+                <p className="text-xs text-red-600">חובה להזין שם מוצר</p>
+              )}
             </div>
             <div className="space-y-2 col-span-1">
               <Label htmlFor="sku">מק&quot;ט</Label>
@@ -293,7 +332,7 @@ export default function NewProduct() {
                   id="supplier"
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
-                  className="flex-1"
+                  className={`flex-1 ${validationErrors.supplier ? 'border-red-500' : ''}`}
                 >
                   <option value="">בחר ספק</option>
                   {suppliers.map((s) => (
@@ -312,8 +351,8 @@ export default function NewProduct() {
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
-              {supplierError && (
-                <p className="text-xs text-red-600 mt-1">{supplierError}</p>
+              {(supplierError || validationErrors.supplier) && (
+                <p className="text-xs text-red-600 mt-1">{supplierError || 'חובה לבחור ספק'}</p>
               )}
             </div>
           </div>
@@ -380,7 +419,7 @@ export default function NewProduct() {
               <Input
                 id="costPrice"
                 type="number"
-                step="0.0001"
+                step={priceInputStep(decimalPrecision)}
                 min="0"
                 value={costPrice}
                 onChange={(e) => {
@@ -389,8 +428,9 @@ export default function NewProduct() {
                     setCartonPriceInput('');
                   }
                 }}
-                placeholder="0.0000"
+                placeholder={priceInputPlaceholder(decimalPrecision)}
                 required
+                className={validationErrors.price ? 'border-red-500' : ''}
               />
           {useVat && (
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground mt-1">
@@ -423,7 +463,7 @@ export default function NewProduct() {
               <Input
                 id="cartonPriceInput"
                 type="number"
-                step="0.0001"
+                step={priceInputStep(decimalPrecision)}
                 min="0"
                 value={cartonPriceDisplayValue}
                 onChange={(e) => {
@@ -437,13 +477,17 @@ export default function NewProduct() {
                     }
                   }
                 }}
-                placeholder="0.0000"
+                placeholder={priceInputPlaceholder(decimalPrecision)}
+                className={validationErrors.price ? 'border-red-500' : ''}
               />
               <p className="text-xs text-muted-foreground">
                 {cartonPriceInput && packageQty > 0
                   ? `מחיר יחידה מחושב: ${formatUnitPrice(cartonPriceValue / packageQty)} ₪`
                   : 'אם תזין מחיר אריזה, מחיר היחידה יחושב אוטומטית'}
               </p>
+              {validationErrors.price && (
+                <p className="text-xs text-red-600">חובה להזין מחיר עלות ליחידה או מחיר אריזה</p>
+              )}
             </div>
           </div>
 
@@ -479,46 +523,78 @@ export default function NewProduct() {
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">- הנחה ({formatUnitPrice(discountPercentValue)}%):</span>
-                      <span className="font-medium text-green-600">-{formatCostPrice(costBeforeVat * discountPercentValue / 100)} ₪</span>
+                      <span className="font-medium text-green-600">
+                        -{formatCostPrice((costIncludesVat === 'with' ? rawCost : costBeforeVat) * discountPercentValue / 100)} ₪
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">מחיר לאחר הנחה:</span>
-                      <span className="font-medium">{formatCostPrice(costAfterDiscount)} ₪</span>
+                      <span className="text-muted-foreground">מחיר לאחר הנחה{useVat && costIncludesVat === 'with' ? ' (כולל מע"מ)' : ''}:</span>
+                      <span className="font-medium">{formatCostPrice(costAfterDiscountForDisplay)} ₪</span>
                     </div>
                   </>
                 )}
                 {useMargin && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">+ רווח ({formatUnitPrice(marginToUse)}%):</span>
-                    <span className="font-medium">{formatCostPrice(costAfterDiscount * marginToUse / 100)} ₪</span>
-                  </div>
-                )}
-                {useVat && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">+ מע&quot;מ ({formatUnitPrice(vatPercent)}%):</span>
                     <span className="font-medium">
-                      {formatCostPrice(useMargin
-                        ? (costAfterDiscount * (1 + marginToUse / 100) * vatPercent) / 100
-                        : (costAfterDiscount * vatPercent) / 100)} ₪
+                      {formatCostPrice(costAfterDiscountForDisplay * marginToUse / 100)} ₪
                     </span>
                   </div>
                 )}
+                {useVat &&
+                  (costIncludesVat === 'with' ? (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">מע&quot;מ כלול ({formatUnitPrice(vatPercent)}%):</span>
+                      <span className="font-medium">
+                        {formatCostPrice(
+                          (costAfterDiscountForDisplay * (vatPercent / 100)) / (1 + vatPercent / 100)
+                        )}{' '}
+                        ₪
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">+ מע&quot;מ ({formatUnitPrice(vatPercent)}%):</span>
+                      <span className="font-medium">
+                        {formatCostPrice(
+                          useMargin
+                            ? (costAfterDiscount * (1 + marginToUse / 100) * vatPercent) / 100
+                            : (costAfterDiscount * vatPercent) / 100
+                        )}{' '}
+                        ₪
+                      </span>
+                    </div>
+                  ))}
                 {useMargin || useVat ? (
-                  <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between">
-                    <span>מחיר מכירה:</span>
+                  <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between items-center gap-2">
+                    <span className="flex items-center gap-1">
+                      מחיר מכירה:
+                      {useMargin && <InfoTooltip content={marginTooltip} />}
+                    </span>
                     <span className="text-primary">{formatUnitPrice(sellPrice)} ₪</span>
                   </div>
                 ) : (
                   <div className="font-bold text-lg pt-3 border-t-2 border-primary/30 flex justify-between">
                     <span>מחיר עלות:</span>
-                    <span className="text-primary">{formatCostPrice(costAfterDiscount)} ₪</span>
+                    <span className="text-primary">{formatCostPrice(costAfterDiscountForDisplay)} ₪</span>
                   </div>
                 )}
                 {(packageQty > 1 || cartonPriceValue > 0) && (
-                  <div className="flex justify-between pt-2 border-t border-primary/20">
-                    <span className="text-sm font-medium">מחיר לאריזה ({formatUnitPrice(packageQty)} יחידות):</span>
-                    <span className="text-lg font-bold text-primary">₪{formatUnitPrice(finalCartonPrice)}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between pt-2 border-t border-primary/20 items-center gap-2">
+                      <span className="text-sm font-medium">מחיר לאריזה ({formatUnitPrice(packageQty)} יחידות):</span>
+                      <span className="text-lg font-bold text-primary">₪{formatUnitPrice(finalCartonPrice)}</span>
+                    </div>
+                    {(useMargin || useVat) && (
+                      <div className="flex justify-between pt-2 items-center gap-2">
+                        <span className="text-sm font-medium flex items-center gap-1">
+                          מחיר מכירה לאריזה:
+                          {useMargin && <InfoTooltip content={marginTooltip} />}
+                        </span>
+                        <span className="text-lg font-bold text-primary">₪{formatUnitPrice(sellPriceCarton)}</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -531,7 +607,7 @@ export default function NewProduct() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={!name.trim() || !supplierId || (!costPrice && !cartonPriceInput) || createProduct.isPending || suppliers.length === 0}
+              disabled={!isFormValid || createProduct.isPending || suppliers.length === 0}
             >
               {createProduct.isPending ? 'יוצר...' : 'צור מוצר'}
               <ArrowLeft className="w-4 h-4 mr-2" />

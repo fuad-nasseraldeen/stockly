@@ -6,10 +6,14 @@ import { PreviewHeader } from './PreviewHeader';
 import { FieldLibrary } from './FieldLibrary';
 import { FieldPickerModal } from './FieldPickerModal';
 import type { FieldOption, PinnedFieldIds } from './fieldLayoutTypes';
-import { assignPinnedField } from './fieldLayoutUtils';
+import { addPinnedSlot, assignPinnedField, removePinnedSlot } from './fieldLayoutUtils';
+import type { ColumnDefinition } from '../../lib/price-columns';
+import type { Settings } from '../../lib/column-resolver';
 
 type FieldLayoutEditorProps = {
   allFields: FieldOption[];
+  availableColumns: ColumnDefinition[];
+  appSettings: Settings;
   pinnedFieldIds: PinnedFieldIds;
   onChange: (next: PinnedFieldIds) => void;
   onSave: () => Promise<void>;
@@ -20,6 +24,8 @@ type FieldLayoutEditorProps = {
 
 export function FieldLayoutEditor({
   allFields,
+  availableColumns,
+  appSettings,
   pinnedFieldIds,
   onChange,
   onSave,
@@ -52,46 +58,39 @@ export function FieldLayoutEditor({
 
   const selectedCount = pinnedFieldIds.filter((id) => !!id).length;
   const canSave = selectedCount >= 2;
-  const fieldMap = new Map(allFields.map((field) => [field.id, field.label]));
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDrop} modifiers={[restrictToWindowEdges]}>
-      <div className="space-y-4">
+      <div className="space-y-5">
         <PreviewHeader
-          allFields={allFields}
+          availableColumns={availableColumns}
+          appSettings={appSettings}
           pinnedFieldIds={pinnedFieldIds}
           onPickSlot={(slotIndex) => setPickerSlotIndex(slotIndex)}
-          onClearSlot={(slotIndex) => onChange(assignPinnedField(pinnedFieldIds, slotIndex, null))}
+          onAddColumn={() => onChange(addPinnedSlot(pinnedFieldIds))}
+          onRemoveSlot={(slotIndex) => onChange(removePinnedSlot(pinnedFieldIds, slotIndex))}
         />
         <p className="text-xs text-muted-foreground">
-          אפשר לבחור בין 2 ל־3 עמודות למעלה. כרגע נבחרו {selectedCount}/3.
+          נבחרו {selectedCount} עמודות. לחץ על עמודה או גרור שדה מהרשימה למטה.
         </p>
-        <div className="rounded-lg border p-3">
-          <div className="mb-2 text-xs font-semibold text-muted-foreground">נבחר כרגע:</div>
-          <div className="space-y-1 text-sm">
-            {pinnedFieldIds.map((fieldId, index) => (
-              <div key={`selected-${index}`} className="flex items-start justify-between gap-2">
-                <span className="text-xs text-muted-foreground">עמודה {index + 1}</span>
-                <span className="text-right leading-tight">
-                  {fieldId ? fieldMap.get(fieldId) ?? 'שדה לא זמין' : 'לא נבחר שדה'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <FieldLibrary allFields={allFields} pinnedFieldIds={pinnedFieldIds} />
 
-        <div className="flex flex-col gap-2 border-t pt-3 sm:flex-row sm:justify-between">
-          <Button variant="outline" disabled={loading || saving} onClick={() => void onReset()}>
-            איפוס
-          </Button>
-          <Button disabled={loading || saving || !canSave} onClick={() => void onSave()}>
-            {saving ? 'שומר...' : 'שמור'}
-          </Button>
+        <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="order-2 sm:order-1">
+            {!canSave ? (
+              <p className="text-xs text-muted-foreground">נדרשות לפחות 2 עמודות לשמירה.</p>
+            ) : null}
+          </div>
+          <div className="flex gap-2 order-1 sm:order-2">
+            <Button variant="outline" size="sm" disabled={loading || saving} onClick={() => void onReset()}>
+              איפוס
+            </Button>
+            <Button size="sm" disabled={loading || saving || !canSave} onClick={() => void onSave()}>
+              {saving ? 'שומר...' : 'שמור'}
+            </Button>
+          </div>
         </div>
-
-        {!canSave ? <p className="text-xs text-muted-foreground">צריך לבחור לפחות 2 עמודות לפני שמירה.</p> : null}
       </div>
 
       <FieldPickerModal
