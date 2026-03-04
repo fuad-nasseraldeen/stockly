@@ -34,6 +34,7 @@ type HelpCenterContextValue = {
   setSelectedArticleId: (articleId: string | null) => void;
   markWelcomeSeen: () => Promise<void>;
   resetWelcome: () => Promise<void>;
+  showWelcome: () => void;
   hideSupportButton: () => Promise<void>;
   showSupportButton: () => Promise<void>;
 };
@@ -61,8 +62,7 @@ export function HelpCenterProvider({
     const localPrefs = readUserHelpPreferences(userId);
     setPreferences(localPrefs);
     setSelectedArticleId(localPrefs.lastHelpArticleId ?? null);
-    setWelcomeOpen(!localPrefs.hasSeenWelcome);
-    // setWelcomeOpen(false);
+    setWelcomeOpen(false);
     setIsReady(true);
   }, [userId]);
 
@@ -73,17 +73,21 @@ export function HelpCenterProvider({
     const loadRemote = async () => {
       try {
         const remote = await settingsApi.getPreference<UserHelpPreferences>(HELP_PREF_KEY);
-        if (cancelled || !remote) return;
+        if (cancelled) return;
 
-        setPreferences((prev) => {
-          const merged: UserHelpPreferences = {
-            hasSeenWelcome: prev.hasSeenWelcome || remote.hasSeenWelcome === true,
-            lastHelpArticleId: remote.lastHelpArticleId || prev.lastHelpArticleId,
-            supportButtonHidden: remote.supportButtonHidden === true || prev.supportButtonHidden === true,
-          };
-          writeUserHelpPreferences(userId, merged);
-          return merged;
-        });
+        if (remote) {
+          setPreferences((prev) => {
+            const merged: UserHelpPreferences = {
+              hasSeenWelcome: prev.hasSeenWelcome || remote.hasSeenWelcome === true,
+              lastHelpArticleId: remote.lastHelpArticleId || prev.lastHelpArticleId,
+              supportButtonHidden: remote.supportButtonHidden === true || prev.supportButtonHidden === true,
+            };
+            writeUserHelpPreferences(userId, merged);
+            return merged;
+          });
+        } else {
+          setWelcomeOpen(true);
+        }
       } catch {
         // Keep app functional on preference endpoint issues.
       }
@@ -156,6 +160,10 @@ export function HelpCenterProvider({
     setWelcomeOpen(true);
   }, [persistPreferences, preferences]);
 
+  const showWelcome = useCallback(() => {
+    setWelcomeOpen(true);
+  }, []);
+
   const hideSupportButton = useCallback(async () => {
     const next = { ...preferences, supportButtonHidden: true };
     await persistPreferences(next);
@@ -185,6 +193,7 @@ export function HelpCenterProvider({
       setSelectedArticleId,
       markWelcomeSeen,
       resetWelcome,
+      showWelcome,
       hideSupportButton,
       showSupportButton,
     }),
@@ -198,6 +207,7 @@ export function HelpCenterProvider({
       openHelp,
       preferences,
       resetWelcome,
+      showWelcome,
       searchTerm,
       selectedArticle,
       selectedArticleId,

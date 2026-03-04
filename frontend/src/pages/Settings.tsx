@@ -21,7 +21,7 @@ import { useHelpCenter } from '../contexts/HelpCenterContext';
 import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
 
 export default function Settings() {
-  const { openHelp, resetWelcome, supportButtonHidden, showSupportButton } = useHelpCenter();
+  const { openHelp, showWelcome, supportButtonHidden, showSupportButton } = useHelpCenter();
   const navigate = useNavigate();
   const { data: settings, isLoading } = useSettings();
   const updateSettings = useUpdateSettings();
@@ -805,8 +805,8 @@ export default function Settings() {
             <Button variant="outline" onClick={() => openHelp('add-participant')} className="w-full sm:w-auto">
               מדריך הזמנת משתמשים
             </Button>
-            <Button variant="outline" onClick={() => void resetWelcome()} className="w-full sm:w-auto">
-              אפס חלון ברוכים הבאים
+            <Button variant="outline" onClick={() => showWelcome()} className="w-full sm:w-auto">
+              צפה בסרטון ברוכים הבאים
             </Button>
           </div>
         </CardContent>

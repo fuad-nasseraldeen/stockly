@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { supportChatApi, type SupportMessage, type SupportThread } from '../lib/api';
+import { useHelpCenter } from '../contexts/HelpCenterContext';
 
 export default function SupportChat() {
+  const { showWelcome } = useHelpCenter();
   const [thread, setThread] = useState<SupportThread | null>(null);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,9 @@ export default function SupportChat() {
             <h1 className="text-lg font-bold">תמיכה</h1>
             <p className="text-xs text-muted-foreground">שיחה עם צוות התמיכה</p>
             {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+            <Button variant="link" className="h-auto p-0 mt-2 text-sm" onClick={() => showWelcome()}>
+              צפה בסרטון ברוכים הבאים
+            </Button>
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto px-3 py-4 sm:px-4 md:max-h-[calc(100vh-320px)]">

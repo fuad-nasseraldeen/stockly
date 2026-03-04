@@ -9,7 +9,6 @@ describe('column resolver VAT toggle', () => {
 
     expect(ids.has('cost_net')).toBe(false);
     expect(ids.has('cost_after_discount_net')).toBe(false);
-    expect(ids.has('vat_rate')).toBe(false);
   });
 
   it('shows VAT columns when use_vat is true', () => {
@@ -19,7 +18,6 @@ describe('column resolver VAT toggle', () => {
 
     expect(ids.has('cost_net')).toBe(true);
     expect(ids.has('cost_after_discount_net')).toBe(true);
-    expect(ids.has('vat_rate')).toBe(true);
   });
 
   it('default layout marks VAT fields hidden when use_vat is false', () => {
@@ -37,6 +35,5 @@ describe('column resolver VAT toggle', () => {
 
     expect(ids.has('cost_net')).toBe(false);
     expect(ids.has('cost_after_discount_net')).toBe(false);
-    expect(ids.has('vat_rate')).toBe(false);
   });
 });

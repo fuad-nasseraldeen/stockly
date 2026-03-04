@@ -25,7 +25,6 @@ export type ColumnId =
   | 'pricing_unit'
   | 'quantity_per_carton'
   | 'package_type'
-  | 'vat_rate'
   | 'carton_price'
   | 'sell_price'
   | 'profit_amount'
@@ -253,20 +252,6 @@ export const PRICE_COLUMN_REGISTRY: Record<ColumnId, ColumnDefinition> = {
     },
   },
 
-  vat_rate: {
-    id: 'vat_rate',
-    headerLabel: 'שיעור מע"מ',
-    group: 'pricing',
-    requires: { vat: true },
-    minWidth: 95,
-    align: 'center',
-    renderHeader: () => <span>שיעור מע&quot;מ</span>,
-    renderCell: (price: PriceData) => {
-      if (price.vat_rate === null || price.vat_rate === undefined) return <span>-</span>;
-      return <span className="text-center">{Number(price.vat_rate).toFixed(1)}%</span>;
-    },
-  },
-
   carton_price: {
     id: 'carton_price',
     headerLabel: 'מחיר לאריזה',
@@ -376,7 +361,6 @@ export const DEFAULT_COLUMN_ORDER: ColumnId[] = [
   'pricing_unit',
   'quantity_per_carton',
   'package_type',
-  'vat_rate',
   'carton_price',
   'sell_price',
   'date',
@@ -396,7 +380,6 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<ColumnId, boolean> = {
   pricing_unit: false,
   quantity_per_carton: true,
   package_type: false,
-  vat_rate: false,
   carton_price: true,
   sell_price: true,
   profit_amount: false,
