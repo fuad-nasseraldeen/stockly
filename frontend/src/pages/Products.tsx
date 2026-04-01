@@ -5,6 +5,8 @@ import { useProducts, useDeleteProduct, useProductPriceHistory, useAddProductPri
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useCategories } from '../hooks/useCategories';
 import { useSettings } from '../hooks/useSettings';
+import { useProductStock, useUpdateProductStock } from '../hooks/useStock';
+import { useAppToast } from '../contexts/AppToastContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -201,6 +203,8 @@ export default function Products() {
     'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown'
   >('unknown');
   const [inlinePriceError, setInlinePriceError] = useState<string | null>(null);
+  const [inlineStockQty, setInlineStockQty] = useState('0');
+  const [inlineStockMin, setInlineStockMin] = useState('0');
   const [expandedPriceId, setExpandedPriceId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -256,6 +260,11 @@ export default function Products() {
   );
   const deleteProduct = useDeleteProduct();
   const addProductPrice = useAddProductPrice();
+  const updateProductStock = useUpdateProductStock();
+  const { push } = useAppToast();
+  const { data: inlineStockData } = useProductStock(
+    showInlineAddPriceDialog && productForInlineAdd?.id ? productForInlineAdd.id : undefined
+  );
 
 
   const handleDelete = async () => {
@@ -277,6 +286,8 @@ export default function Products() {
     setInlinePriceDiscount('0');
     setInlinePricePackageQuantity('1');
     setInlinePricePackageType('unknown');
+    setInlineStockQty('0');
+    setInlineStockMin('0');
     setInlinePriceError(null);
   };
 
@@ -373,10 +384,13 @@ export default function Products() {
         ? netToGross(finalUnitPrice, vatPercent / 100)
         : finalUnitPrice;
 
+      const addedProductId = productForInlineAdd.id;
+      const addedSupplierId = inlinePriceSupplierId;
+
       await addProductPrice.mutateAsync({
-        id: productForInlineAdd.id,
+        id: addedProductId,
         data: {
-          supplier_id: inlinePriceSupplierId,
+          supplier_id: addedSupplierId,
           cost_price: costPriceToStore,
           discount_percent: inlinePriceDiscount ? Number(inlinePriceDiscount) : undefined,
           package_quantity: inlinePricePackageQuantity ? Number(inlinePricePackageQuantity) : undefined,
@@ -384,11 +398,32 @@ export default function Products() {
         },
       });
 
+      if (stockTrackingEnabled && addedProductId && addedSupplierId) {
+        const qs = Number(String(inlineStockQty).replace(/,/g, '.'));
+        const ms = Number(String(inlineStockMin).replace(/,/g, '.'));
+        if (!Number.isNaN(qs) && qs >= 0 && !Number.isNaN(ms) && ms >= 0) {
+          try {
+            await updateProductStock.mutateAsync({
+              productId: addedProductId,
+              supplierId: addedSupplierId,
+              stock_quantity: qs,
+              min_threshold: ms,
+            });
+          } catch {
+            push({
+              title: 'המחיר נשמר',
+              description: 'עדכון המלאי נכשל — ניתן לערוך מלאי במסך עריכת המוצר.',
+              duration: 6000,
+            });
+          }
+        }
+      }
+
       setShowInlineAddPriceDialog(false);
       resetInlineAddPriceForm();
       setProductForInlineAdd(null);
       await queryClient.refetchQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['stock', 'product', productForInlineAdd.id] });
+      queryClient.invalidateQueries({ queryKey: ['stock', 'product', addedProductId] });
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'message' in error
@@ -1370,7 +1405,7 @@ export default function Products() {
       )}
 
       <Dialog open={showInlineAddPriceDialog} onOpenChange={setShowInlineAddPriceDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>הוסף מחיר חדש</DialogTitle>
           </DialogHeader>
@@ -1392,7 +1427,19 @@ export default function Products() {
               <Select
                 id="inlinePriceSupplier"
                 value={inlinePriceSupplierId}
-                onChange={(e) => setInlinePriceSupplierId(e.target.value)}
+                onChange={(e) => {
+                  const sid = e.target.value;
+                  setInlinePriceSupplierId(sid);
+                  if (!stockTrackingEnabled) return;
+                  if (!sid) {
+                    setInlineStockQty('0');
+                    setInlineStockMin('0');
+                    return;
+                  }
+                  const sr = inlineStockData?.rows?.find((r) => r.supplier_id === sid);
+                  setInlineStockQty(String(sr?.stock_quantity ?? 0));
+                  setInlineStockMin(String(sr?.min_threshold ?? 0));
+                }}
               >
                 <option value="">בחר ספק</option>
                 {suppliers.map((s) => (
@@ -1402,6 +1449,43 @@ export default function Products() {
                 ))}
               </Select>
             </div>
+
+            {stockTrackingEnabled && (
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/60 p-3 dark:border-amber-900/55 dark:bg-amber-950/25">
+                <p className="mb-2 text-sm font-semibold text-amber-950 dark:text-amber-100">מלאי לפי הספק שנבחר</p>
+                {!inlinePriceSupplierId ? (
+                  <p className="text-xs text-muted-foreground">בחר ספק כדי להזין כמות וסף התראה.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="inlineStockQty" className="text-xs">
+                        כמות במלאי
+                      </Label>
+                      <Input
+                        id="inlineStockQty"
+                        value={inlineStockQty}
+                        onChange={(e) => setInlineStockQty(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="inlineStockMin" className="text-xs">
+                        סף התראה (0 = ללא התראה)
+                      </Label>
+                      <Input
+                        id="inlineStockMin"
+                        value={inlineStockMin}
+                        onChange={(e) => setInlineStockMin(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">יישמר יחד עם «הוסף מחיר».</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1557,8 +1641,17 @@ export default function Products() {
             >
               ביטול
             </Button>
-            <Button onClick={handleInlineAddPrice} disabled={addProductPrice.isPending || !productForInlineAdd}>
-              {addProductPrice.isPending ? 'מוסיף...' : 'הוסף מחיר'}
+            <Button
+              onClick={handleInlineAddPrice}
+              disabled={
+                addProductPrice.isPending || updateProductStock.isPending || !productForInlineAdd
+              }
+            >
+              {addProductPrice.isPending
+                ? 'מוסיף מחיר…'
+                : updateProductStock.isPending
+                  ? 'שומר מלאי…'
+                  : 'הוסף מחיר'}
             </Button>
           </DialogFooter>
         </DialogContent>
