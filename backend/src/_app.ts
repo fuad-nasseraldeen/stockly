@@ -6,6 +6,7 @@ import productsRouter from './routes/products.js';
 import categoriesRouter from './routes/categories.js';
 import suppliersRouter from './routes/suppliers.js';
 import settingsRouter from './routes/settings.js';
+import stockRouter from './routes/stock.js';
 import tenantsRouter from './routes/tenants.js';
 import invitesRouter from './routes/invites.js';
 import importRouter from './routes/import.js';
@@ -125,6 +126,7 @@ export function createApp() {
   app.use('/api/categories', categoriesRouter);
   app.use('/api/suppliers', suppliersRouter);
   app.use('/api/settings', settingsRouter);
+  app.use('/api/stock', stockRouter);
   app.use('/api/import', importRouter);
   app.use('/api/export', exportRouter);
   app.use('/api/tenant/reset', resetRouter);

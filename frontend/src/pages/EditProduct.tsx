@@ -20,6 +20,8 @@ import { netToGross } from '../lib/pricing-rules';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
 import { useTenant } from '../hooks/useTenant';
+import { useProductStock, useUpdateProductStock } from '../hooks/useStock';
+import { useAppToast } from '../contexts/AppToastContext';
 import { grossToNet } from '../lib/pricing-rules';
 import { formatNumberTrimmed, getDecimalPrecision, priceInputPlaceholder, priceInputStep } from '../lib/number-format';
 
@@ -74,6 +76,8 @@ export default function EditProduct() {
   const [newPricePackageQuantity, setNewPricePackageQuantity] = useState('1');
   const [newPriceUnit, setNewPriceUnit] = useState<'unit' | 'kg' | 'liter'>('unit');
   const [newPricePackageType, setNewPricePackageType] = useState<'carton' | 'gallon' | 'bag' | 'bottle' | 'pack' | 'shrink' | 'sachet' | 'can' | 'roll' | 'unknown'>('unknown');
+  const [priceDialogStockQty, setPriceDialogStockQty] = useState('0');
+  const [priceDialogStockMin, setPriceDialogStockMin] = useState('0');
   const [priceError, setPriceError] = useState<string | null>(null);
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const didInitFormFromProduct = useRef(false);
@@ -81,6 +85,10 @@ export default function EditProduct() {
   const vatPercent = settings?.vat_percent ?? 18;
   const useMargin = settings?.use_margin === true;
   const useVat = settings?.use_vat === true;
+  const stockTrackingEnabled = settings?.stock_tracking_enabled === true;
+  const { data: stockForProduct } = useProductStock(stockTrackingEnabled ? id : undefined);
+  const updateProductStock = useUpdateProductStock();
+  const { push } = useAppToast();
   const decimalPrecision = getDecimalPrecision(settings);
   const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
   const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
@@ -186,6 +194,8 @@ export default function EditProduct() {
       setNewSupplierPhone('');
       setNewSupplierNotes('');
       setNewPriceSupplierId(newSupplier.id);
+      setPriceDialogStockQty('0');
+      setPriceDialogStockMin('0');
       setShowAddSupplier(false);
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
@@ -202,6 +212,8 @@ export default function EditProduct() {
     setNewPricePackageQuantity('1');
     setNewPriceUnit('unit');
     setNewPricePackageType('unknown');
+    setPriceDialogStockQty('0');
+    setPriceDialogStockMin('0');
     setPriceError(null);
   };
 
@@ -216,6 +228,42 @@ export default function EditProduct() {
   const closePriceDialog = () => {
     setShowAddPrice(false);
     setShowEditPrice(false);
+  };
+
+  const tryPersistStockAfterPrice = async (supplierId: string) => {
+    if (!stockTrackingEnabled || !id) return;
+    const q = Number(String(priceDialogStockQty).replace(/,/g, '.'));
+    const m = Number(String(priceDialogStockMin).replace(/,/g, '.'));
+    if (Number.isNaN(q) || q < 0 || Number.isNaN(m) || m < 0) return;
+    const row = stockForProduct?.rows?.find((r) => r.supplier_id === supplierId);
+    const prevQty = Number(row?.stock_quantity ?? 0);
+    const prevMin = Number(row?.min_threshold ?? 0);
+    const wasLow = prevMin > 0 && prevQty <= prevMin;
+    const nowLow = m > 0 && q <= m;
+    const crossed = !wasLow && nowLow;
+    const supplierName = suppliers.find((s) => s.id === supplierId)?.name || 'ספק';
+    try {
+      await updateProductStock.mutateAsync({
+        productId: id,
+        supplierId,
+        stock_quantity: q,
+        min_threshold: m,
+        expected_updated_at: row?.updated_at ?? null,
+      });
+      if (crossed) {
+        push({
+          title: 'מלאי נמוך',
+          description: `${name} · ${supplierName}`,
+          duration: 5000,
+        });
+      }
+    } catch {
+      push({
+        title: 'המחיר נשמר',
+        description: 'עדכון המלאי נכשל — ניתן לנסות שוב מ«ערוך מחיר».',
+        duration: 6000,
+      });
+    }
   };
 
   const handleAddPrice = async () => {
@@ -261,6 +309,7 @@ export default function EditProduct() {
           package_type: newPricePackageType,
         } as any,
       });
+      await tryPersistStockAfterPrice(newPriceSupplierId);
       resetNewPriceFormDefaults();
       closePriceDialog();
     } catch (e) {
@@ -291,6 +340,9 @@ export default function EditProduct() {
     setNewPricePackageQuantity(price.package_quantity ? price.package_quantity.toString() : '');
     setNewPriceUnit((product?.unit as 'unit' | 'kg' | 'liter') ?? 'unit');
     setNewPricePackageType(price.package_type || 'unknown');
+    const sr = stockForProduct?.rows?.find((r) => r.supplier_id === price.supplier_id);
+    setPriceDialogStockQty(String(sr?.stock_quantity ?? 0));
+    setPriceDialogStockMin(String(sr?.min_threshold ?? 0));
     setPriceError(null);
     setShowAddPrice(false);
     setShowEditPrice(true);
@@ -340,6 +392,7 @@ export default function EditProduct() {
           package_type: newPricePackageType,
         } as any,
       });
+      await tryPersistStockAfterPrice(newPriceSupplierId);
       setPriceToEdit(null);
       setNewPriceSupplierId('');
       setNewPriceCost('');
@@ -349,6 +402,8 @@ export default function EditProduct() {
       setNewPricePackageQuantity('');
       setNewPriceUnit('unit');
       setNewPricePackageType('unknown');
+      setPriceDialogStockQty('0');
+      setPriceDialogStockMin('0');
       closePriceDialog();
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
@@ -593,7 +648,7 @@ export default function EditProduct() {
                       const supplier = suppliers.find(s => s.id === price.supplier_id);
                       const priceId = price.id || `${price.supplier_id}-${price.created_at}`;
                       const isExpanded = expandedPriceId === priceId;
-                      
+
                       // Calculate values for display
                       const costBeforeDiscount = Number(price.cost_price);
                       const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
@@ -816,7 +871,7 @@ export default function EditProduct() {
           if (!open) closePriceDialog();
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isEditPriceMode ? 'ערוך מחיר' : 'הוסף מחיר חדש'}</DialogTitle>
             <DialogDescription>
@@ -830,7 +885,19 @@ export default function EditProduct() {
                 <Select
                   id="priceSupplier"
                   value={newPriceSupplierId}
-                  onChange={(e) => setNewPriceSupplierId(e.target.value)}
+                  onChange={(e) => {
+                    const sid = e.target.value;
+                    setNewPriceSupplierId(sid);
+                    if (!stockTrackingEnabled || !id) return;
+                    if (!sid) {
+                      setPriceDialogStockQty('0');
+                      setPriceDialogStockMin('0');
+                      return;
+                    }
+                    const sr = stockForProduct?.rows?.find((r) => r.supplier_id === sid);
+                    setPriceDialogStockQty(String(sr?.stock_quantity ?? 0));
+                    setPriceDialogStockMin(String(sr?.min_threshold ?? 0));
+                  }}
                   className="flex-1"
                 >
                   <option value="">בחר ספק</option>
@@ -849,6 +916,43 @@ export default function EditProduct() {
                 </Button>
               </div>
             </div>
+
+            {stockTrackingEnabled && id && (
+              <div className="rounded-lg border border-amber-200/90 bg-amber-50/60 p-3 dark:border-amber-900/55 dark:bg-amber-950/25">
+                <p className="mb-2 text-sm font-semibold text-amber-950 dark:text-amber-100">מלאי לפי הספק שנבחר</p>
+                {!newPriceSupplierId ? (
+                  <p className="text-xs text-muted-foreground">בחר ספק בשדה למעלה כדי להזין כמות וסף התראה.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="priceDialogStockQty" className="text-xs">
+                        כמות במלאי
+                      </Label>
+                      <Input
+                        id="priceDialogStockQty"
+                        value={priceDialogStockQty}
+                        onChange={(e) => setPriceDialogStockQty(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="priceDialogStockMin" className="text-xs">
+                        סף התראה (0 = ללא התראה)
+                      </Label>
+                      <Input
+                        id="priceDialogStockMin"
+                        value={priceDialogStockMin}
+                        onChange={(e) => setPriceDialogStockMin(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">המלאי נשמר יחד עם «הוסף מחיר» או «עדכן מחיר».</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1016,7 +1120,10 @@ export default function EditProduct() {
               </Button>
               <Button
                 onClick={isEditPriceMode ? handleUpdatePrice : handleAddPrice}
-                disabled={isEditPriceMode ? updateProductPrice.isPending : addProductPrice.isPending}
+                disabled={
+                  (isEditPriceMode ? updateProductPrice.isPending : addProductPrice.isPending) ||
+                  updateProductStock.isPending
+                }
               >
                 {isEditPriceMode
                   ? (updateProductPrice.isPending ? 'מעדכן...' : 'עדכן מחיר')
@@ -1245,4 +1352,3 @@ export default function EditProduct() {
     </div>
   );
 }
-

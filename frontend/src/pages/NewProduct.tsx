@@ -4,6 +4,8 @@ import { useCreateProduct } from '../hooks/useProducts';
 import { useCategories, useCreateCategory } from '../hooks/useCategories';
 import { useSuppliers, useCreateSupplier } from '../hooks/useSuppliers';
 import { useSettings } from '../hooks/useSettings';
+import { useUpdateProductStock } from '../hooks/useStock';
+import { useAppToast } from '../contexts/AppToastContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
@@ -36,6 +38,8 @@ export default function NewProduct() {
   const [supplierError, setSupplierError] = useState<string | null>(null);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
+  const [initialStockQty, setInitialStockQty] = useState('0');
+  const [initialMinThreshold, setInitialMinThreshold] = useState('0');
   
   // Add supplier dialog
   const [showAddSupplier, setShowAddSupplier] = useState(false);
@@ -55,6 +59,8 @@ export default function NewProduct() {
   // const addPrice = useAddProductPrice(); // reserved for future price flows
   const createSupplier = useCreateSupplier();
   const createCategory = useCreateCategory();
+  const updateProductStock = useUpdateProductStock();
+  const { push } = useAppToast();
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const defaultMargin = selectedCategory ? Number(selectedCategory.default_margin_percent) : (settings?.global_margin_percent ?? 0);
@@ -66,6 +72,7 @@ export default function NewProduct() {
   const vatPercent = defaultVatPercent; // Use VAT from settings
   const useMargin = settings?.use_margin === true; // Default to false if not set
   const useVat = settings?.use_vat === true;
+  const stockTrackingEnabled = settings?.stock_tracking_enabled === true;
   const decimalPrecision = getDecimalPrecision(settings);
   const formatUnitPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
   const formatCostPrice = (num: number): string => formatNumberTrimmed(num, decimalPrecision);
@@ -236,7 +243,7 @@ export default function NewProduct() {
     try {
 
       // Create product with first price (cost_price נשמר ככולל מע\"מ כאשר מע\"מ פעיל)
-      await createProduct.mutateAsync({
+      const created = (await createProduct.mutateAsync({
         name: name.trim(),
         category_id: categoryId || null,
         unit,
@@ -247,7 +254,28 @@ export default function NewProduct() {
         discount_percent: discountPercentValue > 0 ? discountPercentValue : undefined,
         package_quantity: packageQty,
         package_type: packageType,
-      });
+      })) as { id?: string };
+
+      if (stockTrackingEnabled && created?.id && supplierId) {
+        const qs = Number(String(initialStockQty).replace(/,/g, '.'));
+        const ms = Number(String(initialMinThreshold).replace(/,/g, '.'));
+        if (!Number.isNaN(qs) && qs >= 0 && !Number.isNaN(ms) && ms >= 0) {
+          try {
+            await updateProductStock.mutateAsync({
+              productId: created.id,
+              supplierId,
+              stock_quantity: qs,
+              min_threshold: ms,
+            });
+          } catch {
+            push({
+              title: 'המוצר נוצר',
+              description: 'עדכון המלאי נכשל — ניתן לערוך מלאי במסך עריכת המוצר.',
+              duration: 6000,
+            });
+          }
+        }
+      }
 
       navigate('/products');
     } catch (error) {
@@ -507,6 +535,45 @@ export default function NewProduct() {
               <p className="text-xs text-muted-foreground">ברירת מחדל: בלי הנחה</p>
             </div>
           </div>
+
+          {stockTrackingEnabled && (
+            <div className="rounded-lg border border-amber-200/90 bg-amber-50/60 p-3 dark:border-amber-900/55 dark:bg-amber-950/25">
+              <p className="mb-2 text-sm font-semibold text-amber-950 dark:text-amber-100">מלאי לפי ספק (אופציונלי)</p>
+              {!supplierId ? (
+                <p className="text-xs text-muted-foreground">בחר ספק למעלה כדי להזין כמות וסף התראה — הערכים יישמרו עם יצירת המוצר.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="initialStockQty" className="text-xs">
+                        כמות במלאי
+                      </Label>
+                      <Input
+                        id="initialStockQty"
+                        value={initialStockQty}
+                        onChange={(e) => setInitialStockQty(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="initialMinThreshold" className="text-xs">
+                        סף התראה (0 = ללא התראה)
+                      </Label>
+                      <Input
+                        id="initialMinThreshold"
+                        value={initialMinThreshold}
+                        onChange={(e) => setInitialMinThreshold(e.target.value)}
+                        className="h-9"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">המלאי משויך לספק שנבחר למחיר הראשון.</p>
+                </>
+              )}
+            </div>
+          )}
 
           {((costPrice && Number(costPrice) > 0) || (cartonPriceInput && Number(cartonPriceInput) > 0)) && (
             <div className="p-5 bg-linear-to-r from-primary/10 to-primary/5 rounded-lg border-2 border-primary/20 shadow-sm space-y-3">

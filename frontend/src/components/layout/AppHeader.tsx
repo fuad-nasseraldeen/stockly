@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
 import { Menu, X } from 'lucide-react';
@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { TenantSwitcher } from '../TenantSwitcher';
 import { useTenant } from '../../hooks/useTenant';
+import { useSettings } from '../../hooks/useSettings';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
 
 type AppHeaderProps = {
@@ -16,7 +17,7 @@ type AppHeaderProps = {
   onToggleTheme: () => void;
 };
 
-const navItems: Array<{ path: string; label: string }> = [
+const BASE_NAV: Array<{ path: string; label: string }> = [
   { path: '/products', label: 'מוצרים' },
   { path: '/suppliers', label: 'ספקים' },
   { path: '/categories', label: 'קטגוריות' },
@@ -31,8 +32,18 @@ const isOnSettings = (pathname: string) =>
 export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme }: AppHeaderProps) {
   const location = useLocation();
   const { currentTenant } = useTenant();
+  const { data: headerSettings } = useSettings();
   const { hasUnsavedChanges, requestNavigation } = useUnsavedChanges();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = useMemo(() => {
+    const items = [...BASE_NAV];
+    if (headerSettings?.stock_tracking_enabled === true) {
+      const insertAt = 3;
+      items.splice(insertAt, 0, { path: '/stock-alerts', label: 'התראות מלאי' });
+    }
+    return items;
+  }, [headerSettings?.stock_tracking_enabled]);
 
   const handleNavClick = (e: React.MouseEvent, path: string) => {
     if (isOnSettings(location.pathname) && hasUnsavedChanges && path !== '/settings') {

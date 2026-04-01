@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { settingsApi, type Settings } from '../lib/api';
+import { settingsApi, type Settings, getTenantIdForApi } from '../lib/api';
 import { useTenant } from './useTenant';
 
 /**
@@ -56,13 +56,23 @@ export function useSettings() {
 
 export function useUpdateSettings() {
   const queryClient = useQueryClient();
+  const { currentTenant } = useTenant();
   return useMutation({
     mutationFn: settingsApi.update,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    onSuccess: (data: Settings) => {
+      // Prefer React tenant id (query key) — module-level API id can lag one tick in edge cases
+      const tid = currentTenant?.id ?? getTenantIdForApi();
+      if (tid) {
+        queryClient.setQueryData(['settings', tid], data);
+        queryClient.setQueryData(['bootstrap', tid], (prev: unknown) => {
+          if (!prev || typeof prev !== 'object') return prev;
+          return { ...(prev as Record<string, unknown>), settings: data };
+        });
+      }
       // Recalc runs on server – invalidate products so UI shows updated prices
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['product'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
     },
   });
 }

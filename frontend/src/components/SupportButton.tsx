@@ -23,7 +23,7 @@ export function SupportButton() {
   if (supportButtonHidden && !dismissHintVisible) return null;
 
   return (
-    <div className="fixed bottom-24 left-20 z-40 flex flex-col gap-2 sm:bottom-6 sm:left-20">
+    <div className="fixed left-20 z-40 flex flex-col gap-2 sm:bottom-6 sm:left-20 max-sm:bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)]">
       {dismissHintVisible && (
         <div className="rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground shadow-md">
           אפשר להציג שוב בהגדרות

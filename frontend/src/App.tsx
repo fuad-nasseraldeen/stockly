@@ -22,6 +22,7 @@ import Categories from './pages/Categories';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import EditProduct from './pages/EditProduct';
+import StockAlerts from './pages/StockAlerts';
 import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
 import SupportChat from './pages/SupportChat';
@@ -49,6 +50,8 @@ import { WelcomeModal } from './components/help/WelcomeModal';
 import { SupportButton } from './components/SupportButton';
 import { AccessibilityBar } from './components/AccessibilityBar';
 import { HelpDrawer } from './components/help/HelpDrawer';
+import { AppToastProvider } from './contexts/AppToastContext';
+import { LowStockToastMonitor } from './components/LowStockToastMonitor';
 import { loadAccessibilityPreferences, applyAccessibilityToDocument } from './lib/accessibility';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 
@@ -292,17 +295,20 @@ function AppContent({
     <>
       <OnboardingRouter>
         <HelpCenterProvider userId={user.id}>
-          <UnsavedChangesProvider>
-          <AppWithNavigation
-            user={user}
-            onLogout={onLogout}
-            theme={theme}
-            onToggleTheme={onToggleTheme}
-            phoneVerificationPending={phoneVerificationPending}
-            onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
-          />
-          <HelpCenterShell />
-          </UnsavedChangesProvider>
+          <AppToastProvider>
+            <UnsavedChangesProvider>
+              <AppWithNavigation
+                user={user}
+                onLogout={onLogout}
+                theme={theme}
+                onToggleTheme={onToggleTheme}
+                phoneVerificationPending={phoneVerificationPending}
+                onRequestPhoneVerification={() => setPhoneDialogOpen(true)}
+              />
+              <LowStockToastMonitor />
+              <HelpCenterShell />
+            </UnsavedChangesProvider>
+          </AppToastProvider>
         </HelpCenterProvider>
       </OnboardingRouter>
 
@@ -543,6 +549,7 @@ function AppWithNavigation({
             <Route path="/categories" element={<Categories />} />
             <Route path="/suppliers" element={<Suppliers />} />
             <Route path="/import-export" element={<ImportExport />} />
+            <Route path="/stock-alerts" element={<StockAlerts />} />
             <Route path="/support" element={<SupportChat />} />
             <Route 
               path="/admin" 

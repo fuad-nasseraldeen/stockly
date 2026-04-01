@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useProducts, useDeleteProduct, useProductPriceHistory, useAddProductPrice } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { useCategories } from '../hooks/useCategories';
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { InfoTooltip } from '../components/help/InfoTooltip';
-import { productsApi, type Product } from '../lib/api';
+import { productsApi, stockApi, type Product, type ProductSupplierStockRow } from '../lib/api';
 import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
@@ -152,6 +152,29 @@ function getProductDerivedSummary(product: Product) {
   return { minCost, lastUpdated };
 }
 
+function formatStockQty(n: number, decimals: number): string {
+  return formatNumberTrimmed(n, decimals);
+}
+
+/** Alert when אזל / בסף (תואם list_low_stock: min>0 ∧ qty≤min, או מלאי 0). */
+function stockRowDisplayState(
+  row: ProductSupplierStockRow | undefined,
+  decimals: number,
+  opts: { enabled: boolean; isPending: boolean; isFetched: boolean },
+): { text: string; isAlert: boolean } {
+  if (!opts.enabled) return { text: '', isAlert: false };
+  if (opts.isPending && !opts.isFetched) return { text: '…', isAlert: false };
+  if (row === undefined) return { text: '—', isAlert: false };
+  const qty = Number(row.stock_quantity);
+  const minT = Number(row.min_threshold);
+  const isAlert = qty <= 0 || (minT > 0 && qty <= minT);
+  const text =
+    minT > 0
+      ? `${formatStockQty(qty, decimals)} / ${formatStockQty(minT, decimals)}`
+      : formatStockQty(qty, decimals);
+  return { text, isAlert };
+}
+
 export default function Products() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -214,6 +237,14 @@ export default function Products() {
   const { data: suppliers = [] } = useSuppliers();
   const { data: categories = [] } = useCategories();
   const { data: settings } = useSettings();
+  const stockTrackingEnabled = settings?.stock_tracking_enabled === true;
+  const stockQueries = useQueries({
+    queries: products.map((p) => ({
+      queryKey: ['stock', 'product', p.id] as const,
+      queryFn: () => stockApi.getForProduct(p.id),
+      enabled: stockTrackingEnabled && !!p.id,
+    })),
+  });
   const {
     data: priceHistory = [],
     isLoading: historyLoading,
@@ -357,6 +388,7 @@ export default function Products() {
       resetInlineAddPriceForm();
       setProductForInlineAdd(null);
       await queryClient.refetchQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stock', 'product', productForInlineAdd.id] });
     } catch (error) {
       const message =
         error && typeof error === 'object' && 'message' in error
@@ -1016,7 +1048,10 @@ export default function Products() {
         </Card>
       ) : (
         <div className="space-y-5 min-w-0">
-          {products.map((product) => (
+          {products.map((product, productIdx) => {
+            const stockQ = stockQueries[productIdx];
+            const stockRows = stockQ?.data?.rows;
+            return (
             <Card key={product.id} className="shadow-md hover:shadow-lg transition-all border-2 min-w-0 overflow-hidden">
               <CardHeader className="pb-4 border-b-2 border-border/50">
                 {(() => {
@@ -1119,6 +1154,9 @@ export default function Products() {
                                   {col.headerLabel}
                                 </TableHead>
                               ))}
+                              {stockTrackingEnabled && (
+                                <TableHead className="font-semibold whitespace-nowrap text-left">מלאי</TableHead>
+                              )}
                               <TableHead className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-r border-border">
                                 <div className="flex items-center justify-center py-3">
                                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground opacity-50" />
@@ -1141,6 +1179,23 @@ export default function Products() {
                                       {col.renderCell(price, product, appSettings)}
                                     </TableCell>
                                   ))}
+                                  {stockTrackingEnabled && (() => {
+                                    const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
+                                    const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
+                                      enabled: stockTrackingEnabled,
+                                      isPending: stockQ?.isPending ?? false,
+                                      isFetched: stockQ?.isFetched ?? false,
+                                    });
+                                    return (
+                                      <TableCell
+                                        className={`whitespace-nowrap text-left tabular-nums ${
+                                          isAlert ? 'text-destructive font-semibold' : ''
+                                        }`}
+                                      >
+                                        {text}
+                                      </TableCell>
+                                    );
+                                  })()}
                                   <TableCell className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-r border-border">
                                     <div className="flex items-center justify-center">
                                       <ChevronDown
@@ -1178,6 +1233,29 @@ export default function Products() {
                                 <span className="text-xs text-muted-foreground">תאריך עדכון: {priceDate}</span>
                               </div>
                             )}
+                            {stockTrackingEnabled && (() => {
+                              const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
+                              const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
+                                enabled: stockTrackingEnabled,
+                                isPending: stockQ?.isPending ?? false,
+                                isFetched: stockQ?.isFetched ?? false,
+                              });
+                              return (
+                                <div
+                                  className={`rounded-lg border px-3 py-2 text-sm ${
+                                    isAlert
+                                      ? 'border-destructive/70 bg-destructive/10 text-destructive'
+                                      : 'border-border bg-muted/40 text-foreground'
+                                  }`}
+                                >
+                                  <span className="font-semibold">מלאי לפי ספק: </span>
+                                  <span className={`tabular-nums ${isAlert ? 'font-bold' : ''}`}>{text}</span>
+                                  {isAlert ? (
+                                    <span className="mr-2 text-xs font-medium"> (אזל או בסף ההתראה)</span>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
                             <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-primary/10 border border-primary/20">
                               {useMargin && price.margin_percent != null && (
                                 <div className="flex items-center gap-1">
@@ -1265,7 +1343,8 @@ export default function Products() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
           <div className="flex items-center justify-center gap-4 pt-2">
             <Button
               variant="outline"

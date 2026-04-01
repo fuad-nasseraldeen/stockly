@@ -116,7 +116,29 @@ export type Settings = {
   use_margin?: boolean | null;
   use_vat?: boolean | null;
   decimal_precision?: number | null;
+  /** Feature flag: stock per product–supplier; default off, backward compatible */
+  stock_tracking_enabled?: boolean | null;
   updated_at: string;
+};
+
+export type ProductSupplierStockRow = {
+  id: string;
+  product_id: string;
+  supplier_id: string;
+  stock_quantity: number;
+  min_threshold: number;
+  updated_at: string;
+};
+
+export type LowStockItem = {
+  id: string;
+  product_id: string;
+  supplier_id: string;
+  stock_quantity: number;
+  min_threshold: number;
+  updated_at: string;
+  product_name: string;
+  supplier_name: string;
 };
 
 export type Tenant = {
@@ -193,14 +215,12 @@ export function setTenantIdForApi(tenantId: string | null): void {
 }
 
 /**
- * Get the current tenantId for API requests.
- * This reads from the module-level variable set by TenantContext, NOT from localStorage.
- * 
+ * Current tenant for API headers — same module state as TenantContext (`setTenantIdForApi`).
  * @returns The current tenant ID, or null if no tenant is selected
  */
-function getTenantId(): string | null {
+export function getTenantIdForApi(): string | null {
   if (process.env.NODE_ENV === 'development') {
-    console.log('🔍 getTenantId() called, returning:', currentTenantIdForApi);
+    console.log('🔍 getTenantIdForApi() called, returning:', currentTenantIdForApi);
   }
   return currentTenantIdForApi;
 }
@@ -210,7 +230,7 @@ export async function apiRequest<T>(
   options?: RequestInit & { skipTenantHeader?: boolean }
 ): Promise<T> {
   const token = await getAuthToken();
-  const tenantId = options?.skipTenantHeader ? undefined : getTenantId();
+  const tenantId = options?.skipTenantHeader ? undefined : getTenantIdForApi();
   
   if (process.env.NODE_ENV === 'development') {
     console.log('🔍 apiRequest:', {
@@ -700,7 +720,14 @@ export const suppliersApi = {
 export const settingsApi = {
   get: (): Promise<Settings> => apiRequest<Settings>('/api/settings'),
   
-  update: (data: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean; decimal_precision?: number }): Promise<Settings> =>
+  update: (data: {
+    vat_percent: number;
+    global_margin_percent?: number;
+    use_margin?: boolean;
+    use_vat?: boolean;
+    decimal_precision?: number;
+    stock_tracking_enabled?: boolean;
+  }): Promise<Settings> =>
     apiRequest<Settings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -723,6 +750,38 @@ export const settingsApi = {
     apiRequest<{ success: boolean }>(`/api/settings/preferences/${key}`, {
       method: 'DELETE',
     }),
+};
+
+export const stockApi = {
+  listLow: (params?: { q?: string; critical?: boolean }): Promise<{
+    stockTrackingEnabled: boolean;
+    items: LowStockItem[];
+  }> => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set('q', params.q);
+    if (params?.critical) sp.set('critical', '1');
+    const qs = sp.toString();
+    return apiRequest(`/api/stock/low${qs ? `?${qs}` : ''}`);
+  },
+
+  getForProduct: (
+    productId: string,
+  ): Promise<{ stockTrackingEnabled: boolean; rows: ProductSupplierStockRow[] }> =>
+    apiRequest(`/api/stock/product/${productId}`),
+
+  update: (args: {
+    productId: string;
+    supplierId: string;
+    stock_quantity: number;
+    min_threshold?: number;
+    expected_updated_at?: string | null;
+  }): Promise<ProductSupplierStockRow> => {
+    const { productId, supplierId, ...body } = args;
+    return apiRequest(`/api/stock/product/${productId}/supplier/${supplierId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // Tenant maintenance API
@@ -1043,7 +1102,7 @@ export type SavedImportMapping = {
 
 async function importRequest<T>(url: string, formData: FormData): Promise<T> {
   const token = await getAuthToken();
-  const tenantId = getTenantId();
+  const tenantId = getTenantIdForApi();
 
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1185,7 +1244,7 @@ export const importApi = {
 export const exportApi = {
   downloadCurrent: async (): Promise<void> => {
     const token = await getAuthToken();
-    const tenantId = getTenantId();
+    const tenantId = getTenantIdForApi();
     
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1207,7 +1266,7 @@ export const exportApi = {
   
   downloadHistory: async (): Promise<void> => {
     const token = await getAuthToken();
-    const tenantId = getTenantId();
+    const tenantId = getTenantIdForApi();
     
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -1234,7 +1293,7 @@ export const exportApi = {
     sort?: string;
   }): Promise<void> => {
     const token = await getAuthToken();
-    const tenantId = getTenantId();
+    const tenantId = getTenantIdForApi();
     
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;

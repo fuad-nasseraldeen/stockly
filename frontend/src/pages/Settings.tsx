@@ -35,6 +35,7 @@ export default function Settings() {
     settings?.global_margin_percent != null ? String(settings.global_margin_percent) : '0'
   );
   const [useVat, setUseVat] = useState<boolean>(() => settings?.use_vat === true);
+  const [stockTracking, setStockTracking] = useState<boolean>(() => settings?.stock_tracking_enabled === true);
   const [decimalPrecision, setDecimalPrecision] = useState<string>(() =>
     settings?.decimal_precision != null ? String(settings.decimal_precision) : '2'
   );
@@ -106,6 +107,7 @@ export default function Settings() {
     setVat(settings.vat_percent != null ? String(settings.vat_percent) : '18');
     setMargin(settings.global_margin_percent != null ? String(settings.global_margin_percent) : '0');
     setUseVat(settings.use_vat === true);
+    setStockTracking(settings.stock_tracking_enabled === true);
     setDecimalPrecision(settings.decimal_precision != null ? String(settings.decimal_precision) : '2');
   }, [settings]);
 
@@ -141,9 +143,16 @@ export default function Settings() {
     const savedVat = settings.vat_percent != null ? String(settings.vat_percent) : '18';
     const savedMargin = settings.global_margin_percent != null ? String(settings.global_margin_percent) : '0';
     const savedUseVat = settings.use_vat === true;
+    const savedStock = settings.stock_tracking_enabled === true;
     const savedPrecision = settings.decimal_precision != null ? String(settings.decimal_precision) : '2';
-    return vat !== savedVat || margin !== savedMargin || useVat !== savedUseVat || decimalPrecision !== savedPrecision;
-  }, [settings, vat, margin, useVat, decimalPrecision]);
+    return (
+      vat !== savedVat ||
+      margin !== savedMargin ||
+      useVat !== savedUseVat ||
+      stockTracking !== savedStock ||
+      decimalPrecision !== savedPrecision
+    );
+  }, [settings, vat, margin, useVat, stockTracking, decimalPrecision]);
 
   const { setHasUnsavedChanges, setSaveCallback } = useUnsavedChanges();
   const handleSaveVatRef = useRef<() => Promise<boolean>>(() => Promise.resolve(false));
@@ -239,9 +248,17 @@ export default function Settings() {
         setProfileMessage('דיוק עשרוני חייב להיות בין 0 ל־5');
         return false;
       }
-      const payload: { vat_percent: number; global_margin_percent?: number; use_margin?: boolean; use_vat?: boolean; decimal_precision?: number } = {
+      const payload: {
+        vat_percent: number;
+        global_margin_percent?: number;
+        use_margin?: boolean;
+        use_vat?: boolean;
+        decimal_precision?: number;
+        stock_tracking_enabled?: boolean;
+      } = {
         vat_percent: vatValue,
         use_vat: useVat,
+        stock_tracking_enabled: stockTracking,
       };
       if (!Number.isNaN(marginValue)) {
         payload.global_margin_percent = marginValue;
@@ -250,7 +267,13 @@ export default function Settings() {
         payload.decimal_precision = Math.max(0, Math.min(5, Math.floor(precisionValue)));
       }
       payload.use_margin = !Number.isNaN(marginValue) && marginValue > 0;
-      await updateSettings.mutateAsync(payload);
+      const updated = await updateSettings.mutateAsync(payload);
+      // סנכרון מיידי מהשרת — מונע מצב שבו המטמון/React Query מאחרים וה‑useEffect מחזיר את המתג ל״כבוי״
+      setVat(updated.vat_percent != null ? String(updated.vat_percent) : '18');
+      setMargin(updated.global_margin_percent != null ? String(updated.global_margin_percent) : '0');
+      setUseVat(updated.use_vat === true);
+      setStockTracking(updated.stock_tracking_enabled === true);
+      setDecimalPrecision(updated.decimal_precision != null ? String(updated.decimal_precision) : '2');
       return true;
     } catch (error) {
       console.error('Error updating settings:', error);
@@ -678,6 +701,36 @@ export default function Settings() {
               </div>
               <p className="text-xs text-muted-foreground">מ־0 עד 5 (מספר ספרות אחרי הנקודה)</p>
               {isDecimalInvalid && <p className="text-xs text-destructive">דיוק עשרוני חייב להיות בין 0 ל־5</p>}
+            </div>
+            <div className="col-span-2 rounded-lg border border-border p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">מעקב מלאי לפי ספק</span>
+                <label htmlFor="stockTrackingToggle" className="flex cursor-pointer items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{stockTracking ? 'מופעל' : 'כבוי'}</span>
+                  <div
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                      stockTracking ? 'bg-primary' : 'bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                        stockTracking ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </div>
+                  <input
+                    id="stockTrackingToggle"
+                    type="checkbox"
+                    className="sr-only"
+                    checked={stockTracking}
+                    onChange={(e) => setStockTracking(e.target.checked)}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                כבוי כברירת מחדל — לא משנה התנהגות קיימת עד שמפעילים. אפשר לנהל יתרות לכל מוצר–ספק, לעבור
+                למסך &quot;התראות מלאי&quot; ולקבל תזכורת כשהמלאי מגיע לסף או יורד מתחתיו.
+              </p>
             </div>
           </div>
 

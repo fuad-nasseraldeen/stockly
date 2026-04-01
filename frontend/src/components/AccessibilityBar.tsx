@@ -33,7 +33,7 @@ export function AccessibilityBar() {
   const hasChanges = JSON.stringify(prefs) !== JSON.stringify(DEFAULT_PREFERENCES);
 
   return (
-    <div className="fixed bottom-24 left-4 z-40 sm:bottom-6">
+    <div className="fixed left-4 z-40 max-sm:bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] sm:bottom-6">
       <div className="relative">
         {open && (
           <>
