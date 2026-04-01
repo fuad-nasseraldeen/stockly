@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User } from '@supabase/supabase-js';
@@ -569,31 +569,6 @@ function AppWithNavigation({
           </Routes>
         </div>
       </main>
-      <div className="fixed inset-x-0 bottom-0 z-30 w-full border-t border-border/60 bg-background/80">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
-          <span>© 2026 סטוקלי</span>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/privacy"
-              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
-            >
-              מדיניות פרטיות
-            </Link>
-            <Link
-              to="/terms"
-              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
-            >
-              תנאי שימוש
-            </Link>
-            <Link
-              to="/about"
-              className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-accent"
-            >
-              למה Stockly
-            </Link>
-          </div>
-        </div>
-      </div>
       <BottomTabs />
       <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
       <SupportButton />

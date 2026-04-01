@@ -28,7 +28,6 @@ const upload = multer({
   },
 });
 
-const importModeSchema = z.enum(['merge', 'overwrite']);
 const importSourceTypeSchema = z.enum(['excel', 'pdf']);
 
 type MappingValue = number | null;
@@ -988,7 +987,6 @@ function normalizeRowsWithMapping(
   const unimportedProducts: UnimportedProduct[] = [];
   const normalizedRows: ImportRow[] = [];
   const normalizedIndexesBySourceRow = new Map<number, number[]>();
-  const manualSupplier = (options?.manualSupplierName || '').trim();
   const manualValuesByRow = options?.manualValuesByRow || new Map<number, Record<string, string>>();
   const manualGlobalValues = options?.manualGlobalValues || {};
   const isPdfSource = options?.sourceType === 'pdf';
@@ -1055,15 +1053,22 @@ function normalizeRowsWithMapping(
     const hasSupplier =
       p.supplierCol !== null ||
       manualFieldKeys.has(`supplier_${p.index}`) ||
-      (p.index === 1 && manualFieldKeys.has('supplier')) ||
-      !!manualSupplier;
+      (p.index === 1 && manualFieldKeys.has('supplier'));
     return hasPrice && hasSupplier;
   });
   if (!hasUsablePair) {
-    if (manualSupplier) {
+    const hasAnyMappedPrice = pairDefs.some(
+      (p) =>
+        p.priceCol !== null ||
+        manualFieldKeys.has(`price_${p.index}`) ||
+        (p.index === 1 && manualFieldKeys.has('price')),
+    );
+    if (!hasAnyMappedPrice) {
       fieldErrors.push('לא נמצאה עמודת מחיר ממופה');
     } else {
-      fieldErrors.push('לא נמצא זוג מיפוי מלא של ספק + מחיר, או בחר "ספק קבוע לכל הקובץ"');
+      fieldErrors.push(
+        'חובה למפות עמודת "ספק" מהקובץ או להוסיף עמודה ידנית עם שדה ספק לכל זוג מחיר (לא ניתן לייבא בלי עמודת ספק)',
+      );
     }
   }
 
@@ -1231,8 +1236,8 @@ function normalizeRowsWithMapping(
 
       if (pair.priceCol === null && !manualPriceForPair) continue;
 
-      // Priority: explicit row override -> mapped supplier from file -> global fixed supplier fallback.
-      const supplier = manualSupplierForPair || toCellString(row, pair.supplierCol) || manualSupplier;
+      // Priority: per-row manual column -> mapped supplier from file.
+      const supplier = manualSupplierForPair || toCellString(row, pair.supplierCol);
       const priceRaw = manualPriceForPair || toCellString(row, pair.priceCol);
       const pricingUnit = defaultPricingUnit || detectPricingUnitFromPriceText(priceRaw) || 'unit';
 
@@ -1245,7 +1250,7 @@ function normalizeRowsWithMapping(
           productName,
           priceRaw,
         });
-        rowErrors.push({ row: visualRow, message: `ספק חסר בזוג #${pair.index} (או הגדר ספק קבוע לכל הקובץ)` });
+        rowErrors.push({ row: visualRow, message: `ספק חסר בזוג #${pair.index} — מפה עמודת ספק או הזן ספק בעמודה הידנית` });
         continue;
       }
 
@@ -1751,7 +1756,10 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
 
     const tenant = (req as any).tenant;
     const user = (req as any).user;
-    const mode = importModeSchema.parse(req.query.mode || 'merge');
+    const modeRaw = typeof req.query.mode === 'string' ? req.query.mode.trim() : '';
+    if (modeRaw && modeRaw !== 'merge') {
+      return res.status(400).json({ error: 'מצב ייבוא ישן (overwrite) הוסר. הייבוא הוא רק הוספה/מיזוג.' });
+    }
     const file = req.file;
 
     if (!file) {
@@ -1824,44 +1832,6 @@ router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (
     const useMargin = settings?.use_margin === true;
     const useVat = settings?.use_vat === true;
     const decimalPrecision = clampDecimalPrecision((settings as any)?.decimal_precision, 2);
-
-    // OVERWRITE mode: delete all tenant data
-    if (mode === 'overwrite') {
-      if (tenant.role !== 'owner') {
-        return res.status(403).json({ error: 'פעולת overwrite זמינה לבעלים בלבד' });
-      }
-
-      await supabase.from('price_entries').delete().eq('tenant_id', tenant.tenantId);
-      await supabase.from('products').delete().eq('tenant_id', tenant.tenantId);
-      await supabase.from('suppliers').delete().eq('tenant_id', tenant.tenantId);
-      await supabase.from('categories').delete().eq('tenant_id', tenant.tenantId).neq('name', 'כללי');
-      await supabase.from('settings').delete().eq('tenant_id', tenant.tenantId);
-
-      await supabase.from('settings').insert({
-        tenant_id: tenant.tenantId,
-        vat_percent: 18,
-        use_vat: false,
-        decimal_precision: 2,
-      });
-
-      const { data: defaultCategories } = await supabase
-        .from('categories')
-        .select('id')
-        .eq('tenant_id', tenant.tenantId)
-        .eq('name', 'כללי')
-        .eq('is_active', true);
-
-      const defaultCategory = Array.isArray(defaultCategories) ? defaultCategories[0] : null;
-      if (!defaultCategory) {
-        await supabase.from('categories').insert({
-          tenant_id: tenant.tenantId,
-          name: 'כללי',
-          default_margin_percent: 0,
-          is_active: true,
-          created_by: user.id,
-        });
-      }
-    }
 
     const stats = {
       suppliersCreated: 0,

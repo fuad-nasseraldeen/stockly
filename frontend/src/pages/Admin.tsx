@@ -1,13 +1,101 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant } from '../hooks/useAdmin';
+import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant, useAdminImpersonate } from '../hooks/useAdmin';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';
+import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
-import { Shield, Users, Store, Ban, CheckCircle, AlertCircle, Clock, Trash2, X, RotateCcw } from 'lucide-react';
+import {
+  Shield,
+  Users,
+  Store,
+  Ban,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  Trash2,
+  X,
+  RotateCcw,
+  LogIn,
+  MessageCircle,
+  Smartphone,
+} from 'lucide-react';
+import type { TenantWithUsers } from '../lib/api';
+
+function pickStoreEntryUserId(tenant: TenantWithUsers): string | null {
+  if (tenant.owners.length > 0) return tenant.owners[0].user_id;
+  const w = tenant.workers.find((x) => !x.is_blocked);
+  return w?.user_id ?? null;
+}
+
+function digitsForWhatsApp(phone: string | null | undefined): string | null {
+  if (!phone?.trim()) return null;
+  const d = phone.replace(/\D/g, '');
+  return d.length > 0 ? d : null;
+}
+
+function smsHref(phone: string | null | undefined): string | null {
+  if (!phone?.trim()) return null;
+  const cleaned = phone.trim().replace(/\s/g, '');
+  return cleaned ? `sms:${cleaned}` : null;
+}
+
+type AdminMember = TenantWithUsers['owners'][number] | TenantWithUsers['workers'][number];
+
+function AdminMemberDetail({
+  member,
+  formatDate,
+}: {
+  member: AdminMember;
+  formatDate: (date: string) => string;
+}) {
+  const waDigits = digitsForWhatsApp(member.phone_e164);
+  const smsLink = smsHref(member.phone_e164);
+  return (
+    <>
+      <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground border-t border-border/60 pt-1.5">
+        <div>
+          <span className="font-medium text-foreground/80">טלפון: </span>
+          {member.phone_e164 ?? '—'}
+          {member.phone_verified_at ? ' (מאומת)' : member.phone_e164 ? ' (לא מאומת)' : null}
+        </div>
+        <div>
+          <span className="font-medium text-foreground/80">כניסה אחרונה: </span>
+          {member.last_sign_in_at ? formatDate(member.last_sign_in_at) : '—'}
+        </div>
+        <div>
+          <span className="font-medium text-foreground/80">פעילות אחרונה במערכת: </span>
+          {member.last_content_activity_at
+            ? formatDate(member.last_content_activity_at)
+            : 'אין רישום (למשל הוספת מוצר / מחיר / ספק)'}
+        </div>
+      </div>
+      {(waDigits || smsLink) && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {waDigits && (
+            <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
+              <a href={`https://wa.me/${waDigits}`} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="w-3 h-3 ml-1" />
+                וואטסאפ
+              </a>
+            </Button>
+          )}
+          {smsLink && (
+            <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
+              <a href={smsLink}>
+                <Smartphone className="w-3 h-3 ml-1" />
+                הודעה (SMS)
+              </a>
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function Admin() {
   console.log('🔍 Admin: Component rendering...');
@@ -44,6 +132,26 @@ export default function Admin() {
   const removeUser = useRemoveUser();
   const resetTenantData = useResetTenantData();
   const deleteTenant = useDeleteTenant();
+  const impersonateMut = useAdminImpersonate();
+
+  const enterAsUser = async (tenantId: string, userId: string) => {
+    try {
+      const data = await impersonateMut.mutateAsync({ tenant_id: tenantId, user_id: userId });
+      const { error } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (error) {
+        throw new Error(error.message);
+      }
+      localStorage.setItem('currentTenantId', data.tenant_id);
+      window.location.assign('/products');
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : 'שגיאה';
+      window.alert(msg);
+    }
+  };
 
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [unblockDialogOpen, setUnblockDialogOpen] = useState(false);
@@ -132,6 +240,7 @@ export default function Admin() {
       user_blocked: 'משתמש נחסם',
       user_unblocked: 'חסימה בוטלה',
       invite_sent: 'הזמנה נשלחה',
+      admin_impersonate: 'כניסת מנהל מערכת לפרופיל משתמש',
     };
     return labels[action] || action;
   };
@@ -246,7 +355,21 @@ export default function Admin() {
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
+                    <div className="flex flex-wrap gap-2 flex-shrink-0 justify-end">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={!pickStoreEntryUserId(tenant) || impersonateMut.isPending}
+                        onClick={() => {
+                          const uid = pickStoreEntryUserId(tenant);
+                          if (uid) void enterAsUser(tenant.id, uid);
+                        }}
+                        className="text-xs sm:text-sm"
+                      >
+                        <LogIn className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                        <span className="hidden sm:inline">כניסה לחנות</span>
+                        <span className="sm:hidden">חנות</span>
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -299,7 +422,18 @@ export default function Admin() {
                                 <span className="hidden sm:inline">•</span>
                                 <span>הצטרף ב-{formatDate(owner.joined_at)}</span>
                               </div>
+                              <AdminMemberDetail member={owner} formatDate={formatDate} />
                             </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={owner.is_blocked || impersonateMut.isPending}
+                              onClick={() => void enterAsUser(tenant.id, owner.user_id)}
+                              className="text-xs sm:text-sm flex-shrink-0"
+                            >
+                              <LogIn className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                              כניסה לפרופיל
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -335,8 +469,20 @@ export default function Admin() {
                                 <span className="hidden sm:inline">•</span>
                                 <span>הצטרף ב-{formatDate(worker.joined_at)}</span>
                               </div>
+                              <AdminMemberDetail member={worker} formatDate={formatDate} />
                             </div>
                             <div className="flex gap-2 flex-wrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={worker.is_blocked || impersonateMut.isPending}
+                                onClick={() => void enterAsUser(tenant.id, worker.user_id)}
+                                className="text-xs sm:text-sm flex-1 sm:flex-initial"
+                              >
+                                <LogIn className="w-3 h-3 sm:w-4 sm:h-4 ml-1" />
+                                <span className="hidden sm:inline">כניסה לפרופיל</span>
+                                <span className="sm:hidden">פרופיל</span>
+                              </Button>
                               {worker.is_blocked ? (
                                 <Button
                                   variant="outline"

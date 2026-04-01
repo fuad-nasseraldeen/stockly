@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { __testables } from '../../../src/routes/import';
 
 describe('import route normalization', () => {
-  it('prioritizes supplier from mapped column over global supplier fallback', () => {
+  it('uses supplier from mapped column and ignores legacy manualSupplierName body field', () => {
     const rows = [
       ['שם מוצר', 'ספק', 'מחיר'],
       ['מוצר א', 'ספק מהקובץ', '10'],
@@ -66,6 +66,25 @@ describe('import route normalization', () => {
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].supplier).toBe('ספק ב');
     expect(result.rowErrors).toEqual([]);
+  });
+
+  it('rejects mapping when price exists but supplier column is missing and only manualSupplierName is sent', () => {
+    const rows = [
+      ['שם מוצר', 'מחיר'],
+      ['מוצר א', '10'],
+    ];
+    const mapping = {
+      product_name: 0,
+      price: 1,
+    } as Record<string, number | null>;
+
+    const result = __testables.normalizeRowsWithMapping(rows, true, mapping, {
+      sourceType: 'excel',
+      manualSupplierName: 'רק ספק גלובלי',
+    });
+
+    expect(result.fieldErrors.length).toBeGreaterThan(0);
+    expect(result.rows).toHaveLength(0);
   });
 
   it('supports sheetIndex = -1 as merge-all-sheets selector', () => {

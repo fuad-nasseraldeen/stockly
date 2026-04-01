@@ -80,3 +80,9 @@ export function useDeleteTenant() {
     },
   });
 }
+
+export function useAdminImpersonate() {
+  return useMutation({
+    mutationFn: adminApi.impersonate,
+  });
+}

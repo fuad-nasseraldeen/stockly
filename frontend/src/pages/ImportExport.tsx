@@ -28,7 +28,6 @@ import { Loader2, RotateCcw, Upload, X } from 'lucide-react';
 import { InfoTooltip } from '../components/help/InfoTooltip';
 
 type WizardStep = 1 | 2 | 3 | 4;
-type ImportMode = 'merge' | 'overwrite';
 type LoadingPhase = 'preview' | 'validate' | 'apply';
 const SELECT_NONE_VALUE = '__none__';
 
@@ -301,14 +300,9 @@ export default function ImportExport() {
   const [manualValuesByRow, setManualValuesByRow] = useState<Record<number, Record<string, string>>>({});
   const [manualGlobalValuesByFieldKey, setManualGlobalValuesByFieldKey] = useState<Record<string, string>>({});
   const [manualBulkValueByColumnId, setManualBulkValueByColumnId] = useState<Record<string, string>>({});
-  const [useManualSupplier, setUseManualSupplier] = useState(true);
-  const [manualSupplierName, setManualSupplierName] = useState('');
-  const [manualSupplierNewName, setManualSupplierNewName] = useState('');
   const [sourceTypeHint, setSourceTypeHint] = useState<string | null>(null);
 
   const [validation, setValidation] = useState<ImportValidateResponse | null>(null);
-  const [mode, setMode] = useState<ImportMode>('merge');
-  const [overwriteConfirm, setOverwriteConfirm] = useState('');
   const [applyResult, setApplyResult] = useState<ImportApplyResponse | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase | null>(null);
@@ -370,12 +364,6 @@ export default function ImportExport() {
     () => ['unknown', 'carton', 'gallon', 'bag', 'bottle', 'pack', 'shrink', 'sachet', 'can', 'roll'],
     [],
   );
-  useEffect(() => {
-    if (!useManualSupplier) return;
-    if (manualSupplierName.trim() || manualSupplierNewName.trim()) return;
-    if (!supplierNames.length) return;
-    setManualSupplierName(supplierNames[0]);
-  }, [useManualSupplier, manualSupplierName, manualSupplierNewName, supplierNames]);
   const activePdfTable = useMemo(
     () => (sourceType === 'pdf' ? (preview?.tables || []).find((t) => t.tableIndex === selectedPdfTableIndex) || null : null),
     [sourceType, preview, selectedPdfTableIndex],
@@ -671,9 +659,8 @@ export default function ImportExport() {
     const hasSupplierFromManualColumn = manualColumns.some(
       (col) => col.fieldKey === 'supplier' || /^supplier_\d+$/.test(col.fieldKey || ''),
     );
-    const needsFixedSupplier = !hasSupplierFromMapping && !hasSupplierFromManualColumn;
-    if (needsFixedSupplier && !effectiveManualSupplierName) {
-      setError('בחר ספק קיים או הקלד ספק חדש למעלה, או הוסף עמודה/מיפוי של ספק');
+    if (!hasSupplierFromMapping && !hasSupplierFromManualColumn) {
+      setError('חובה למפות עמודת "ספק" מהקובץ (או להוסיף עמודה ידנית עם שדה ספק), כמו קטגוריה — בלי זה אי אפשר להמשיך');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -709,7 +696,6 @@ export default function ImportExport() {
         hasHeader,
         mapping,
         ignoredRows: hiddenRows,
-        manualSupplierName: useManualSupplier ? effectiveManualSupplierName : undefined,
         manualValuesByRow: Object.keys(manualValuesByRow).length > 0 ? manualValuesByRow : undefined,
         manualGlobalValues: Object.keys(manualGlobalValuesByFieldKey).length > 0 ? manualGlobalValuesByFieldKey : undefined,
       });
@@ -732,14 +718,9 @@ export default function ImportExport() {
     const hasSupplierFromManualColumnApply = manualColumns.some(
       (col) => col.fieldKey === 'supplier' || /^supplier_\d+$/.test(col.fieldKey || ''),
     );
-    const needsFixedSupplierApply = !hasSupplierFromMappingApply && !hasSupplierFromManualColumnApply;
-    if (needsFixedSupplierApply && !effectiveManualSupplierName) {
-      setError('בחר ספק קיים או הקלד ספק חדש למעלה, או הוסף עמודה/מיפוי של ספק');
+    if (!hasSupplierFromMappingApply && !hasSupplierFromManualColumnApply) {
+      setError('חובה למפות עמודת "ספק" מהקובץ (או להוסיף עמודה ידנית עם שדה ספק), כמו קטגוריה — בלי זה אי אפשר לייבא');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (mode === 'overwrite' && overwriteConfirm !== 'מחק') {
-      setError('במצב החלפה יש להקליד "מחק"');
       return;
     }
     setLoadingPhase('apply');
@@ -747,14 +728,12 @@ export default function ImportExport() {
     setError(null);
     try {
       const result = await importApi.apply(file, {
-        mode,
         sourceType,
         sheetIndex,
         tableIndex: sourceType === 'pdf' ? selectedPdfTableIndex : undefined,
         hasHeader,
         mapping,
         ignoredRows: hiddenRows,
-        manualSupplierName: useManualSupplier ? effectiveManualSupplierName : undefined,
         manualValuesByRow: Object.keys(manualValuesByRow).length > 0 ? manualValuesByRow : undefined,
         manualGlobalValues: Object.keys(manualGlobalValuesByFieldKey).length > 0 ? manualGlobalValuesByFieldKey : undefined,
       });
@@ -763,6 +742,7 @@ export default function ImportExport() {
         queryClient.invalidateQueries({ queryKey: ['products'] }),
         queryClient.invalidateQueries({ queryKey: ['suppliers'] }),
         queryClient.invalidateQueries({ queryKey: ['categories'] }),
+        queryClient.invalidateQueries({ queryKey: ['settings'] }),
       ]);
       setStep(4);
     } catch (e: unknown) {
@@ -964,12 +944,6 @@ export default function ImportExport() {
     [manualValuesByRow],
   );
   const hasAnyPriceRealtime = hasMappedPriceRealtime || hasManualPriceRealtime;
-  const effectiveManualSupplierName = useMemo(() => {
-    const newName = manualSupplierNewName.trim();
-    if (newName) return newName;
-    return manualSupplierName.trim();
-  }, [manualSupplierName, manualSupplierNewName]);
-  const hasGlobalNewSupplier = manualSupplierNewName.trim().length > 0;
   const highlightPriceError = !!error && (error.includes('חובה למפות לפחות עמודת מחיר אחת') || error.includes('לא נמצאה עמודת מחיר ממופה'));
   const highlightManualColumnError = !!error && error.includes('נוספה עמודה ידנית שלא הוגדרה');
   const pdfLoadingTips = useMemo(
@@ -1253,7 +1227,7 @@ export default function ImportExport() {
               <ol className="mt-2 list-decimal space-y-1 pr-5 text-muted-foreground">
                 <li>מעל כל עמודה בוחרים מה היא: שם מוצר / מחיר / ספק / לא רלוונטי.</li>
                 <li>אם עמודה לא רלוונטית, לחץ "הסר עמודה" והיא תיעלם מהדמיה.</li>
-                <li>אם יש ספק אחד לכל הקובץ - סמן "ספק קבוע לכל הקובץ".</li>
+                <li>חובה למפות עמודת ספק מהקובץ (או עמודה ידנית לספק) — בלי ספק לא מתקדמים לוולידציה/ייבוא.</li>
                 <li>סמן "הצג רק עמודות שסימנתי" כדי לראות בדיוק מה ייובא בפועל.</li>
               </ol>
               <div className="mt-2 text-xs text-muted-foreground">
@@ -1272,72 +1246,6 @@ export default function ImportExport() {
                 {preview.warnings.join(' | ')}
               </div>
             ) : null}
-
-            <div className={`rounded-xl border p-3 ${highlightManualColumnError ? 'border-destructive' : ''}`}>
-              <label className="inline-flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={useManualSupplier}
-                  onChange={(e) => {
-                    setError(null);
-                    const checked = e.target.checked;
-                    setUseManualSupplier(checked);
-                    if (!checked) {
-                      setManualSupplierName('');
-                      setManualSupplierNewName('');
-                      return;
-                    }
-                    if (!manualSupplierName.trim() && supplierNames.length > 0) {
-                      setManualSupplierName(supplierNames[0]);
-                    }
-                  }}
-                />
-                ספק קבוע לכל הקובץ
-              </label>
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                <div>
-                  <Label className={`text-xs ${hasGlobalNewSupplier ? 'text-muted-foreground' : ''}`}>ספק קיים</Label>
-                  <Select
-                    value={manualSupplierName}
-                    onValueChange={(value) => {
-                      setError(null);
-                      setManualSupplierName(value);
-                    }}
-                    disabled={!useManualSupplier || supplierNames.length === 0 || hasGlobalNewSupplier}
-                  >
-                    <SelectTrigger className="mt-1 h-10 w-full">
-                      <SelectValue placeholder="בחר ספק..." />
-                    </SelectTrigger>
-
-                    <SelectContent className="w-[--radix-select-trigger-width]">
-                      {supplierNames.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {shortOptionLabel(name)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                </div>
-                <div>
-                  <Label className="text-xs">הוסף ספק חדש (אופציונלי)</Label>
-                  <Input
-                    value={manualSupplierNewName}
-                    onChange={(e) => {
-                      setError(null);
-                      setManualSupplierNewName(e.target.value);
-                    }}
-                    placeholder="לדוגמה: פרי חן"
-                    disabled={!useManualSupplier}
-                  />
-                </div>
-              </div>
-              <div className="mt-2 text-xs text-muted-foreground">
-                אפשר לבחור ספק מהרשימה או להקליד ספק חדש.
-                אם הוזן ספק חדש - הוא יקבל עדיפות, בחירת הספק הקיים תושבת, והוא ייווצר אוטומטית בזמן הייבוא.
-                אם הוגדר ספק ידני ברמת שורה/עמודה למטה - הוא גובר על הספק הקבוע שמוגדר כאן.
-              </div>
-            </div>
 
             <div className="flex items-center gap-2">
               <label className="inline-flex items-center gap-2 text-sm">
@@ -1884,35 +1792,12 @@ export default function ImportExport() {
         <Card>
           <CardHeader>
             <CardTitle>שלב 4 - Apply Import</CardTitle>
-            <CardDescription>הייבוא משתמש רק במיפוי שהוגדר (ללא ניחוש אוטומטי)</CardDescription>
+            <CardDescription>
+              הייבוא משתמש רק במיפוי שהוגדר (ללא ניחוש אוטומטי). רק מצב הוספה/מיזוג — נתונים קיימים לא נמחקים.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label>מצב ייבוא</Label>
-              <Select value={mode} onValueChange={(v) => setMode(v as ImportMode)}>
-                <SelectTrigger className="mt-1 h-10 w-full text-sm">
-                  <SelectValue placeholder="בחר מצב ייבוא" />
-                </SelectTrigger>
-                <SelectContent className="w-[--radix-select-trigger-width]">
-                  <SelectItem value="merge">Merge (הוסף/עדכן)</SelectItem>
-                  <SelectItem value="overwrite">Overwrite (מחק וייבא מחדש)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {mode === 'overwrite' ? (
-              <div className="space-y-2 rounded-lg border border-destructive/30 p-3">
-                <Label htmlFor="overwrite-confirm">הקלד "מחק" לאישור</Label>
-                <Input
-                  id="overwrite-confirm"
-                  value={overwriteConfirm}
-                  onChange={(e) => setOverwriteConfirm(e.target.value)}
-                  placeholder="מחק"
-                />
-              </div>
-            ) : null}
-
-            <Button onClick={handleApply} disabled={loading || (mode === 'overwrite' && overwriteConfirm !== 'מחק')}>
+            <Button onClick={handleApply} disabled={loading}>
               {loading ? 'מייבא...' : 'Apply Import'}
             </Button>
 

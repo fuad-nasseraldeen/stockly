@@ -18,6 +18,7 @@ import { sendSms } from '../providers/smsTo.js';
 import { verifyTurnstileToken } from '../lib/turnstile.js';
 import { requireAuth } from '../middleware/auth.js';
 import { verifyAccessToken } from '../lib/jwt.js';
+import { createSessionForEmail } from '../lib/magic-link-session.js';
 
 const router = Router();
 
@@ -213,36 +214,6 @@ async function getUserEmailById(userId: string): Promise<string | null> {
     return null;
   }
   return data.user.email || null;
-}
-
-async function signInExistingUserByEmailOtp(email: string): Promise<{ session: any; user: any }> {
-  const adminApi = supabase.auth.admin as any;
-  const authApi = supabaseAuthClient.auth as any;
-
-  const { data: linkData, error: linkError } = await adminApi.generateLink({
-    type: 'magiclink',
-    email,
-  });
-  if (linkError) {
-    throw new Error(linkError.message || 'failed to create login link');
-  }
-
-  const emailOtp = linkData?.properties?.email_otp;
-  if (!emailOtp) {
-    throw new Error('missing email otp from generated link');
-  }
-
-  const { data, error } = await authApi.verifyOtp({
-    email,
-    token: emailOtp,
-    type: 'email',
-  });
-
-  if (error || !data?.session || !data?.user) {
-    throw new Error(error?.message || 'failed to create session for existing user');
-  }
-
-  return { session: data.session, user: data.user };
 }
 
 router.post('/otp/request', async (req, res) => {
@@ -469,7 +440,7 @@ router.post('/otp/verify', async (req, res) => {
       return res.status(400).json(INVALID_CODE_ERROR);
     }
 
-    const { session, user } = await signInExistingUserByEmailOtp(email);
+    const { session, user } = await createSessionForEmail(email);
 
     return res.json({
       ok: true,

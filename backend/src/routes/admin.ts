@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
+import { createSessionForEmail } from '../lib/magic-link-session.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -10,18 +11,132 @@ const router = Router();
 // Normal users will always get 403 for /api/admin/*
 router.use(requireAuth, requireSuperAdmin);
 
+type AuthUserIndexRow = {
+  email: string;
+  last_sign_in_at: string | null;
+  auth_phone: string | null;
+};
+
+/** One paginated scan of auth.users for admin tenant list (email, phone, last sign-in). */
+async function fetchAuthUserIndex(): Promise<Map<string, AuthUserIndexRow>> {
+  const map = new Map<string, AuthUserIndexRow>();
+  let page = 1;
+  const perPage = 1000;
+  for (;;) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error('[admin] listUsers page', page, error);
+      break;
+    }
+    const users = data?.users ?? [];
+    for (const u of users) {
+      const raw = u as {
+        id: string;
+        email?: string | null;
+        phone?: string | null;
+        last_sign_in_at?: string | null;
+      };
+      map.set(raw.id, {
+        email: raw.email?.trim() ?? '',
+        last_sign_in_at: raw.last_sign_in_at ?? null,
+        auth_phone: raw.phone?.trim() || null,
+      });
+    }
+    if (users.length < perPage) break;
+    page += 1;
+  }
+  return map;
+}
+
 // Check if current user is super admin
 // Note: requireSuperAdmin middleware is already applied to all routes via router.use()
 router.get('/check', async (req, res) => {
   res.json({ is_super_admin: true });
 });
 
+/** Super admin only: issue a real Supabase session for a tenant member (impersonation). */
+router.post('/impersonate', async (req, res) => {
+  try {
+    const actor = (req as any).user;
+    const { user_id, tenant_id } = z
+      .object({
+        user_id: z.string().uuid('חובה להזין user_id תקין'),
+        tenant_id: z.string().uuid('חובה להזין tenant_id תקין'),
+      })
+      .parse(req.body);
+
+    const { data: membership, error: memErr } = await supabase
+      .from('memberships')
+      .select('id, is_blocked')
+      .eq('user_id', user_id)
+      .eq('tenant_id', tenant_id)
+      .maybeSingle();
+
+    if (memErr || !membership) {
+      return res.status(404).json({ error: 'המשתמש אינו שייך לחנות זו' });
+    }
+    if (membership.is_blocked) {
+      return res.status(403).json({ error: 'לא ניתן להתחבר כמשתמש חסום' });
+    }
+
+    const { data: authData, error: authErr } = await supabase.auth.admin.getUserById(user_id);
+    if (authErr || !authData?.user) {
+      return res.status(400).json({ error: 'לא ניתן לטעון את המשתמש' });
+    }
+
+    const email = authData.user.email?.trim();
+    if (!email) {
+      return res
+        .status(400)
+        .json({ error: 'למשתמש אין אימייל מקושר — יש להתחבר דרך חשבון עם אימייל' });
+    }
+
+    let session: any;
+    let user: any;
+    try {
+      const out = await createSessionForEmail(email);
+      session = out.session;
+      user = out.user;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה ביצירת סשן';
+      console.error('[admin/impersonate] session error:', e);
+      return res.status(500).json({ error: msg });
+    }
+
+    await supabase.rpc('log_audit_event', {
+      p_tenant_id: tenant_id,
+      p_user_id: actor.id,
+      p_action: 'admin_impersonate',
+      p_details: JSON.stringify({
+        target_user_id: user_id,
+        target_email: email,
+      }),
+    });
+
+    res.json({
+      tenant_id,
+      session: {
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        expires_in: session.expires_in,
+        expires_at: session.expires_at,
+        token_type: session.token_type,
+        user: session.user ?? user,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.issues[0].message });
+    }
+    console.error('Admin impersonate error:', error);
+    res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
 // Get all tenants with owners and members (super admin only)
 // Note: requireSuperAdmin middleware is already applied to all routes via router.use()
 router.get('/tenants', async (req, res) => {
   try {
-    const user = (req as any).user;
-
     // Get all tenants (super admin can see all)
     const { data: allTenants, error: tenantsError } = await supabase
       .from('tenants')
@@ -31,6 +146,8 @@ router.get('/tenants', async (req, res) => {
     if (tenantsError) {
       return res.status(500).json({ error: 'שגיאה בטעינת חנויות' });
     }
+
+    const authUserIndex = await fetchAuthUserIndex();
 
     // For each tenant, get owners and members
     const tenantsWithUsers = await Promise.all(
@@ -59,15 +176,14 @@ router.get('/tenants', async (req, res) => {
         // Get user profiles separately
         const userIds = [...new Set((memberships || []).map((m: any) => m.user_id).filter(Boolean))];
         const profilesMap: Record<string, any> = {};
-        const emailsMap: Record<string, string> = {};
-        
+        const activityMap: Record<string, string> = {};
+
         if (userIds.length > 0) {
-          // Get profiles
           const { data: profiles, error: profilesError } = await supabase
             .from('profiles')
-            .select('user_id, full_name')
+            .select('user_id, full_name, phone_e164, phone_verified_at')
             .in('user_id', userIds);
-          
+
           if (profilesError) {
             console.error(`Error fetching profiles for tenant ${tenant.id}:`, profilesError);
           } else {
@@ -76,34 +192,40 @@ router.get('/tenants', async (req, res) => {
             });
           }
 
-          // Get emails from auth.users (using admin client)
-          // Since we're using service role, we can access auth.users
-          try {
-            const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-            if (!authError && authUsers && authUsers.users) {
-              authUsers.users.forEach((user: any) => {
-                if (userIds.includes(user.id)) {
-                  emailsMap[user.id] = user.email || 'לא ידוע';
-                }
-              });
-            } else if (authError) {
-              console.error(`Error fetching emails for tenant ${tenant.id}:`, authError);
-            }
-          } catch (error) {
-            console.error(`Error fetching emails for tenant ${tenant.id}:`, error);
+          const { data: activityRows, error: actErr } = await supabase.rpc('admin_users_last_content_activity', {
+            p_tenant_id: tenant.id,
+            p_user_ids: userIds,
+          });
+          if (actErr) {
+            console.error(`Error fetching content activity for tenant ${tenant.id}:`, actErr);
+          } else {
+            (activityRows || []).forEach((row: { user_id?: string; last_at?: string }) => {
+              if (row.user_id && row.last_at) activityMap[row.user_id] = row.last_at;
+            });
           }
         }
 
-        const users = (memberships || []).map((m: any) => ({
-          membership_id: m.id,
-          user_id: m.user_id,
-          full_name: profilesMap[m.user_id]?.full_name || 'לא ידוע',
-          email: emailsMap[m.user_id] || 'לא ידוע',
-          role: m.role,
-          is_blocked: m.is_blocked || false,
-          blocked_at: m.blocked_at,
-          joined_at: m.created_at,
-        }));
+        const users = (memberships || []).map((m: any) => {
+          const authRow = authUserIndex.get(m.user_id);
+          const prof = profilesMap[m.user_id];
+          const email = authRow?.email || 'לא ידוע';
+          const phoneE164 =
+            (prof?.phone_e164 && String(prof.phone_e164).trim()) || authRow?.auth_phone || null;
+          return {
+            membership_id: m.id,
+            user_id: m.user_id,
+            full_name: prof?.full_name || 'לא ידוע',
+            email,
+            phone_e164: phoneE164,
+            phone_verified_at: prof?.phone_verified_at ?? null,
+            last_sign_in_at: authRow?.last_sign_in_at ?? null,
+            last_content_activity_at: activityMap[m.user_id] ?? null,
+            role: m.role,
+            is_blocked: m.is_blocked || false,
+            blocked_at: m.blocked_at,
+            joined_at: m.created_at,
+          };
+        });
 
         const owners = users.filter((u: any) => u.role === 'owner');
         const workers = users.filter((u: any) => u.role === 'worker');

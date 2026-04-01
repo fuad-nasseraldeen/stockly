@@ -110,7 +110,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
         maxWidthClass="max-w-md"
       >
         <div className="space-y-6 rounded-xl border border-border bg-card/60 p-5">
-            {/* Super Admin Option - Only visible to super admin (fuad@owner.com) */}
+            {/* Super Admin Option - Only visible to super admin (fuadnasiraldin@gmail.com) */}
             {isSuperAdmin === true && (
               <Button
                 onClick={() => navigate('/admin')}

@@ -847,6 +847,10 @@ export type TenantWithUsers = {
     user_id: string;
     full_name: string;
     email: string;
+    phone_e164: string | null;
+    phone_verified_at: string | null;
+    last_sign_in_at: string | null;
+    last_content_activity_at: string | null;
     role: 'owner';
     is_blocked: boolean;
     blocked_at: string | null;
@@ -857,6 +861,10 @@ export type TenantWithUsers = {
     user_id: string;
     full_name: string;
     email: string;
+    phone_e164: string | null;
+    phone_verified_at: string | null;
+    last_sign_in_at: string | null;
+    last_content_activity_at: string | null;
     role: 'worker';
     is_blocked: boolean;
     blocked_at: string | null;
@@ -931,6 +939,23 @@ export const adminApi = {
     apiRequest('/api/admin/delete-tenant', {
       method: 'DELETE',
       body: JSON.stringify({ tenant_id: tenantId }),
+      skipTenantHeader: true,
+    }),
+
+  impersonate: (params: { user_id: string; tenant_id: string }): Promise<{
+    tenant_id: string;
+    session: {
+      access_token: string;
+      refresh_token: string;
+      expires_in?: number;
+      expires_at?: number;
+      token_type?: string;
+      user: unknown;
+    };
+  }> =>
+    apiRequest('/api/admin/impersonate', {
+      method: 'POST',
+      body: JSON.stringify(params),
       skipTenantHeader: true,
     }),
 };
@@ -1105,7 +1130,6 @@ export const importApi = {
   apply: async (
     file: File,
     payload: {
-      mode: 'merge' | 'overwrite';
       sheetIndex: number;
       sourceType?: ImportSourceType;
       tableIndex?: number;
@@ -1136,7 +1160,7 @@ export const importApi = {
     if (payload.manualGlobalValues && Object.keys(payload.manualGlobalValues).length > 0) {
       formData.append('manualGlobalValues', JSON.stringify(payload.manualGlobalValues));
     }
-    return importRequest<ImportApplyResponse>(`${API_URL}/api/import/apply?mode=${payload.mode}`, formData);
+    return importRequest<ImportApplyResponse>(`${API_URL}/api/import/apply`, formData);
   },
 
   listMappings: (params?: { source_type?: ImportSourceType; template_key?: string }): Promise<{ mappings: SavedImportMapping[] }> => {

@@ -4,12 +4,15 @@ import { useState, useEffect } from 'react';
 import { adminApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
 
+/** Must match super admin email in DB (profiles.is_super_admin + auto_grant_super_admin trigger). */
+const SUPER_ADMIN_EMAIL = 'fuadnasiraldin@gmail.com';
+
 /**
  * useSuperAdmin hook
  * 
  * CRITICAL SECURITY: This hook is user-specific and does NOT leak across users.
  * - Gets current user email (supabase.auth.getUser)
- * - If email !== 'fuad@owner.com', returns false immediately WITHOUT calling API
+ * - If email !== SUPER_ADMIN_EMAIL, returns false immediately WITHOUT calling API
  * - queryKey includes user email: ['super-admin', email] to prevent cache leaks
  * - Only enabled when route is /admin to avoid unnecessary checks
  * 
@@ -17,20 +20,8 @@ import { supabase } from '../lib/supabase';
  * - Normal users never see admin UI
  * - Switching users never keeps admin UI true from cache
  * - No unnecessary API calls for non-admin users
- */
-/**
- * useSuperAdmin hook
- * 
- * CRITICAL SECURITY: This hook is user-specific and does NOT leak across users.
- * - Gets current user email (supabase.auth.getUser)
- * - If email !== 'fuad@owner.com', returns false immediately WITHOUT calling API
- * - queryKey includes user email: ['super-admin', email] to prevent cache leaks
- * - Only enabled when pathname === '/admin' to avoid unnecessary checks
- * 
- * This ensures:
- * - Normal users never see admin UI
- * - Switching users never keeps admin UI true from cache
- * - No unnecessary API calls for non-admin users
+ *
+ * Admin context: pathname starts with /admin or /onboarding (see isAdminContext below).
  */
 export function useSuperAdmin(enabled = true) {
   const location = useLocation();
@@ -68,10 +59,10 @@ export function useSuperAdmin(enabled = true) {
     // CRITICAL: Only enabled when in admin context and email is loaded
     enabled: enabled && isAdminContext && userEmail !== null,
     queryFn: async () => {
-      // CRITICAL: If email !== 'fuad@owner.com', return false immediately
+      // CRITICAL: If email !== SUPER_ADMIN_EMAIL, return false immediately
       // DO NOT call adminApi.checkSuperAdmin() for non-admin users
       // This prevents 403 errors and unnecessary API calls
-      if (userEmail !== 'fuad@owner.com') {
+      if (userEmail !== SUPER_ADMIN_EMAIL) {
         return false;
       }
 

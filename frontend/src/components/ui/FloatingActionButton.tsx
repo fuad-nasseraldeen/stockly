@@ -13,7 +13,7 @@ export function FloatingActionButton({ to, ariaLabel = 'הוסף מוצר' }: Fl
   return (
     <div
       className="pointer-events-none fixed inset-x-0 z-45 flex justify-center sm:hidden"
-      style={{ bottom: 'calc(max(env(safe-area-inset-bottom), 0.5rem) + 1.55rem)' }}
+      style={{ bottom: 'calc(max(env(safe-area-inset-bottom), 0.5rem) + 2rem + 1.55rem)' }}
     >
       <motion.button
         type="button"
