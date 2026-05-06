@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { supabase } from '../lib/supabase.js';
 import { createSessionForEmail } from '../lib/magic-link-session.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
+import adminSubscriptionsRouter from './admin-subscriptions.js';
 
 const router = Router();
 
@@ -10,6 +11,7 @@ const router = Router();
 // This ensures NO admin endpoint is reachable without super admin privileges
 // Normal users will always get 403 for /api/admin/*
 router.use(requireAuth, requireSuperAdmin);
+router.use('/subscriptions', adminSubscriptionsRouter);
 
 type AuthUserIndexRow = {
   email: string;
@@ -197,7 +199,11 @@ router.get('/tenants', async (req, res) => {
             p_user_ids: userIds,
           });
           if (actErr) {
-            console.error(`Error fetching content activity for tenant ${tenant.id}:`, actErr);
+            // Backward compatibility: older DBs may not have this RPC yet.
+            // In that case keep admin page working and just omit activity enrichment.
+            if (actErr.code !== 'PGRST202') {
+              console.error(`Error fetching content activity for tenant ${tenant.id}:`, actErr);
+            }
           } else {
             (activityRows || []).forEach((row: { user_id?: string; last_at?: string }) => {
               if (row.user_id && row.last_at) activityMap[row.user_id] = row.last_at;

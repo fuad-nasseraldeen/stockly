@@ -19,6 +19,7 @@ import publicRouter from './routes/public.js';
 import supportRouter from './routes/support.js';
 import accountRouter from './routes/account.js';
 import supportChatRouter from './routes/support-chat.js';
+import subscriptionRouter from './routes/subscription.js';
 
 let hasLoggedDbHost = false;
 
@@ -137,6 +138,7 @@ export function createApp() {
   app.use('/api/support', supportRouter);
   app.use('/api/support-chat', supportChatRouter);
   app.use('/api/account', accountRouter);
+  app.use('/api/subscription', subscriptionRouter);
 
   // 404 handler for undefined routes
   app.use((req, res) => {

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
+import { requireSubscriptionWriteAccess } from '../middleware/subscription-enforcement.js';
 
 const router = Router();
 const packageTypeSchema = z.enum(['carton', 'gallon', 'bag', 'bottle', 'pack', 'shrink', 'sachet', 'can', 'roll', 'unknown']);
@@ -605,7 +606,7 @@ router.get('/:id', requireAuth, requireTenant, async (req, res) => {
 });
 
 // Add a new price entry (keeps history)
-router.post('/:id/prices', requireAuth, requireTenant, async (req, res) => {
+router.post('/:id/prices', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const user = (req as any).user;
@@ -739,7 +740,7 @@ router.get('/:id/price-history', requireAuth, requireTenant, async (req, res) =>
 });
 
 // Update a price entry (creates a new entry to keep history)
-router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) => {
+router.put('/:id/prices/:priceId', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const user = (req as any).user;
@@ -866,7 +867,7 @@ router.put('/:id/prices/:priceId', requireAuth, requireTenant, async (req, res) 
 });
 
 // Delete all price entries for a supplier-product combination
-router.delete('/:id/prices/supplier/:supplierId', requireAuth, requireTenant, async (req, res) => {
+router.delete('/:id/prices/supplier/:supplierId', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const productId = req.params.id;
@@ -919,7 +920,7 @@ router.delete('/:id/prices/supplier/:supplierId', requireAuth, requireTenant, as
 });
 
 // Create product
-router.post('/', requireAuth, requireTenant, async (req, res) => {
+router.post('/', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const user = (req as any).user;
@@ -1058,7 +1059,7 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
 });
 
 // Update product
-router.put('/:id', requireAuth, requireTenant, async (req, res) => {
+router.put('/:id', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const id = req.params.id;
@@ -1093,7 +1094,7 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
 });
 
 // Delete product
-router.delete('/:id', requireAuth, requireTenant, async (req, res) => {
+router.delete('/:id', requireAuth, requireTenant, requireSubscriptionWriteAccess, async (req, res) => {
   try {
     const tenant = (req as any).tenant;
     const { id } = req.params;

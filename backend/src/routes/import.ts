@@ -7,6 +7,7 @@ import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
 import { calcSellPrice, calcCostAfterDiscount, clampDecimalPrecision, roundToPrecision } from '../lib/pricing.js';
 import { runRecalcPricesForTenant } from '../lib/recalc-prices.js';
+import { requireSubscriptionWriteAccess } from '../middleware/subscription-enforcement.js';
 
 type PdfExtractorModule = typeof import('../import/extractors/pdfExtractor.js');
 let pdfExtractorModulePromise: Promise<PdfExtractorModule> | null = null;
@@ -1749,7 +1750,7 @@ router.post('/mappings', requireAuth, requireTenant, async (req, res) => {
   }
 });
 
-router.post('/apply', requireAuth, requireTenant, upload.single('file'), async (req, res) => {
+router.post('/apply', requireAuth, requireTenant, requireSubscriptionWriteAccess, upload.single('file'), async (req, res) => {
   try {
     const rateLimited = guardImportRateLimit(req, 20, 60_000);
     if (rateLimited) return res.status(429).json({ error: rateLimited });
