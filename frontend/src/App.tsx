@@ -9,6 +9,7 @@ import { TenantProvider } from './contexts/TenantContext';
 import { useTenant } from './hooks/useTenant';
 import { useSuperAdmin } from './hooks/useSuperAdmin';
 import { useBootstrap } from './hooks/useBootstrap';
+import { useTenantSubscriptionStatus } from './hooks/useAdmin';
 import { AppHeader } from './components/layout/AppHeader';
 import { BottomTabs } from './components/layout/BottomTabs';
 import { PublicAuthFooter } from './components/layout/PublicAuthFooter';
@@ -53,6 +54,7 @@ import { HelpDrawer } from './components/help/HelpDrawer';
 import { AppToastProvider } from './contexts/AppToastContext';
 import { LowStockToastMonitor } from './components/LowStockToastMonitor';
 import { loadAccessibilityPreferences, applyAccessibilityToDocument } from './lib/accessibility';
+import { AlertTriangle, CalendarClock, ShieldCheck } from 'lucide-react';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 
 function App() {
@@ -118,7 +120,7 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-primary/20 to-background">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-2">
           <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-sm text-muted-foreground">טוען את המערכת...</p>
@@ -259,7 +261,7 @@ function AppContent({
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col bg-linear-to-br from-background via-primary/20 to-background">
+      <div className="min-h-screen flex flex-col bg-background">
         <div className="flex-1 flex items-center justify-center">
           <AnimatePresence mode="wait">
             <motion.div
@@ -506,10 +508,12 @@ function AppWithNavigation({
 }) {
   const { currentTenant } = useTenant();
   const { data: isSuperAdmin } = useSuperAdmin();
+  const { data: subscription } = useTenantSubscriptionStatus();
   const location = useLocation();
+  const isAdminPage = location.pathname.startsWith('/admin');
+  const adminOnlyMode = isAdminPage && isSuperAdmin === true;
  
   // Super admin can access /admin without a tenant
-  const isAdminPage = location.pathname.startsWith('/admin');
   const canAccess = isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
   
   // Only show navigation if we have a tenant or if super admin accessing admin page
@@ -518,11 +522,12 @@ function AppWithNavigation({
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-background via-primary/20 to-background">
+    <div className="min-h-screen bg-background">
         <AppHeader
             user={user}
             onLogout={onLogout}
             isSuperAdmin={isSuperAdmin === true}
+            adminOnlyMode={adminOnlyMode}
         isDark={theme === 'dark'}
         onToggleTheme={onToggleTheme}
       />
@@ -537,6 +542,26 @@ function AppWithNavigation({
             >
               אמת מספר טלפון
             </button>
+          </div>
+        </div>
+      ) : null}
+      {!isAdminPage && subscription ? (
+        <div className="w-full border-b border-border/80 bg-muted/30 text-foreground">
+          <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-2.5 text-sm font-medium">
+            {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled' ? (
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+            ) : subscription.isExpiringSoon ? (
+              <CalendarClock className="h-4 w-4 shrink-0" />
+            ) : (
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled'
+                ? 'תוקף המנוי פג. יש להסדיר תשלום להמשך שימוש.'
+                : subscription.isExpiringSoon
+                ? `מנוי מסתיים בעוד ${Math.max(subscription.daysRemaining, 0)} ימים`
+                : `מנוי פעיל עד ${new Date(subscription.valid_until).toLocaleDateString('he-IL')}`}
+            </span>
           </div>
         </div>
       ) : null}
@@ -576,8 +601,8 @@ function AppWithNavigation({
           </Routes>
         </div>
       </main>
-      <BottomTabs />
-      <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />
+      {!adminOnlyMode && <BottomTabs />}
+      {!adminOnlyMode && <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />}
       <SupportButton />
       <AccessibilityBar />
     </div>

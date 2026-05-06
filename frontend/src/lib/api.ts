@@ -951,6 +951,26 @@ export type AuditLog = {
   } | null;
 };
 
+export type TenantSubscription = {
+  id: string;
+  tenant_id: string;
+  status: 'trial' | 'active' | 'past_due' | 'expired' | 'cancelled';
+  computed_status: 'trial' | 'active' | 'past_due' | 'expired' | 'cancelled';
+  plan_name: string;
+  paid_amount: number | null;
+  currency: string;
+  valid_from: string;
+  valid_until: string;
+  payment_method: string | null;
+  notes: string | null;
+  last_reminder_sent_at: string | null;
+  daysRemaining: number;
+  isExpiringSoon: boolean;
+  created_at: string;
+  updated_at: string;
+  tenants?: { id: string; name: string; created_at?: string } | null;
+};
+
 export const adminApi = {
   getTenants: (): Promise<TenantWithUsers[]> =>
     apiRequest<TenantWithUsers[]>('/api/admin/tenants', { skipTenantHeader: true }),
@@ -1017,6 +1037,44 @@ export const adminApi = {
       body: JSON.stringify(params),
       skipTenantHeader: true,
     }),
+
+  getSubscriptions: (): Promise<TenantSubscription[]> =>
+    apiRequest<TenantSubscription[]>('/api/admin/subscriptions', { skipTenantHeader: true }),
+
+  getSubscription: (tenantId: string): Promise<TenantSubscription> =>
+    apiRequest<TenantSubscription>(`/api/admin/subscriptions/${tenantId}`, { skipTenantHeader: true }),
+
+  updateSubscription: (
+    tenantId: string,
+    patch: Partial<
+      Pick<
+        TenantSubscription,
+        'status' | 'plan_name' | 'paid_amount' | 'currency' | 'valid_from' | 'valid_until' | 'payment_method' | 'notes'
+      >
+    >,
+  ): Promise<TenantSubscription> =>
+    apiRequest<TenantSubscription>(`/api/admin/subscriptions/${tenantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      skipTenantHeader: true,
+    }),
+
+  extendSubscription: (tenantId: string, payload: { months?: number; valid_until?: string }): Promise<TenantSubscription> =>
+    apiRequest<TenantSubscription>(`/api/admin/subscriptions/${tenantId}/extend`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      skipTenantHeader: true,
+    }),
+
+  sendSubscriptionReminder: (tenantId: string): Promise<{ ok: boolean; sent: number }> =>
+    apiRequest<{ ok: boolean; sent: number }>(`/api/admin/subscriptions/${tenantId}/send-reminder`, {
+      method: 'POST',
+      skipTenantHeader: true,
+    }),
+};
+
+export const subscriptionApi = {
+  getStatus: (): Promise<TenantSubscription> => apiRequest<TenantSubscription>('/api/subscription/status'),
 };
 
 export type ImportMapping = Record<string, number | null>;

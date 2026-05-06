@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant, useAdminImpersonate } from '../hooks/useAdmin';
+import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant, useAdminImpersonate, useAdminSubscriptions, useUpdateAdminSubscription, useExtendAdminSubscription, useSendAdminSubscriptionReminder } from '../hooks/useAdmin';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
@@ -24,6 +24,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import type { TenantWithUsers } from '../lib/api';
+const SUBSCRIPTION_PLANS = ['basic', 'pro', 'business', 'enterprise'] as const;
 
 function pickStoreEntryUserId(tenant: TenantWithUsers): string | null {
   if (tenant.owners.length > 0) return tenant.owners[0].user_id;
@@ -103,6 +104,7 @@ export default function Admin() {
   const { data: isSuperAdmin, isLoading: checkingAdmin } = useSuperAdmin();
   const { data: tenants = [], isLoading: tenantsLoading, error: tenantsError } = useAdminTenants();
   const { data: auditLogs = [], isLoading: logsLoading } = useAuditLogs({ limit: 50 });
+  const { data: subscriptions = [], isLoading: subscriptionsLoading } = useAdminSubscriptions();
 
   console.log('🔍 Admin: After hooks:', {
     checkingAdmin,
@@ -133,6 +135,9 @@ export default function Admin() {
   const resetTenantData = useResetTenantData();
   const deleteTenant = useDeleteTenant();
   const impersonateMut = useAdminImpersonate();
+  const updateSubscriptionMut = useUpdateAdminSubscription();
+  const extendSubscriptionMut = useExtendAdminSubscription();
+  const sendReminderMut = useSendAdminSubscriptionReminder();
 
   const enterAsUser = async (tenantId: string, userId: string) => {
     try {
@@ -158,6 +163,16 @@ export default function Admin() {
   const [removeUserDialogOpen, setRemoveUserDialogOpen] = useState(false);
   const [resetDataDialogOpen, setResetDataDialogOpen] = useState(false);
   const [deleteTenantDialogOpen, setDeleteTenantDialogOpen] = useState(false);
+  const [editSubscriptionDialogOpen, setEditSubscriptionDialogOpen] = useState(false);
+  const [extendSubscriptionDialogOpen, setExtendSubscriptionDialogOpen] = useState(false);
+  const [selectedSubscription, setSelectedSubscription] = useState<{
+    tenantId: string;
+    tenantName: string;
+    planName: string;
+    validUntil: string;
+  } | null>(null);
+  const [planDraft, setPlanDraft] = useState<(typeof SUBSCRIPTION_PLANS)[number]>('basic');
+  const [validUntilDraft, setValidUntilDraft] = useState('');
   const [selectedMembership, setSelectedMembership] = useState<{
     id: string;
     userName: string;
@@ -243,6 +258,66 @@ export default function Admin() {
       admin_impersonate: 'כניסת מנהל מערכת לפרופיל משתמש',
     };
     return labels[action] || action;
+  };
+
+  const openEditSubscription = (sub: { tenant_id: string; tenants?: { name: string } | null; plan_name: string; valid_until: string }) => {
+    setSelectedSubscription({
+      tenantId: sub.tenant_id,
+      tenantName: sub.tenants?.name || sub.tenant_id,
+      planName: sub.plan_name,
+      validUntil: sub.valid_until,
+    });
+    setPlanDraft((SUBSCRIPTION_PLANS.includes(sub.plan_name as any) ? sub.plan_name : 'basic') as (typeof SUBSCRIPTION_PLANS)[number]);
+    setEditSubscriptionDialogOpen(true);
+  };
+
+  const openExtendSubscription = (sub: { tenant_id: string; tenants?: { name: string } | null; valid_until: string; }) => {
+    setSelectedSubscription({
+      tenantId: sub.tenant_id,
+      tenantName: sub.tenants?.name || sub.tenant_id,
+      planName: '',
+      validUntil: sub.valid_until,
+    });
+    setValidUntilDraft(sub.valid_until);
+    setExtendSubscriptionDialogOpen(true);
+  };
+
+  const handleSavePlan = async () => {
+    if (!selectedSubscription) return;
+    await updateSubscriptionMut.mutateAsync({
+      tenantId: selectedSubscription.tenantId,
+      patch: { plan_name: planDraft },
+    });
+    setEditSubscriptionDialogOpen(false);
+    setSelectedSubscription(null);
+  };
+
+  const handleExtendByDate = async () => {
+    if (!selectedSubscription || !validUntilDraft) return;
+    await extendSubscriptionMut.mutateAsync({
+      tenantId: selectedSubscription.tenantId,
+      payload: { valid_until: validUntilDraft },
+    });
+    setExtendSubscriptionDialogOpen(false);
+    setSelectedSubscription(null);
+  };
+
+  const getSubscriptionBadgeVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    if (status === 'active' || status === 'trial') return 'default';
+    if (status === 'past_due') return 'secondary';
+    if (status === 'expired' || status === 'cancelled') return 'destructive';
+    return 'outline';
+  };
+
+  const getSubscriptionStatusLabel = (status: string): string => {
+    const map: Record<string, string> = {
+      trial: 'ניסיון',
+      active: 'פעיל',
+      past_due: 'באיחור',
+      expired: 'פג תוקף',
+      cancelled: 'בוטל',
+    };
+    return map[status] || status;
   };
 
   // Show loading while checking admin status
@@ -551,6 +626,76 @@ export default function Admin() {
         </CardContent>
       </Card>
 
+      <Card className="shadow-md border-2">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-lg sm:text-xl font-bold">מנויים וחיובים</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          {subscriptionsLoading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">טוען מנויים...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>שם חנות</TableHead>
+                    <TableHead>סטטוס</TableHead>
+                    <TableHead>תוכנית</TableHead>
+                    <TableHead>סכום ששולם</TableHead>
+                    <TableHead>תקף מ־</TableHead>
+                    <TableHead>תקף עד</TableHead>
+                    <TableHead>ימים נותרו</TableHead>
+                    <TableHead>תזכורת אחרונה</TableHead>
+                    <TableHead>פעולות</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subscriptions.map((sub) => (
+                    <TableRow key={sub.tenant_id}>
+                      <TableCell>{sub.tenants?.name || sub.tenant_id}</TableCell>
+                      <TableCell><Badge variant={getSubscriptionBadgeVariant(sub.computed_status)}>{getSubscriptionStatusLabel(sub.computed_status)}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="font-semibold">{sub.plan_name}</Badge></TableCell>
+                      <TableCell>{sub.paid_amount != null ? `${sub.paid_amount} ${sub.currency}` : '-'}</TableCell>
+                      <TableCell>{new Date(sub.valid_from).toLocaleDateString('he-IL')}</TableCell>
+                      <TableCell>
+                        <span className="font-semibold">{new Date(sub.valid_until).toLocaleDateString('he-IL')}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            sub.computed_status === 'expired' || sub.computed_status === 'cancelled'
+                              ? 'destructive'
+                              : sub.isExpiringSoon
+                              ? 'secondary'
+                              : 'default'
+                          }
+                        >
+                          {sub.daysRemaining}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{sub.last_reminder_sent_at ? formatDate(sub.last_reminder_sent_at) : '-'}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            openEditSubscription(sub);
+                          }}>עריכה</Button>
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            openExtendSubscription(sub);
+                          }}>הארכה</Button>
+                          <Button size="sm" onClick={async () => {
+                            await sendReminderMut.mutateAsync(sub.tenant_id);
+                          }}>שלח תזכורת</Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Audit Logs */}
       <Card className="shadow-md border-2">
         <CardHeader className="p-4 sm:p-6">
@@ -728,6 +873,61 @@ export default function Admin() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteTenant} disabled={deleteTenant.isPending}>
               {deleteTenant.isPending ? 'מוחק...' : 'מחק חנות'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editSubscriptionDialogOpen} onOpenChange={setEditSubscriptionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>עריכת תוכנית מנוי</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              לקוח: <strong>{selectedSubscription?.tenantName}</strong>
+            </p>
+            <label className="text-sm font-medium">שם תוכנית</label>
+            <select
+              className="w-full rounded-md border border-border bg-background px-3 py-2"
+              value={planDraft}
+              onChange={(e) => setPlanDraft(e.target.value as (typeof SUBSCRIPTION_PLANS)[number])}
+            >
+              {SUBSCRIPTION_PLANS.map((plan) => (
+                <option key={plan} value={plan}>{plan}</option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSubscriptionDialogOpen(false)}>ביטול</Button>
+            <Button onClick={handleSavePlan} disabled={updateSubscriptionMut.isPending}>
+              {updateSubscriptionMut.isPending ? 'שומר...' : 'שמירה'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={extendSubscriptionDialogOpen} onOpenChange={setExtendSubscriptionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>הארכת מנוי לפי תאריך</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              לקוח: <strong>{selectedSubscription?.tenantName}</strong>
+            </p>
+            <label className="text-sm font-medium">תאריך סיום חדש</label>
+            <input
+              type="date"
+              className="w-full rounded-md border border-border bg-background px-3 py-2"
+              value={validUntilDraft}
+              onChange={(e) => setValidUntilDraft(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExtendSubscriptionDialogOpen(false)}>ביטול</Button>
+            <Button onClick={handleExtendByDate} disabled={extendSubscriptionMut.isPending || !validUntilDraft}>
+              {extendSubscriptionMut.isPending ? 'מעדכן...' : 'עדכון תוקף'}
             </Button>
           </DialogFooter>
         </DialogContent>

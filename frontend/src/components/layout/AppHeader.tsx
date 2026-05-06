@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Sun, Moon } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Dialog } from '../ui/dialog';
 import { TenantSwitcher } from '../TenantSwitcher';
 import { useTenant } from '../../hooks/useTenant';
 import { useSettings } from '../../hooks/useSettings';
@@ -15,6 +14,7 @@ type AppHeaderProps = {
   isSuperAdmin: boolean;
   isDark: boolean;
   onToggleTheme: () => void;
+  adminOnlyMode?: boolean;
 };
 
 const BASE_NAV: Array<{ path: string; label: string }> = [
@@ -29,7 +29,7 @@ const BASE_NAV: Array<{ path: string; label: string }> = [
 const isOnSettings = (pathname: string) =>
   pathname === '/settings' || pathname.startsWith('/settings/');
 
-export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme }: AppHeaderProps) {
+export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme, adminOnlyMode = false }: AppHeaderProps) {
   const location = useLocation();
   const { currentTenant } = useTenant();
   const { data: headerSettings } = useSettings();
@@ -61,71 +61,29 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
     <>
       <header className="sticky top-0 z-40 px-3 pt-3 sm:px-6">
         <div className="relative mx-auto max-w-6xl">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -left-3 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full border border-border/70 bg-background/95 elevation-1"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -right-3 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full border border-border/70 bg-background/95 elevation-1"
-          />
-
           <div className="relative flex min-h-[64px] items-center justify-between gap-2 rounded-[999px] border border-border/70 bg-background/95 px-3 backdrop-blur transition-shadow duration-200 elevation-1 sm:px-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="min-h-[44px] min-w-[44px] rounded-full"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label="תפריט"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground border border-border">
                 <span className="text-sm font-bold">S</span>
               </div>
               <div>
-                <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">Stockly</h1>
-                <p className="hidden text-[10px] leading-tight text-muted-foreground sm:block">
-                  ניהול מחירים לפי ספק
-                </p>
+                <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">
+                  {currentTenant?.name || 'Stockly'}
+                </h1>
+                <p className="hidden text-[10px] leading-tight text-muted-foreground sm:block">ניהול מערכת</p>
               </div>
             </div>
 
-            <nav className="hidden items-center gap-1 md:flex">
-              {navItems.map((item) => (
-                <Button
-                  key={item.path}
-                  asChild
-                  variant="ghost"
-                  size="sm"
-                  className={isActive(item.path) ? 'bg-accent' : ''}
-                >
-                  <Link to={item.path} onClick={(e) => handleNavClick(e, item.path)} className="px-3 py-2 text-sm font-medium">
-                    {item.label}
-                  </Link>
-                </Button>
-              ))}
-              {isSuperAdmin && (
-                <Button asChild variant="ghost" size="sm" className={isActive('/admin') ? 'bg-accent' : ''}>
-                  <Link to="/admin" className="px-3 py-2 text-sm font-medium">
-                    ניהול מערכת
-                  </Link>
-                </Button>
-              )}
-            </nav>
-
             <div className="flex items-center gap-1 sm:gap-2">
-              <button
-                type="button"
-                onClick={onToggleTheme}
-                className={`relative hidden h-10 w-[84px] items-center rounded-full border px-1 text-[11px] font-semibold transition-colors md:inline-flex ${
-                  isDark
-                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-700 dark:text-blue-300'
-                    : 'border-border/70 bg-muted/70 text-muted-foreground'
-                }`}
-                aria-label={isDark ? 'מצב לילה מופעל - לחץ לכיבוי' : 'מצב לילה כבוי - לחץ להפעלה'}
-                title={isDark ? 'Dark mode: ON' : 'Dark mode: OFF'}
-              >
-                <span className={`absolute ${isDark ? 'left-3' : 'right-3'}`}>{isDark ? 'ON' : 'OFF'}</span>
-                <span
-                  className={`h-8 w-8 rounded-full border bg-background shadow-sm transition-transform ${
-                    isDark ? 'translate-x-0' : '-translate-x-10'
-                  }`}
-                />
-              </button>
-              <TenantSwitcher />
               <Button
                 variant="outline"
                 size="sm"
@@ -137,24 +95,26 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
               <span className="hidden max-w-[150px] truncate text-xs text-muted-foreground lg:inline">
                 {user.email}
               </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="min-h-[44px] min-w-[44px] rounded-full md:hidden"
-                onClick={() => setMobileMenuOpen(true)}
-                aria-label="תפריט"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <div className="fixed inset-0 z-[60] md:hidden">
-          <div className="fixed inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed right-0 top-0 h-full w-[86vw] max-w-sm border-l border-border bg-background shadow-xl">
+      <div
+        className={`fixed inset-0 z-[60] transition-opacity duration-400 ease-out ${
+          mobileMenuOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        aria-hidden={!mobileMenuOpen}
+      >
+        <div
+          className="fixed inset-0 bg-black/40 transition-opacity duration-400 ease-out"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+        <div
+          className={`fixed right-0 top-0 h-full w-[86vw] max-w-sm border-l border-border bg-background shadow-xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
             <div className="flex items-center justify-between border-b border-border px-4 py-4">
               <h2 className="text-lg font-bold">תפריט</h2>
               <Button
@@ -169,7 +129,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
             </div>
 
             <nav className="flex h-[calc(100vh-72px)] flex-col overflow-y-auto p-2">
-              {navItems.map((item) => (
+              {!adminOnlyMode && navItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
@@ -199,24 +159,18 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
 
               <div className="my-2 border-t border-border" />
               <div className="space-y-2 px-4 py-2">
-                <button
+                {!adminOnlyMode && <TenantSwitcher />}
+                <Button
                   type="button"
+                  variant="outline"
+                  className="w-full min-h-[44px] rounded-full justify-center gap-2"
                   onClick={onToggleTheme}
-                  className={`relative flex h-11 w-full items-center rounded-full border px-2 text-sm font-semibold transition-colors ${
-                    isDark
-                      ? 'border-blue-500/60 bg-blue-500/15 text-blue-700 dark:text-blue-300'
-                      : 'border-border bg-muted/70 text-foreground'
-                  }`}
-                  aria-label={isDark ? 'מצב לילה מופעל - לחץ לכיבוי' : 'מצב לילה כבוי - לחץ להפעלה'}
+                  aria-label={isDark ? 'מעבר למצב יום' : 'מעבר למצב לילה'}
                 >
-                  <span className="mx-3">{isDark ? 'מצב לילה ON' : 'מצב לילה OFF'}</span>
-                  <span
-                    className={`h-7 w-7 rounded-full border bg-background shadow-sm transition-transform ${
-                      isDark ? 'translate-x-0' : '-translate-x-9'
-                    }`}
-                  />
-                </button>
-                {currentTenant && (
+                  {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {isDark ? 'מצב יום' : 'מצב לילה'}
+                </Button>
+                {!adminOnlyMode && currentTenant && (
                   <div className="rounded-lg bg-muted p-2">
                     <p className="text-xs font-medium">{currentTenant.name}</p>
                     <p className="text-xs text-muted-foreground">
@@ -237,9 +191,8 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme 
                 </Button>
               </div>
             </nav>
-          </div>
         </div>
-      </Dialog>
+      </div>
     </>
   );
 }

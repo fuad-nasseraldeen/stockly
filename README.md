@@ -46,6 +46,7 @@ AWS_SECRET_ACCESS_KEY=<secret>
 SMS_TO_API_KEY=<sms_to_api_key>
 OTP_SECRET=<long_random_secret>
 SUPPORT_SMS_TO=<your_e164_phone_for_support_alerts>
+SUBSCRIPTION_ENFORCEMENT_ENABLED=false
 SUPPORT_UPLOADS_BUCKET=<s3_bucket_name_for_support_files>
 # Optional:
 # SUPPORT_UPLOADS_PREFIX=support-uploads
@@ -118,6 +119,20 @@ cd frontend
 npm run test
 npm run test:integration
 ```
+
+## Billing / Subscriptions
+
+- נשמר בדומיין ייעודי בטבלה `tenant_subscriptions` (לא ב-`settings`).
+- Admin API:
+  - `GET /api/admin/subscriptions`
+  - `GET /api/admin/subscriptions/:tenantId`
+  - `PATCH /api/admin/subscriptions/:tenantId`
+  - `POST /api/admin/subscriptions/:tenantId/extend`
+  - `POST /api/admin/subscriptions/:tenantId/send-reminder`
+- Tenant status API:
+  - `GET /api/subscription/status`
+- אכיפת חסימת כתיבה כשמנוי פג תוקף נשלטת ע"י:
+  - `SUBSCRIPTION_ENFORCEMENT_ENABLED=true|false`
 
 ## תיעוד מפורט
 

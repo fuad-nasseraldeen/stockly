@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminApi } from '../lib/api';
+import { adminApi, subscriptionApi } from '../lib/api';
+import { useTenant } from './useTenant';
 
 export function useAdminTenants() {
   return useQuery({
@@ -84,5 +85,48 @@ export function useDeleteTenant() {
 export function useAdminImpersonate() {
   return useMutation({
     mutationFn: adminApi.impersonate,
+  });
+}
+
+export function useAdminSubscriptions() {
+  return useQuery({
+    queryKey: ['admin', 'subscriptions'],
+    queryFn: () => adminApi.getSubscriptions(),
+  });
+}
+
+export function useUpdateAdminSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tenantId, patch }: { tenantId: string; patch: Parameters<typeof adminApi.updateSubscription>[1] }) =>
+      adminApi.updateSubscription(tenantId, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'subscriptions'] }),
+  });
+}
+
+export function useExtendAdminSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tenantId, payload }: { tenantId: string; payload: { months?: number; valid_until?: string } }) =>
+      adminApi.extendSubscription(tenantId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'subscriptions'] }),
+  });
+}
+
+export function useSendAdminSubscriptionReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tenantId: string) => adminApi.sendSubscriptionReminder(tenantId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'subscriptions'] }),
+  });
+}
+
+export function useTenantSubscriptionStatus() {
+  const { currentTenant } = useTenant();
+  const tenantId = currentTenant?.id;
+  return useQuery({
+    queryKey: ['tenant', 'subscription-status', tenantId],
+    queryFn: () => subscriptionApi.getStatus(),
+    enabled: !!tenantId,
   });
 }

@@ -198,6 +198,11 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
     return withTenantLoader(<>{children}</>);
   }
 
+  // Super admin without tenant should land directly on admin, not onboarding.
+  if (isSuperAdmin === true && tenants.length === 0 && !isLoading) {
+    return <Navigate to="/admin" replace />;
+  }
+
   // User has tenants - show main app immediately (no setTimeout delays)
   if (step === 'ready') {
     if (tenants.length > 0) {
