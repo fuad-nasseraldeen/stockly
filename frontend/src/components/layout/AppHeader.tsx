@@ -78,7 +78,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
   return (
     <>
       <header className="sticky top-0 z-40 ">
-        <div className="relative mx-auto max-w-6xl">
+        <div className="relative">
           <div className="relative flex min-h-[64px] items-center justify-between gap-2 bg-background/95 px-3 backdrop-blur transition-shadow duration-200 elevation-1 sm:px-4">
             <div className="flex items-center gap-2">
               <Button
