@@ -1,3 +1,5 @@
+import { trackedFetch } from './network-progress';
+
 type TablePdfColumn = {
   key: string;
   label: string;
@@ -168,7 +170,7 @@ export async function downloadTablePdf(input: DownloadTablePdfInput): Promise<vo
 
   let res: Response;
   try {
-    res = await fetch(endpoint, {
+    res = await trackedFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

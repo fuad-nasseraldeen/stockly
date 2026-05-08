@@ -60,17 +60,17 @@ export default function StockAlerts() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto w-full max-w-4xl page-shell">
+      <div className="page-hero">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">מלאי נמוך</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="page-title">מלאי נמוך</h1>
+          <p className="page-subtitle">
             רשימה נגזרת בזמן אמת — מוצרים שכמות המלאי קטנה או שווה לסף שהגדרת לכל ספק.
           </p>
         </div>
       </div>
 
-      <Card>
+      <Card className="tools-card">
         <CardContent className="space-y-4 pt-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="min-w-[200px] flex-1 space-y-1">
@@ -105,7 +105,7 @@ export default function StockAlerts() {
           ) : rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">אין פריטים בסף או מתחתיו.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="data-table-wrap">
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -10,6 +10,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1, 'חובה להזין שם ספק'),
   phone: z.string().trim().optional().nullable(),
   notes: z.string().trim().optional().nullable(),
+  is_active: z.boolean().optional(),
 });
 
 const updateSchema = createSchema.partial().refine((v) => Object.keys(v).length > 0, {
@@ -22,7 +23,6 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     .from('suppliers')
     .select('id,name,phone,notes,is_active,created_at')
     .eq('tenant_id', tenant.tenantId)
-    .eq('is_active', true)
     .order('name');
 
   if (error) return res.status(500).json({ error: 'שגיאה בטעינת ספקים' });
@@ -37,7 +37,7 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
     return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'נתונים לא תקינים' });
   }
 
-  const { name, phone, notes } = parsed.data;
+  const { name, phone, notes, is_active } = parsed.data;
 
   try {
     const exists = await supabase
@@ -59,7 +59,7 @@ router.post('/', requireAuth, requireTenant, async (req, res) => {
         name: name.trim(),
         phone: phone ?? null,
         notes: notes ?? null,
-        is_active: true,
+        is_active: is_active ?? true,
         created_by: user.id,
       })
       .select('id,name,phone,notes,is_active,created_at')
@@ -92,6 +92,7 @@ router.put('/:id', requireAuth, requireTenant, async (req, res) => {
   if (parsed.data.name != null) patch.name = parsed.data.name.trim();
   if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone ?? null;
   if (parsed.data.notes !== undefined) patch.notes = parsed.data.notes ?? null;
+  if (parsed.data.is_active !== undefined) patch.is_active = parsed.data.is_active;
 
   const { data, error } = await supabase
     .from('suppliers')

@@ -13,11 +13,12 @@ import { useTenantSubscriptionStatus } from './hooks/useAdmin';
 import { AppHeader } from './components/layout/AppHeader';
 import { BottomTabs } from './components/layout/BottomTabs';
 import { PublicAuthFooter } from './components/layout/PublicAuthFooter';
-import { FloatingActionButton } from './components/ui/FloatingActionButton';
 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Products from './pages/Products';
+import Dashboard from './pages/Dashboard';
+import ComparePrices from './pages/ComparePrices';
 import NewProduct from './pages/NewProduct';
 import Categories from './pages/Categories';
 import Suppliers from './pages/Suppliers';
@@ -53,6 +54,7 @@ import { AccessibilityBar } from './components/AccessibilityBar';
 import { HelpDrawer } from './components/help/HelpDrawer';
 import { AppToastProvider } from './contexts/AppToastContext';
 import { LowStockToastMonitor } from './components/LowStockToastMonitor';
+import { NetworkActivityBar } from './components/NetworkActivityBar';
 import { loadAccessibilityPreferences, applyAccessibilityToDocument } from './lib/accessibility';
 import { AlertTriangle, CalendarClock, ShieldCheck } from 'lucide-react';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
@@ -548,12 +550,12 @@ function AppWithNavigation({
       {!isAdminPage && subscription ? (
         <div className="w-full border-b border-border/80 bg-muted/30 text-foreground">
           <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-2.5 text-sm font-medium">
-            {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled' ? (
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+             {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled' ? (
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-800" />
             ) : subscription.isExpiringSoon ? (
-              <CalendarClock className="h-4 w-4 shrink-0" />
+              <CalendarClock className="h-4 w-4 shrink-0 text-amber-600" />
             ) : (
-              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
             )}
             <span>
               {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled'
@@ -566,13 +568,21 @@ function AppWithNavigation({
         </div>
       ) : null}
       <main className="w-full min-w-0 flex justify-center px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-36 sm:pb-8 overflow-x-hidden">
-        <div className="w-full max-w-6xl min-w-0">
+        <motion.div
+          key={location.pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24, ease: 'easeOut' }}
+          className="w-full max-w-6xl min-w-0 page-enter"
+        >
           <Routes>
             <Route path="/products" element={<Products />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/products/new" element={<NewProduct />} />
             <Route path="/products/:id/edit" element={<EditProduct />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/suppliers" element={<Suppliers />} />
+            <Route path="/compare" element={<ComparePrices />} />
             <Route path="/import-export" element={<ImportExport />} />
             <Route path="/stock-alerts" element={<StockAlerts />} />
             <Route path="/support" element={<SupportChat />} />
@@ -596,15 +606,15 @@ function AppWithNavigation({
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/about" element={<About />} />
-            <Route path="/" element={<Navigate to="/products" />} />
-            <Route path="*" element={<Navigate to="/products" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
-        </div>
+        </motion.div>
       </main>
-      {!adminOnlyMode && <BottomTabs />}
-      {!adminOnlyMode && <FloatingActionButton to="/products/new" ariaLabel="הוספת מוצר חדש" />}
+      {false && !adminOnlyMode && <BottomTabs />}
       <SupportButton />
       <AccessibilityBar />
+      <NetworkActivityBar />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { trackedFetch } from './network-progress';
 
 function resolveApiBaseUrl(): string {
   const configured = (import.meta.env.VITE_API_URL ?? '').trim();
@@ -106,6 +107,7 @@ export type Supplier = {
   name: string;
   phone: string | null;
   notes: string | null;
+  is_active?: boolean;
   created_at: string;
 };
 
@@ -265,7 +267,7 @@ export async function apiRequest<T>(
   const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await trackedFetch(url, {
       ...fetchOptions,
       headers,
       signal: controller.signal,
@@ -315,7 +317,7 @@ export async function apiRequest<T>(
         const retryTimeoutId = window.setTimeout(() => retryController.abort(), API_TIMEOUT_MS);
         let retryResponse: Response;
         try {
-          retryResponse = await fetch(url, {
+          retryResponse = await trackedFetch(url, {
             ...retryFetchOptions,
             headers: retryHeaders,
             signal: retryController.signal,
@@ -487,7 +489,7 @@ export const supportApi = {
     }
 
     const url = API_URL ? `${API_URL}/api/support/sms-with-attachment` : '/api/support/sms-with-attachment';
-    const response = await fetch(url, {
+    const response = await trackedFetch(url, {
       method: 'POST',
       headers,
       body: formData,
@@ -535,7 +537,7 @@ export const supportChatApi = {
     if (payload.message) form.append('message', payload.message);
     if (payload.attachment) form.append('attachment', payload.attachment);
     const url = API_URL ? `${API_URL}/api/support-chat/messages` : '/api/support-chat/messages';
-    const response = await fetch(url, { method: 'POST', headers, body: form });
+    const response = await trackedFetch(url, { method: 'POST', headers, body: form });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'שגיאה בשליחת הודעה' }));
       throw new Error(toHebrewApiErrorMessage(errorData.error || 'שגיאה בשליחת הודעה'));
@@ -698,13 +700,13 @@ export const categoriesApi = {
 export const suppliersApi = {
   list: (): Promise<Supplier[]> => apiRequest<Supplier[]>('/api/suppliers'),
   
-  create: (data: { name: string; phone?: string; notes?: string }): Promise<Supplier> =>
+  create: (data: { name: string; phone?: string; notes?: string; is_active?: boolean }): Promise<Supplier> =>
     apiRequest<Supplier>('/api/suppliers', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   
-  update: (id: string, data: { name?: string; phone?: string; notes?: string }) =>
+  update: (id: string, data: { name?: string; phone?: string; notes?: string; is_active?: boolean }) =>
     apiRequest(`/api/suppliers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -1166,7 +1168,7 @@ async function importRequest<T>(url: string, formData: FormData): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`;
   if (tenantId) headers['x-tenant-id'] = tenantId;
 
-  const response = await fetch(url, {
+  const response = await trackedFetch(url, {
     method: 'POST',
     headers,
     body: formData,
@@ -1308,7 +1310,7 @@ export const exportApi = {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (tenantId) headers['x-tenant-id'] = tenantId;
     
-    const response = await fetch(`${API_URL}/api/export/current.csv`, { headers });
+    const response = await trackedFetch(`${API_URL}/api/export/current.csv`, { headers });
     if (!response.ok) throw new Error('שגיאה בייצוא');
     
     const blob = await response.blob();
@@ -1330,7 +1332,7 @@ export const exportApi = {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (tenantId) headers['x-tenant-id'] = tenantId;
     
-    const response = await fetch(`${API_URL}/api/export/history.csv`, { headers });
+    const response = await trackedFetch(`${API_URL}/api/export/history.csv`, { headers });
     if (!response.ok) throw new Error('שגיאה בייצוא');
     
     const blob = await response.blob();
@@ -1364,7 +1366,7 @@ export const exportApi = {
     if (params.sort) queryParams.append('sort', params.sort);
 
     const url = `${API_URL}/api/export/filtered.csv${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await fetch(url, { headers });
+    const response = await trackedFetch(url, { headers });
     if (!response.ok) throw new Error('שגיאה בייצוא');
 
     const blob = await response.blob();

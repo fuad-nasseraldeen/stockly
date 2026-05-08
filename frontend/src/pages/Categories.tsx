@@ -3,10 +3,9 @@ import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory 
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { Card, CardContent } from '../components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Tag } from 'lucide-react';
 
 type CategoryFormState = {
   id?: string;
@@ -15,6 +14,8 @@ type CategoryFormState = {
 };
 
 export default function Categories() {
+  const fieldClassName =
+    'border border-border/60 hover:border-border/70 focus-visible:border-primary/40 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none';
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -104,11 +105,11 @@ export default function Categories() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+    <div className="page-shell">
+      <div className="page-hero">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">קטגוריות</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
+          <h1 className="page-title">קטגוריות</h1>
+          <p className="page-subtitle">
             נהל קטגוריות ומסלולי רווח ברירת מחדל • סה״כ {totalCategories} קטגוריות
           </p>
         </div>
@@ -118,37 +119,28 @@ export default function Categories() {
         </Button>
       </div>
 
-      <Card className="shadow-md border-2">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-bold">חיפוש קטגוריות</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">חיפוש לפי שם</Label>
-              <div className="relative">
-                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="הקלד שם קטגוריה..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pr-10"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-start">
+        <div className="relative w-full max-w-xl">
+          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="חיפוש קטגוריות..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pr-10 bg-background/80 text-right border border-border/60 hover:border-border/70 focus-visible:border-primary/40 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
+            dir="rtl"
+          />
+        </div>
+      </div>
 
       {isLoading ? (
-        <Card className="shadow-md border-2">
+        <Card className="data-card">
           <CardContent className="py-12 text-center">
             <div className="inline-block h-8 w-8 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3" />
             <p className="text-sm font-medium text-muted-foreground">טוען קטגוריות...</p>
           </CardContent>
         </Card>
       ) : filteredCategories.length === 0 ? (
-        <Card className="shadow-md border-2 border-dashed">
+        <Card className="data-card border-dashed">
           <CardContent className="py-16 text-center">
             <div className="text-5xl mb-4">🏷️</div>
             <p className="text-lg font-bold text-foreground mb-2">לא נמצאו קטגוריות</p>
@@ -160,66 +152,55 @@ export default function Categories() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="shadow-md border-2">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold">רשימת קטגוריות</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-lg border-2 border-border shadow-sm">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-linear-to-r from-muted to-muted/50 border-b-2">
-                    <TableHead className="font-semibold">שם קטגוריה</TableHead>
-                    <TableHead className="font-semibold">אחוז רווח ברירת מחדל</TableHead>
-                    <TableHead className="font-semibold">פעולות</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCategories.map((c: any) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.name}</TableCell>
-                      <TableCell>
-                        {c.default_margin_percent != null
-                          ? `${Number(c.default_margin_percent).toFixed(1)}%`
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEdit(c)}
-                            className="shadow-sm border-2"
-                          >
-                            <Edit className="w-4 h-4 ml-1" />
-                            ערוך
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              setCategoryToDelete({ id: c.id, name: c.name });
-                              setDeleteDialogOpen(true);
-                            }}
-                            className="shadow-sm border-2 border-destructive/20"
-                          >
-                            <Trash2 className="w-4 h-4 ml-1" />
-                            מחק
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" dir="rtl">
+          {filteredCategories.map((c: any) => (
+            <Card key={c.id} className="surface-elevated border border-border/80">
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-[1.85rem] font-bold text-foreground leading-tight text-right">{c.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-foreground"
+                      onClick={() => openEdit(c)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        setCategoryToDelete({ id: c.id, name: c.name });
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-muted-foreground text-sm">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4" />
+                    <span>רווח ברירת מחדל</span>
+                  </div>
+                  <div className="text-foreground font-semibold text-base">
+                    {c.default_margin_percent != null
+                      ? `${Number(c.default_margin_percent).toFixed(1)}%`
+                      : '-'}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       {/* Create / Edit Category Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-[560px]">
           <DialogHeader>
             <DialogTitle>{form.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</DialogTitle>
           </DialogHeader>
@@ -231,6 +212,7 @@ export default function Categories() {
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="למשל: מזון, שתייה, חומרי ניקוי"
+                className={fieldClassName}
               />
             </div>
             <div className="space-y-2">
@@ -244,6 +226,7 @@ export default function Categories() {
                 value={form.default_margin_percent}
                 onChange={(e) => setForm((f) => ({ ...f, default_margin_percent: e.target.value }))}
                 placeholder="השאר ריק אם אין ברירת מחדל מיוחדת"
+                className={fieldClassName}
               />
             </div>
             {errorMessage && (

@@ -1,7 +1,21 @@
 import { useState, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User } from '@supabase/supabase-js';
-import { Menu, X, Sun, Moon } from 'lucide-react';
+import {
+  Menu,
+  X,
+  Sun,
+  Moon,
+  LayoutDashboard,
+  Package,
+  Truck,
+  Boxes,
+  BarChart3,
+  Upload,
+  MessageCircleMore,
+  Settings,
+  BellRing,
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { TenantSwitcher } from '../TenantSwitcher';
 import { useTenant } from '../../hooks/useTenant';
@@ -17,13 +31,15 @@ type AppHeaderProps = {
   adminOnlyMode?: boolean;
 };
 
-const BASE_NAV: Array<{ path: string; label: string }> = [
-  { path: '/products', label: 'מוצרים' },
-  { path: '/suppliers', label: 'ספקים' },
-  { path: '/categories', label: 'קטגוריות' },
-  { path: '/import-export', label: 'ייבוא' },
-  { path: '/support', label: 'תמיכה' },
-  { path: '/settings', label: 'הגדרות' },
+const BASE_NAV: Array<{ path: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { path: '/dashboard', label: 'דשבורד', icon: LayoutDashboard },
+  { path: '/products', label: 'מוצרים', icon: Package },
+  { path: '/suppliers', label: 'ספקים', icon: Truck },
+  { path: '/categories', label: 'קטגוריות', icon: Boxes },
+  { path: '/compare', label: 'השוואת מחירים', icon: BarChart3 },
+  { path: '/import-export', label: 'ייבוא', icon: Upload },
+  { path: '/support', label: 'תמיכה', icon: MessageCircleMore },
+  { path: '/settings', label: 'הגדרות', icon: Settings },
 ];
 
 const isOnSettings = (pathname: string) =>
@@ -40,7 +56,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
     const items = [...BASE_NAV];
     if (headerSettings?.stock_tracking_enabled === true) {
       const insertAt = 3;
-      items.splice(insertAt, 0, { path: '/stock-alerts', label: 'התראות מלאי' });
+      items.splice(insertAt, 0, { path: '/stock-alerts', label: 'התראות מלאי', icon: BellRing });
     }
     return items;
   }, [headerSettings?.stock_tracking_enabled]);
@@ -53,27 +69,29 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
   };
 
   const isActive = (path: string) =>
-    path === '/products'
+    path === '/dashboard'
+      ? location.pathname === '/dashboard' || location.pathname === '/'
+      : path === '/products'
       ? location.pathname === '/products' || location.pathname.startsWith('/products/')
       : location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <>
-      <header className="sticky top-0 z-40 px-3 pt-3 sm:px-6">
+      <header className="sticky top-0 z-40 ">
         <div className="relative mx-auto max-w-6xl">
-          <div className="relative flex min-h-[64px] items-center justify-between gap-2 rounded-[999px] border border-border/70 bg-background/95 px-3 backdrop-blur transition-shadow duration-200 elevation-1 sm:px-4">
+          <div className="relative flex min-h-[64px] items-center justify-between gap-2 bg-background/95 px-3 backdrop-blur transition-shadow duration-200 elevation-1 sm:px-4">
             <div className="flex items-center gap-2">
               <Button
-                variant="ghost"
+                variant="bare"
                 size="icon"
-                className="min-h-[44px] min-w-[44px] rounded-full"
+                className="min-h-[44px] min-w-[44px]"
                 onClick={() => setMobileMenuOpen(true)}
                 aria-label="תפריט"
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-6 w-6" />
               </Button>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-foreground border border-border">
-                <span className="text-sm font-bold">S</span>
+              <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-primary text-primary-foreground">
+                <Package className="h-6 w-6" />
               </div>
               <div>
                 <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">
@@ -84,14 +102,14 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button
+              {/* <Button
                 variant="outline"
                 size="sm"
                 onClick={onLogout}
-                className="min-h-[44px] rounded-full px-2 text-xs sm:px-3"
+                className="min-h-[44px] rounded-sm px-2 text-xs sm:px-3"
               >
                 יציאה
-              </Button>
+              </Button> */}
               <span className="hidden max-w-[150px] truncate text-xs text-muted-foreground lg:inline">
                 {user.email}
               </span>
@@ -118,9 +136,9 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
             <div className="flex items-center justify-between border-b border-border px-4 py-4">
               <h2 className="text-lg font-bold">תפריט</h2>
               <Button
-                variant="ghost"
+                variant="bare"
                 size="icon"
-                className="min-h-[44px] min-w-[44px] rounded-full"
+                className="min-h-[44px] min-w-[44px] rounded-sm"
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="סגור"
               >
@@ -129,27 +147,33 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
             </div>
 
             <nav className="flex h-[calc(100vh-72px)] flex-col overflow-y-auto p-2">
-              {!adminOnlyMode && navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={(e) => {
-                    handleNavClick(e, item.path);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`min-h-[44px] rounded-xl px-4 py-3 text-base font-medium transition-colors ${
-                    isActive(item.path) ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {!adminOnlyMode && navItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={(e) => {
+                      handleNavClick(e, item.path);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`min-h-[44px] rounded-sm px-4 py-3 text-base font-medium transition-colors ${
+                      isActive(item.path) ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span>{item.label}</span>
+                      <Icon className="h-4 w-4 shrink-0" />
+                    </span>
+                  </Link>
+                );
+              })}
 
               {isSuperAdmin && (
                 <Link
                   to="/admin"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`min-h-[44px] rounded-xl px-4 py-3 text-base font-medium transition-colors ${
+                  className={`min-h-[44px] rounded-sm px-4 py-3 text-base font-medium transition-colors ${
                     isActive('/admin') ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -163,7 +187,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full min-h-[44px] rounded-full justify-center gap-2"
+                  className="w-full min-h-[44px] rounded-sm justify-center gap-2"
                   onClick={onToggleTheme}
                   aria-label={isDark ? 'מעבר למצב יום' : 'מעבר למצב לילה'}
                 >
@@ -171,7 +195,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
                   {isDark ? 'מצב יום' : 'מצב לילה'}
                 </Button>
                 {!adminOnlyMode && currentTenant && (
-                  <div className="rounded-lg bg-muted p-2">
+                  <div className="rounded-sm bg-muted p-2">
                     <p className="text-xs font-medium">{currentTenant.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {currentTenant.role === 'owner' ? 'בעלים' : 'עובד'}
@@ -181,7 +205,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
                 <p className="break-all text-xs text-muted-foreground">{user.email}</p>
                 <Button
                   variant="outline"
-                  className="min-h-[44px] w-full rounded-full"
+                  className="min-h-[44px] w-full rounded-sm"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     onLogout();

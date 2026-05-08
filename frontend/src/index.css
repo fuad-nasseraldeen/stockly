@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -30,7 +31,11 @@
 }
 
 :root {
-  --radius: 0.875rem;
+  --motion-fast: 150ms;
+  --motion-base: 220ms;
+  --motion-slow: 320ms;
+  --motion-ease: cubic-bezier(.4, 0, .2, 1);
+  --radius: 0.7rem;
   --background: oklch(0.98 0.01 250);
   --foreground: oklch(0.15 0 0);
   --card: oklch(1 0 0);
@@ -53,25 +58,25 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.215 0.012 255);
+  --foreground: oklch(0.96 0.01 255);
+  --card: oklch(0.255 0.014 255);
+  --card-foreground: oklch(0.96 0.01 255);
+  --popover: oklch(0.255 0.014 255);
+  --popover-foreground: oklch(0.96 0.01 255);
+  --primary: oklch(0.74 0.12 252);
+  --primary-foreground: oklch(0.2 0.012 255);
+  --secondary: oklch(0.31 0.012 255);
+  --secondary-foreground: oklch(0.95 0.01 255);
+  --muted: oklch(0.3 0.01 255);
+  --muted-foreground: oklch(0.8 0.01 255);
+  --accent: oklch(0.32 0.012 255);
+  --accent-foreground: oklch(0.96 0.01 255);
   --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.15 0.04 25);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --destructive-foreground: oklch(0.18 0.04 25);
+  --border: oklch(0.56 0.01 255 / 32%);
+  --input: oklch(0.56 0.01 255 / 40%);
+  --ring: oklch(0.7 0.08 252);
 }
 
 @layer base {
@@ -79,8 +84,8 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-linear-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-foreground antialiased;
-    font-family: system-ui, -apple-system, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Heebo', sans-serif;
     min-height: 100vh;
   }
   html {
@@ -141,11 +146,73 @@ html {
 }
 
 @layer utilities {
+  .surface-elevated {
+    @apply bg-card border border-border shadow-sm;
+    transition: box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
+  }
+  .surface-elevated:hover {
+    @apply shadow-md;
+    transform: translateY(-1px);
+  }
+
+  .page-enter {
+    animation: page-enter var(--motion-slow) var(--motion-ease);
+  }
+
+  .smooth-interaction {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow, transform;
+    transition-timing-function: var(--motion-ease);
+    transition-duration: var(--motion-fast);
+  }
+
+  .page-shell {
+    @apply space-y-5 sm:space-y-6;
+  }
+
+  .page-hero {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between;
+  }
+
+  .page-title {
+    @apply text-3xl sm:text-4xl font-bold tracking-tight text-foreground;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-muted-foreground mt-1.5;
+  }
+
+  .tools-card {
+    @apply bg-card border-2 border-border shadow-sm;
+    transition: box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
+  }
+  .tools-card:hover { @apply shadow-md; transform: translateY(-1px); }
+
+  .data-card {
+    @apply bg-card border-2 border-border shadow-sm overflow-hidden;
+    transition: box-shadow var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
+  }
+  .data-card:hover { @apply shadow-md; transform: translateY(-1px); }
+
+  .data-table-wrap {
+    @apply overflow-x-auto rounded-xl border-2 border-border/80;
+  }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
   .scrollbar-hide {
     scrollbar-width: none;
     -ms-overflow-style: none;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

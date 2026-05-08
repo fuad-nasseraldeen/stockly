@@ -15,7 +15,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown, Filter, SlidersHorizontal } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { InfoTooltip } from '../components/help/InfoTooltip';
 import { productsApi, stockApi, type Product, type ProductSupplierStockRow } from '../lib/api';
@@ -182,6 +182,8 @@ export default function Products() {
   const queryClient = useQueryClient();
   const { currentTenant } = useTenant();
   const [search, setSearch] = useState('');
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const debouncedSearch = useDebounce(search, 350); // Debounce search input by 350ms
   const [supplierFilter, setSupplierFilter] = useState<string>('');
   const [sort, setSort] = useState<SortOption>('updated_desc');
@@ -214,6 +216,24 @@ export default function Products() {
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [excelProgress, setExcelProgress] = useState(0);
   const [excelStage, setExcelStage] = useState<'idle' | 'fetching' | 'generating' | 'downloading'>('idle');
+  const excelExportTitle = isExportingExcel
+    ? excelStage === 'fetching'
+      ? `טוען מוצרים… ${excelProgress}%`
+      : excelStage === 'generating'
+      ? `מייצר קובץ… ${excelProgress}%`
+      : excelStage === 'downloading'
+      ? 'מוריד קובץ…'
+      : `מכין קובץ… ${excelProgress}%`
+    : 'ייצוא אקסל';
+  const pdfExportTitle = isExportingPdf
+    ? pdfStage === 'fetching'
+      ? `טוען מוצרים… ${pdfProgress}%`
+      : pdfStage === 'generating'
+      ? `מייצר PDF… ${pdfProgress}%`
+      : pdfStage === 'downloading'
+      ? 'מוריד קובץ…'
+      : `מכין PDF… ${pdfProgress}%`
+    : 'ייצוא PDF';
 
   const { data: productsData, isLoading } = useProducts({
     search: debouncedSearch || undefined,
@@ -796,281 +816,129 @@ export default function Products() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">מוצרים</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            נהל את כל המוצרים והמחירים שלך • סה״כ {totalProducts} מוצרים
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 items-stretch sm:items-center">
-          {/* Desktop actions */}
-          <div className="hidden sm:flex gap-2 flex-wrap">
-            {/* Add product */}
-            <Button
-              onClick={() => navigate('/products/new')}
-              size="lg"
-              className="shadow-md hover:shadow-lg"
-            >
-              <Plus className="w-4 h-4 ml-2" />
-              הוסף מוצר
-            </Button>
-
-            {/* Export (Excel/CSV) */}
-            <Button
-              onClick={handleExport}
-              variant="outline"
-              size="lg"
-              className="shadow-md hover:shadow-lg min-w-[160px]"
-              disabled={isExportingExcel}
-            >
-              <Download className="w-4 h-4 ml-2" />
-              {isExportingExcel ? (
-                <span className="inline-flex items-center gap-1">
-                  <span>
-                    {excelStage === 'fetching'
-                      ? 'טוען מוצרים…'
-                      : excelStage === 'generating'
-                      ? 'מייצר קובץ…'
-                      : excelStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : 'מכין קובץ…'}
-                  </span>
-                  {excelStage !== 'downloading' && (
-                    <span className="inline-block w-10 text-right tabular-nums">
-                      {excelProgress}%
-                    </span>
-                  )}
-                </span>
-              ) : (
-                'ייצא מוצרים'
-              )}
-            </Button>
-
-            {/* PDF export */}
-            <Button
-              onClick={handleDownloadPdf}
-              variant="outline"
-              size="lg"
-              className="shadow-md hover:shadow-lg min-w-[160px]"
-              disabled={isExportingPdf}
-            >
-              <FileText className="w-4 h-4 ml-2" />
-              {isExportingPdf ? (
-                <span className="inline-flex items-center gap-1">
-                  <span>
-                    {pdfStage === 'fetching'
-                      ? 'טוען מוצרים…'
-                      : pdfStage === 'generating'
-                      ? 'מייצר PDF…'
-                      : pdfStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : 'מכין PDF…'}
-                  </span>
-                  {pdfStage !== 'downloading' && (
-                    <span className="inline-block w-10 text-right tabular-nums">
-                      {pdfProgress}%
-                    </span>
-                  )}
-                </span>
-              ) : (
-                'ייצא PDF'
-              )}
-            </Button>
+    <div className="page-shell">
+      <div className="page-hero">
+        <div className="flex w-full items-end justify-between gap-4">
+          <div className="text-right">
+            <h1 className="page-title">מוצרים</h1>
+            <p className="page-subtitle">
+              {totalProducts} מוצרים במערכת
+            </p>
           </div>
-
-          {/* Mobile actions */}
-          <div className="flex flex-col gap-2 w-full sm:hidden">
-            {/* Row 1: Add product */}
-            <Button
-              onClick={() => navigate('/products/new')}
-              size="default"
-              className="shadow-md hover:shadow-lg w-full"
-            >
-              <Plus className="w-4 h-4 ml-2" />
-              הוסף מוצר
-            </Button>
-
-            {/* Row 2: Export actions (Excel, PDF, Print) */}
-            <div className="flex gap-2 w-full">
+          <div className="flex items-end gap-3">
+            <div className="flex flex-col items-center gap-1">
               <Button
                 onClick={handleExport}
                 variant="outline"
-                size="default"
-                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2 min-w-[120px]"
-                aria-label={
-                  isExportingExcel
-                    ? excelStage === 'fetching'
-                      ? `טוען מוצרים… ${excelProgress}%`
-                      : excelStage === 'generating'
-                      ? `מייצר קובץ… ${excelProgress}%`
-                      : excelStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : `מכין קובץ… ${excelProgress}%`
-                    : 'ייצא מוצרים (Excel)'
-                }
-                title={
-                  isExportingExcel
-                    ? excelStage === 'fetching'
-                      ? `טוען מוצרים… ${excelProgress}%`
-                      : excelStage === 'generating'
-                      ? `מייצר קובץ… ${excelProgress}%`
-                      : excelStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : `מכין קובץ… ${excelProgress}%`
-                    : 'ייצא מוצרים (Excel)'
-                }
+                size="icon"
+                className="shadow-md hover:shadow-lg"
                 disabled={isExportingExcel}
+                aria-label={excelExportTitle}
+                title={excelExportTitle}
               >
                 <Download className="w-4 h-4" />
-                <span className="text-sm">
-                  {isExportingExcel ? (
-                    excelStage === 'downloading' ? (
-                      'מוריד...'
-                    ) : (
-                      <span className="inline-block w-10 text-center tabular-nums">
-                        {excelProgress}%
-                      </span>
-                    )
-                  ) : (
-                    'אקסל'
-                  )}
-                </span>
               </Button>
+              <span className="text-[11px] text-muted-foreground">אקסל</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
               <Button
                 onClick={handleDownloadPdf}
                 variant="outline"
-                size="default"
-                className="shadow-md hover:shadow-lg flex-1 flex items-center justify-center gap-2 min-w-[120px]"
-                aria-label={
-                  isExportingPdf
-                    ? pdfStage === 'fetching'
-                      ? `טוען מוצרים… ${pdfProgress}%`
-                      : pdfStage === 'generating'
-                      ? `מייצר PDF… ${pdfProgress}%`
-                      : pdfStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : `מכין PDF… ${pdfProgress}%`
-                    : 'ייצא PDF'
-                }
-                title={
-                  isExportingPdf
-                    ? pdfStage === 'fetching'
-                      ? `טוען מוצרים… ${pdfProgress}%`
-                      : pdfStage === 'generating'
-                      ? `מייצר PDF… ${pdfProgress}%`
-                      : pdfStage === 'downloading'
-                      ? 'מוריד קובץ…'
-                      : `מכין PDF… ${pdfProgress}%`
-                    : 'ייצא PDF'
-                }
+                size="icon"
+                className="shadow-md hover:shadow-lg"
                 disabled={isExportingPdf}
+                aria-label={pdfExportTitle}
+                title={pdfExportTitle}
               >
                 <FileText className="w-4 h-4" />
-                <span className="text-sm">
-                  {isExportingPdf ? (
-                    pdfStage === 'downloading' ? (
-                      'מוריד...'
-                    ) : (
-                      <span className="inline-block w-10 text-center tabular-nums">
-                        {pdfProgress}%
-                      </span>
-                    )
-                  ) : (
-                    'PDF'
-                  )}
-                </span>
               </Button>
-              {/* <Button
-                onClick={() => window.print()}
-                variant="outline"
-                size="icon"
-                className="shadow-md hover:shadow-lg flex-1"
-                aria-label="הדפסה"
-                title="הדפסה"
-              >
-                <Printer className="w-4 h-4" />
-              </Button> */}
+              <span className="text-[11px] text-muted-foreground">PDF</span>
             </div>
           </div>
+        </div>
+        <div className="flex w-full items-center">
+          <Button
+            onClick={() => navigate('/products/new')}
+            size="sm"
+            className="w-full max-w-xl shadow-md hover:shadow-lg"
+          >
+            מוצר חדש
+            <Plus className="w-4 h-4 mr-2" />
+          </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <Card className="shadow-md border-2">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-bold">חיפוש וסינון</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* First row: Search and Sort */}
-            <div className="grid grid-cols-10 gap-4">
-              <div className="space-y-2 col-span-6">
-                <Label className="text-sm font-medium">חיפוש</Label>
-                <div className="relative">
-                  <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="חיפוש לפי שם מוצר או מק&quot;ט..."
-                    value={search}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    className="pr-10"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2 col-span-4">
-                <Label className="text-sm font-medium">מיין לפי</Label>
-                <Select
-                  value={sort}
-                  onChange={(e) => handleSortChange(e.target.value as SortOption)}
-                >
-                  <option value="updated_desc">עודכן: חדש→ישן</option>
-                  <option value="updated_asc">עודכן: ישן→חדש</option>
-                  <option value="price_asc">מחיר: נמוך→גבוה</option>
-                  <option value="price_desc">מחיר: גבוה→נמוך</option>
-                </Select>
-              </div>
-            </div>
-            {/* Second row: Supplier and Category */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">ספק</Label>
-                <Select
-                  value={supplierFilter}
-                  onChange={(e) => handleSupplierFilterChange(e.target.value)}
-                >
-                  <option value="">כל הספקים</option>
-                  {suppliers?.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">קטגוריה</Label>
-                <Select
-                  value={categoryFilter}
-                  onChange={(e) => handleCategoryFilterChange(e.target.value)}
-                >
-                  <option value="">כל הקטגוריות</option>
-                  {categories?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-3xl">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="חיפוש מוצרים..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pr-10"
+            dir="rtl"
+          />
+        </div>
+        <div className="relative">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="פילטרים"
+            onClick={() => {
+              setIsFilterMenuOpen((v) => !v);
+              setIsSortMenuOpen(false);
+            }}
+          >
+            <Filter className="w-4 h-4" />
+          </Button>
+          <Card className={`absolute left-0 z-30 mt-2 w-64 p-3 origin-top-left transition-all duration-300 ease-out ${isFilterMenuOpen ? 'translate-y-0 opacity-100 scale-100 pointer-events-auto' : '-translate-y-1 opacity-0 scale-95 pointer-events-none'}`}>
+            <CardContent className="p-0 space-y-2">
+              <Label className="text-xs">ספק</Label>
+              <Select value={supplierFilter} onChange={(e) => { handleSupplierFilterChange(e.target.value); setIsFilterMenuOpen(false); }}>
+                <option value="">כל הספקים</option>
+                {suppliers?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+              <Label className="text-xs">קטגוריה</Label>
+              <Select value={categoryFilter} onChange={(e) => { handleCategoryFilterChange(e.target.value); setIsFilterMenuOpen(false); }}>
+                <option value="">כל הקטגוריות</option>
+                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="relative">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="סידור"
+            onClick={() => {
+              setIsSortMenuOpen((v) => !v);
+              setIsFilterMenuOpen(false);
+            }}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </Button>
+          <Card className={`absolute left-0 z-30 mt-2 w-60 p-3 origin-top-left transition-all duration-300 ease-out ${isSortMenuOpen ? 'translate-y-0 opacity-100 scale-100 pointer-events-auto' : '-translate-y-1 opacity-0 scale-95 pointer-events-none'}`}>
+            <CardContent className="p-0">
+              <Select value={sort} onChange={(e) => { handleSortChange(e.target.value as SortOption); setIsSortMenuOpen(false); }}>
+                <option value="updated_desc">עודכן: חדש→ישן</option>
+                <option value="updated_asc">עודכן: ישן→חדש</option>
+                <option value="price_asc">מחיר: נמוך→גבוה</option>
+                <option value="price_desc">מחיר: גבוה→נמוך</option>
+              </Select>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Products List */}
       {isLoading ? (
         <ProductsSkeleton rows={10} />
       ) : !products || products.length === 0 ? (
-        <Card className="shadow-md border-2 border-dashed">
+        <Card className="data-card border-dashed">
           <CardContent className="py-16 text-center">
             <div className="text-5xl mb-4">📦</div>
             <p className="text-lg font-bold text-foreground mb-2">לא נמצאו מוצרים</p>
@@ -1088,14 +956,43 @@ export default function Products() {
             const stockRows = stockQ?.data?.rows;
             return (
             <Card key={product.id} className="shadow-md hover:shadow-lg transition-all border-2 min-w-0 overflow-hidden">
-              <CardHeader className="pb-4 border-b-2 border-border/50">
+              <CardHeader className="pb-4">
                 {(() => {
                   const firstPrice = Array.isArray(product.prices) && product.prices.length > 0 ? product.prices[0] : null;
                   const packageTypeLabel = formatPackageType(firstPrice?.package_type || null);
                   return (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="flex-1">
-                    <CardTitle className="text-xl font-bold mb-2">{product.name}</CardTitle>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+
+                  <div className="flex-1 sm:order-2 text-right">
+                  <div className="flex justify-between pb-2">
+                      <CardTitle className="text-xl font-bold ">{product.name}</CardTitle>
+                      <div className="flex gap-2 shrink-0 self-start sm:order-1" dir="ltr">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setProductToDelete({ id: product.id, name: product.name });
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="h-9 w-9 text-destructive hover:text-destructive"
+                            aria-label="מחיקת מוצר"
+                            title="מחיקה"
+                          >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => navigate(`/products/${product.id}/edit`, { state: { product } })}
+                          className="h-9 w-9"
+                          aria-label="עריכת מוצר"
+                          title="עריכה"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+
+                      </div>
+                  </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                       <span className="inline-flex items-center gap-1 px-2 py-1 bg-muted rounded-md border border-border/50">
                         {product.category?.name || 'ללא קטגוריה'}
@@ -1117,29 +1014,6 @@ export default function Products() {
                       {/* package_quantity is now per supplier (in price_entries), not per product */}
                     </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate(`/products/${product.id}/edit`, { state: { product } })}
-                      className="shadow-sm border-2"
-                    >
-                      <Edit className="w-4 h-4 ml-1" />
-                      ערוך
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        setProductToDelete({ id: product.id, name: product.name });
-                        setDeleteDialogOpen(true);
-                      }}
-                      className="shadow-sm border-2 border-destructive/20"
-                    >
-                      <Trash2 className="w-4 h-4 ml-1" />
-                      מחק
-                    </Button>
-                  </div>
                 </div>
                   );
                 })()}
@@ -1151,7 +1025,7 @@ export default function Products() {
                       const summary = getProductDerivedSummary(product);
                       if (!summary) return null;
                       return (
-                    <div className="flex flex-wrap gap-4 text-sm p-4 bg-linear-to-r from-primary/5 to-primary/10 rounded-lg border-2 border-primary/20 shadow-sm">
+                    <div className="flex flex-wrap gap-4 text-sm p-2 bg-linear-to-r from-primary/5 to-primary/10 rounded-lg border-2 border-primary/20 shadow-sm">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">מחיר נמוך ביותר:</span>
@@ -1192,7 +1066,7 @@ export default function Products() {
                               {stockTrackingEnabled && (
                                 <TableHead className="font-semibold whitespace-nowrap text-left">מלאי</TableHead>
                               )}
-                              <TableHead className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-r border-border">
+                              <TableHead className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-border">
                                 <div className="flex items-center justify-center py-3">
                                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground opacity-50" />
                                 </div>
@@ -1203,172 +1077,178 @@ export default function Products() {
                             {product.prices.map((price) => {
                               const priceId = `${product.id}-${price.supplier_id}-${price.created_at}`;
                               const isExpanded = expandedPriceId === priceId;
+                              const costBeforeDiscount = Number(price.cost_price);
+                              const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
+                              const packageQty = Number(price.package_quantity) || 1;
+                              const cartonPrice = costAfterDiscount * packageQty;
+                              const sellPriceCarton = useMargin && price.sell_price ? Number(price.sell_price) * packageQty : 0;
+                              const costPriceNet = useVat && costAfterDiscount > 0 && vatPercent > 0
+                                ? grossToNet(costAfterDiscount, vatPercent / 100)
+                                : costAfterDiscount;
+                              const priceDate = price.created_at ? formatDate(price.created_at) : '';
                               return (
-                                <TableRow
-                                  key={priceId}
-                                  className="cursor-pointer hover:bg-muted/50 active:bg-muted border-b border-border touch-manipulation"
-                                  onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
-                                >
-                                  {mobileSummaryColumns.map((col) => (
-                                    <TableCell key={col.id} className={col.id === 'supplier' ? 'font-semibold' : undefined}>
-                                      {col.renderCell(price, product, appSettings)}
+                                [
+                                  <TableRow
+                                    key={priceId}
+                                    className="cursor-pointer hover:bg-muted/50 active:bg-muted border-b border-border touch-manipulation"
+                                    onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
+                                  >
+                                    {mobileSummaryColumns.map((col) => (
+                                      <TableCell key={col.id} className={col.id === 'supplier' ? 'font-semibold' : undefined}>
+                                        {col.renderCell(price, product, appSettings)}
+                                      </TableCell>
+                                    ))}
+                                    {stockTrackingEnabled && (() => {
+                                      const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
+                                      const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
+                                        enabled: stockTrackingEnabled,
+                                        isPending: stockQ?.isPending ?? false,
+                                        isFetched: stockQ?.isFetched ?? false,
+                                      });
+                                      return (
+                                        <TableCell
+                                          className={`whitespace-nowrap text-left tabular-nums ${
+                                            isAlert ? 'text-destructive font-semibold' : ''
+                                          }`}
+                                        >
+                                          {text}
+                                        </TableCell>
+                                      );
+                                    })()}
+                                    <TableCell className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-border">
+                                      <div className="flex items-center justify-center">
+                                        <ChevronDown
+                                          className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${
+                                            isExpanded ? 'transform rotate-180' : ''
+                                          }`}
+                                        />
+                                      </div>
                                     </TableCell>
-                                  ))}
-                                  {stockTrackingEnabled && (() => {
-                                    const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
-                                    const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
-                                      enabled: stockTrackingEnabled,
-                                      isPending: stockQ?.isPending ?? false,
-                                      isFetched: stockQ?.isFetched ?? false,
-                                    });
-                                    return (
-                                      <TableCell
-                                        className={`whitespace-nowrap text-left tabular-nums ${
-                                          isAlert ? 'text-destructive font-semibold' : ''
+                                  </TableRow>,
+                                  <TableRow key={`${priceId}-expanded`} className={isExpanded ? 'bg-muted/30' : 'bg-transparent'}>
+                                    <TableCell
+                                      colSpan={mobileSummaryColumns.length + (stockTrackingEnabled ? 2 : 1)}
+                                      className="p-0 border-0 min-w-0 w-full"
+                                    >
+                                      <div
+                                        className={`overflow-hidden transition-all duration-300 ease-out ${
+                                          isExpanded ? 'max-h-[1200px] opacity-100' : 'max-h-0 opacity-0'
                                         }`}
                                       >
-                                        {text}
-                                      </TableCell>
-                                    );
-                                  })()}
-                                  <TableCell className="sticky left-0 z-10 w-6 min-w-6 p-0 bg-card border-r border-border">
-                                    <div className="flex items-center justify-center">
-                                      <ChevronDown
-                                        className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${
-                                          isExpanded ? 'transform rotate-180' : ''
-                                        }`}
-                                      />
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
+                                        <div className="p-2 sm:p-4 rounded-b-lg border border-t-0 border-border min-w-0 w-full space-y-2 sm:space-y-4">
+                                          {priceDate && (
+                                            <div className="text-left">
+                                              <span className="text-xs text-muted-foreground">תאריך עדכון: {priceDate}</span>
+                                            </div>
+                                          )}
+                                          {stockTrackingEnabled && (() => {
+                                            const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
+                                            const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
+                                              enabled: stockTrackingEnabled,
+                                              isPending: stockQ?.isPending ?? false,
+                                              isFetched: stockQ?.isFetched ?? false,
+                                            });
+                                            return (
+                                              <div
+                                                className={`rounded-lg border px-3 py-2 text-sm ${
+                                                  isAlert
+                                                    ? 'border-destructive/70 bg-destructive/10 text-destructive'
+                                                    : 'border-border bg-muted/40 text-foreground'
+                                                }`}
+                                              >
+                                                <span className="font-semibold">מלאי לפי ספק: </span>
+                                                <span className={`tabular-nums ${isAlert ? 'font-bold' : ''}`}>{text}</span>
+                                                {isAlert ? (
+                                                  <span className="mr-2 text-xs font-medium"> (אזל או בסף ההתראה)</span>
+                                                ) : null}
+                                              </div>
+                                            );
+                                          })()}
+                                          <div className="flex flex-wrap justify-between gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                            {useMargin && price.margin_percent != null && (
+                                              <div className="flex items-center gap-1">
+                                                <span className="text-sm font-semibold text-primary">אחוז רווח:</span>
+                                                <span className="text-sm font-bold">{Number(price.margin_percent).toFixed(1)}%</span>
+                                              </div>
+                                            )}
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-sm font-semibold text-primary">אחוז הנחה:</span>
+                                              <span className="text-sm font-bold">{price.discount_percent && Number(price.discount_percent) > 0 ? `${Number(price.discount_percent).toFixed(1)}%` : '0%'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-sm font-semibold text-primary">כמות באריזה:</span>
+                                              <span className="text-sm font-bold">{packageQty} יחידות</span>
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-x-6 sm:gap-y-3">
+                                            <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                              <span className="text-sm font-medium shrink-0">מחיר עלות</span>
+                                              <span className="text-sm font-bold text-foreground truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
+                                            </div>
+                                            {useMargin && price.sell_price != null && (
+                                              <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                                <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
+                                                <span className="text-sm font-bold text-primary truncate">₪{formatUnitPrice(Number(price.sell_price))}</span>
+                                              </div>
+                                            )}
+                                            <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                              <span className="text-sm font-medium shrink-0">מחיר לאריזה</span>
+                                              <span className="text-sm font-bold text-foreground truncate">₪{formatCostPrice(cartonPrice)}</span>
+                                            </div>
+                                            {useMargin && sellPriceCarton > 0 && (
+                                              <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
+                                                <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה לאריזה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
+                                                <span className="text-sm font-bold text-primary truncate">₪{formatCostPrice(sellPriceCarton)}</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="space-y-2 pt-2 border-t border-border/50 min-w-0">
+                                            {useVat && (
+                                              <>
+                                                <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
+                                                  <span className="shrink-0">מחיר לפני מע&quot;מ</span>
+                                                  <span className="truncate">₪{formatUnitPrice(costPriceNet)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
+                                                  <span className="shrink-0">מחיר אחרי מע&quot;מ</span>
+                                                  <span className="truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
+                                                </div>
+                                              </>
+                                            )}
+                                            <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
+                                              <span className="shrink-0">מחיר לפני הנחה</span>
+                                              <span className="truncate">₪{formatUnitPrice(costBeforeDiscount)}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
+                                              <span className="shrink-0">מחיר לאחר הנחה</span>
+                                              <span className="truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex justify-end gap-2 pt-2 sm:pt-4 border-t border-border/50">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setHistoryProductId(product.id);
+                                                setHistorySupplierId(price.supplier_id);
+                                                setHistoryOpen(true);
+                                              }}
+                                            >
+                                              <FileText className="w-4 h-4 ml-1" />
+                                              היסטוריית מחירים
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>,
+                                ]
                               );
                             })}
                           </TableBody>
                         </table>
                       </ScrollablePriceTable>
-                      {product.prices.map((price) => {
-                        const priceId = `${product.id}-${price.supplier_id}-${price.created_at}`;
-                        if (expandedPriceId !== priceId) return null;
-                        const costBeforeDiscount = Number(price.cost_price);
-                        const costAfterDiscount = Number(price.cost_price_after_discount || price.cost_price);
-                        const packageQty = Number(price.package_quantity) || 1;
-                        const cartonPrice = costAfterDiscount * packageQty;
-                        const sellPriceCarton = useMargin && price.sell_price ? Number(price.sell_price) * packageQty : 0;
-                        const costPriceNet = useVat && costAfterDiscount > 0 && vatPercent > 0
-                          ? grossToNet(costAfterDiscount, vatPercent / 100)
-                          : costAfterDiscount;
-                        const priceDate = price.created_at ? formatDate(price.created_at) : '';
-                        return (
-                          <div
-                            key={priceId}
-                            className="p-2 sm:p-4 bg-muted/30 space-y-2 sm:space-y-4 rounded-b-lg border border-t-0 border-border min-w-0 w-full"
-                          >
-                            {priceDate && (
-                              <div className="text-left">
-                                <span className="text-xs text-muted-foreground">תאריך עדכון: {priceDate}</span>
-                              </div>
-                            )}
-                            {stockTrackingEnabled && (() => {
-                              const sRow = stockRows?.find((r) => r.supplier_id === price.supplier_id);
-                              const { text, isAlert } = stockRowDisplayState(sRow, decimalPrecision, {
-                                enabled: stockTrackingEnabled,
-                                isPending: stockQ?.isPending ?? false,
-                                isFetched: stockQ?.isFetched ?? false,
-                              });
-                              return (
-                                <div
-                                  className={`rounded-lg border px-3 py-2 text-sm ${
-                                    isAlert
-                                      ? 'border-destructive/70 bg-destructive/10 text-destructive'
-                                      : 'border-border bg-muted/40 text-foreground'
-                                  }`}
-                                >
-                                  <span className="font-semibold">מלאי לפי ספק: </span>
-                                  <span className={`tabular-nums ${isAlert ? 'font-bold' : ''}`}>{text}</span>
-                                  {isAlert ? (
-                                    <span className="mr-2 text-xs font-medium"> (אזל או בסף ההתראה)</span>
-                                  ) : null}
-                                </div>
-                              );
-                            })()}
-                            <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg bg-primary/10 border border-primary/20">
-                              {useMargin && price.margin_percent != null && (
-                                <div className="flex items-center gap-1">
-                                  <span className="text-sm font-semibold text-primary">אחוז רווח:</span>
-                                  <span className="text-sm font-bold">{Number(price.margin_percent).toFixed(1)}%</span>
-                                </div>
-                              )}
-                              <div className="flex items-center gap-1">
-                                <span className="text-sm font-semibold text-primary">אחוז הנחה:</span>
-                                <span className="text-sm font-bold">{price.discount_percent && Number(price.discount_percent) > 0 ? `${Number(price.discount_percent).toFixed(1)}%` : '0%'}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-sm font-semibold text-primary">כמות באריזה:</span>
-                                <span className="text-sm font-bold">{packageQty} יחידות</span>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-x-6 sm:gap-y-3">
-                              <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
-                                <span className="text-sm font-medium shrink-0">מחיר עלות</span>
-                                <span className="text-sm font-bold text-foreground truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
-                              </div>
-                              {useMargin && price.sell_price != null && (
-                                <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
-                                  <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
-                                  <span className="text-sm font-bold text-primary truncate">₪{formatUnitPrice(Number(price.sell_price))}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
-                                <span className="text-sm font-medium shrink-0">מחיר לאריזה</span>
-                                <span className="text-sm font-bold text-foreground truncate">₪{formatCostPrice(cartonPrice)}</span>
-                              </div>
-                              {useMargin && sellPriceCarton > 0 && (
-                                <div className="flex justify-between items-center gap-2 px-3 py-2 rounded bg-card border min-w-0">
-                                  <span className="text-sm font-medium flex items-center gap-1 shrink-0">מחיר מכירה לאריזה <InfoTooltip content="מחיר עלות + הנחה + רווח" /></span>
-                                  <span className="text-sm font-bold text-primary truncate">₪{formatCostPrice(sellPriceCarton)}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="space-y-2 pt-2 border-t border-border/50 min-w-0">
-                              {useVat && (
-                                <>
-                                  <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
-                                    <span className="shrink-0">מחיר לפני מע&quot;מ</span>
-                                    <span className="truncate">₪{formatUnitPrice(costPriceNet)}</span>
-                                  </div>
-                                  <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
-                                    <span className="shrink-0">מחיר אחרי מע&quot;מ</span>
-                                    <span className="truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
-                                  </div>
-                                </>
-                              )}
-                              <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
-                                <span className="shrink-0">מחיר לפני הנחה</span>
-                                <span className="truncate">₪{formatUnitPrice(costBeforeDiscount)}</span>
-                              </div>
-                              <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground min-w-0">
-                                <span className="shrink-0">מחיר לאחר הנחה</span>
-                                <span className="truncate">₪{formatUnitPrice(costAfterDiscount)}</span>
-                              </div>
-                            </div>
-                            <div className="flex justify-end gap-2 pt-2 sm:pt-4 border-t border-border/50">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setHistoryProductId(product.id);
-                                  setHistorySupplierId(price.supplier_id);
-                                  setHistoryOpen(true);
-                                }}
-                              >
-                                <FileText className="w-4 h-4 ml-1" />
-                                היסטוריית מחירים
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
                   ) : (
                     <div className="text-sm text-muted-foreground">
@@ -1411,7 +1291,7 @@ export default function Products() {
           </DialogHeader>
           <div className="space-y-4">
             {productForInlineAdd && (
-              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <div className="rounded-lg border border-border justify-between bg-muted/30 p-3 text-sm">
                 <div className="font-semibold">{productForInlineAdd.name}</div>
                 <div className="text-muted-foreground">
                   {productForInlineAdd.category?.name || 'כללי'}
