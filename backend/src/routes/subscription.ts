@@ -330,7 +330,7 @@ router.post('/checkout-session', requireAuth, requireTenant, async (req, res) =>
       'line_items[0][price]': priceId,
       'line_items[0][quantity]': '1',
       ...(user.email ? { customer_email: user.email } : {}),
-      locale: 'he',
+      locale: 'auto',
       'custom_text[submit][message]': 'התשלום מתבצע בסביבת תשלום מאובטחת של STOCKLY',
       allow_promotion_codes: 'true',
       success_url: `${appUrl}/subscription?billing=success&session_id={CHECKOUT_SESSION_ID}`,
