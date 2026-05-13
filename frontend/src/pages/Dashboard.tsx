@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, Boxes, TrendingDown, TrendingUp, Truck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeftRight, Boxes, MoonStar, Sun, TrendingDown, TrendingUp, Truck } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { useProducts } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
+import { supabase } from '../lib/supabase';
 
 type RecentRow = {
   id: string;
@@ -23,6 +25,8 @@ function formatChange(change: number): string {
 }
 
 export default function Dashboard() {
+  const [displayName, setDisplayName] = useState('שם משתמש');
+
   const { data: productsData, isLoading } = useProducts({
     sort: 'updated_desc',
     page: 1,
@@ -33,8 +37,8 @@ export default function Dashboard() {
   const products = productsData?.products ?? [];
   const allPriceRows = products
     .flatMap((p) =>
-      (p.prices ?? []).map((price) => ({
-        id: `${p.id}-${price.id}`,
+      (p.prices ?? []).map((price, idx) => ({
+        id: `${p.id}-${price.id ?? price.supplier_id ?? 'no-supplier'}-${price.created_at ?? p.updated_at ?? idx}-${idx}`,
         productId: p.id,
         productName: p.name,
         supplierId: price.supplier_id,
@@ -74,12 +78,50 @@ export default function Dashboard() {
   const decreasing = recentRows.filter((r) => r.changeDirection === 'down').length;
   const activeSuppliers = suppliers.filter((s) => s.is_active !== false).length;
   const totalProducts = productsData?.total ?? products.length;
+  const hour = new Date().getHours();
+  const isMorning = hour >= 5 && hour < 17;
+  const greeting = isMorning ? 'בוקר טוב' : 'ערב טוב';
+  const GreetingIcon = isMorning ? Sun : MoonStar;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      const user = data.user;
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const dbName = (profile?.full_name || '').trim();
+      if (dbName) {
+        setDisplayName(dbName);
+        return;
+      }
+
+      const metaName = (user.user_metadata as { full_name?: string } | null)?.full_name?.trim();
+      if (metaName) {
+        setDisplayName(metaName);
+        return;
+      }
+      const emailName = user.email?.split('@')[0]?.trim();
+      if (emailName) {
+        setDisplayName(emailName);
+      }
+    });
+  }, []);
+
+  const greetingLine = useMemo(() => `היי ${displayName}, ${greeting}`, [displayName, greeting]);
 
   return (
     <div className="page-shell">
       <div className="page-hero">
         <div>
-          <h1 className="page-title">דשבורד</h1>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <GreetingIcon className="h-7 w-7 text-amber-500" />
+            <span>{greetingLine}</span>
+          </h1>
           <p className="page-subtitle">סקירה כללית של המערכת</p>
         </div>
       </div>

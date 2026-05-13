@@ -6,7 +6,7 @@ import { runDailySubscriptionReminders, sendSubscriptionReminderForTenant } from
 
 const router = Router();
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'תאריך חייב להיות בפורמט YYYY-MM-DD');
-const PLAN_NAMES = ['basic', 'pro', 'business', 'enterprise'] as const;
+const PLAN_NAMES = ['trial_free', 'monthly_199', 'annual_49', 'basic', 'pro', 'business', 'enterprise'] as const;
 
 const updateSchema = z.object({
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),

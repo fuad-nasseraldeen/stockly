@@ -49,10 +49,15 @@ const verifyOtpSchema = z.object({
 const signupOtpSchema = z.object({
   email: z.string().trim().email('email is required'),
   password: z.string().min(6, 'password must be at least 6 chars'),
-  fullName: z.string().trim().min(2, 'full_name is required').max(120),
+  firstName: z.string().trim().min(1, 'first_name is required').max(60),
+  lastName: z.string().trim().min(1, 'last_name is required').max(60),
   phone: z.string().min(1, 'phone is required'),
   code: z.string().regex(/^\d{6}$/, 'code must be 6 digits'),
 });
+
+function buildFullName(firstName: string, lastName: string): string {
+  return `${firstName.trim()} ${lastName.trim()}`.trim();
+}
 
 const verifyMyPhoneSchema = z.object({
   phone: z.string().min(1, 'phone is required'),
@@ -138,6 +143,22 @@ async function setProfilePhoneVerified(userId: string, phoneE164: string): Promi
 
   if (error) {
     throw new Error(`failed to update profile phone: ${error.message}`);
+  }
+}
+
+async function setProfileNameParts(userId: string, firstName: string, lastName: string): Promise<void> {
+  const fullName = buildFullName(firstName, lastName);
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      full_name: fullName,
+    })
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(`failed to update profile name parts: ${error.message}`);
   }
 }
 
@@ -461,6 +482,7 @@ router.post('/otp/verify', async (req, res) => {
 router.post('/signup-with-otp', async (req, res) => {
   try {
     const body = signupOtpSchema.parse(req.body);
+    const fullName = buildFullName(body.firstName, body.lastName);
     const phoneE164 = normalizePhoneToE164(body.phone);
     if (!phoneE164) {
       return res.status(400).json(INVALID_CODE_ERROR);
@@ -529,7 +551,9 @@ router.post('/signup-with-otp', async (req, res) => {
       password: body.password,
       email_confirm: true,
       user_metadata: {
-        full_name: body.fullName,
+        full_name: fullName,
+        first_name: body.firstName.trim(),
+        last_name: body.lastName.trim(),
         auth_provider: 'email_password',
       },
     });
@@ -539,6 +563,7 @@ router.post('/signup-with-otp', async (req, res) => {
     }
 
     try {
+      await setProfileNameParts(created.user.id, body.firstName, body.lastName);
       await setProfilePhoneVerified(created.user.id, phoneE164);
     } catch (phoneError) {
       const message = phoneError instanceof Error ? phoneError.message : String(phoneError || '');

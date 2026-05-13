@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useProduct, useUpdateProduct, useAddProductPrice, useUpdateProductPrice, useDeleteProductPrice, useProductPriceHistory } from '../hooks/useProducts';
-import { useCategories } from '../hooks/useCategories';
+import { useCategories, useCreateCategory } from '../hooks/useCategories';
 import { useSuppliers, useCreateSupplier } from '../hooks/useSuppliers';
 import { useSettings } from '../hooks/useSettings';
 import type { Supplier, ProductPrice } from '../lib/api';
@@ -10,7 +10,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
 import { Label } from '../components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { ArrowRight, ArrowLeft, Plus, X, FileText, Edit, Trash2, ChevronDown } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
@@ -39,7 +39,7 @@ export default function EditProduct() {
   const { data: productFromApi, isLoading } = useProduct(id || '', { enabled: !!id });
   // Prefer fresh API data when available; use navigation state only as initial fallback.
   const product = productFromApi || productFromState;
-  const { data: categories = [] } = useCategories();
+  const { data: categories = [], refetch: refetchCategories } = useCategories();
   const { data: suppliers = [] } = useSuppliers();
   const { data: settings } = useSettings();
   const updateProduct = useUpdateProduct();
@@ -47,11 +47,13 @@ export default function EditProduct() {
   const updateProductPrice = useUpdateProductPrice();
   const deleteProductPrice = useDeleteProductPrice();
   const createSupplier = useCreateSupplier();
+  const createCategory = useCreateCategory();
 
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
   const [sku, setSku] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Price management state
   const [showAddPrice, setShowAddPrice] = useState(
@@ -62,12 +64,15 @@ export default function EditProduct() {
   const [priceToEdit, setPriceToEdit] = useState<{ id: string; supplier_id: string; cost_price: number; discount_percent?: number; package_quantity?: number } | null>(null);
   const [priceToDelete, setPriceToDelete] = useState<{ supplier_id: string; supplier_name: string } | null>(null);
   const [showAddSupplier, setShowAddSupplier] = useState(false);
+  const [showAddCategory, setShowAddCategory] = useState(false);
   const [showPriceHistory, setShowPriceHistory] = useState(false);
   const [priceHistorySupplierId, setPriceHistorySupplierId] = useState<string | undefined>(undefined);
   const [expandedPriceId, setExpandedPriceId] = useState<string | null>(null);
   const [newSupplierName, setNewSupplierName] = useState('');
   const [newSupplierPhone, setNewSupplierPhone] = useState('');
   const [newSupplierNotes, setNewSupplierNotes] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryMargin, setNewCategoryMargin] = useState('');
   const [newPriceSupplierId, setNewPriceSupplierId] = useState('');
   const [newPriceCost, setNewPriceCost] = useState('0');
   const [newPriceCartonPrice, setNewPriceCartonPrice] = useState('0'); // מחיר קרטון
@@ -126,7 +131,7 @@ export default function EditProduct() {
     // Otherwise background refetches can override in-progress user edits.
     if (!product || didInitFormFromProduct.current) return;
     setName(product.name ?? '');
-    setCategoryId(product.category?.id ?? '');
+    setCategoryId((product as any).category_id ?? product.category?.id ?? '');
     setSku((product as any).sku ?? '');
     didInitFormFromProduct.current = true;
     // package_quantity removed - it's now only in price_entries (supplier-specific)
@@ -200,6 +205,27 @@ export default function EditProduct() {
     } catch (e) {
       const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
       setSupplierError(message || 'שגיאה ביצירת ספק');
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      setCategoryError(null);
+      const createdCategory = (await createCategory.mutateAsync({
+        name: newCategoryName.trim(),
+        default_margin_percent: newCategoryMargin ? Number(newCategoryMargin) : undefined,
+      })) as { id?: string };
+      await refetchCategories();
+      if (createdCategory?.id) {
+        setCategoryId(createdCategory.id);
+      }
+      setShowAddCategory(false);
+      setNewCategoryName('');
+      setNewCategoryMargin('');
+    } catch (e) {
+      const message = e && typeof e === 'object' && 'message' in e ? String((e as any).message) : null;
+      setCategoryError(message || 'לא ניתן ליצור קטגוריה');
     }
   };
 
@@ -575,19 +601,32 @@ export default function EditProduct() {
 
             <div className="space-y-2">
               <Label htmlFor="category">קטגוריה</Label>
-              <Select
-                id="category"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                <option value="">כללי</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}{' '}
-                    {useMargin && c.default_margin_percent ? `(${c.default_margin_percent}% רווח ברירת מחדל)` : ''}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  id="category"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  className="flex-1"
+                >
+                  <option value="">כללי</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{' '}
+                      {useMargin && c.default_margin_percent ? `(${c.default_margin_percent}% רווח ברירת מחדל)` : ''}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowAddCategory(true)}
+                  className="px-3"
+                  aria-label="הוסף קטגוריה"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              {categoryError && <p className="text-xs text-red-600 mt-1">{categoryError}</p>}
             </div>
           </div>
 
@@ -632,19 +671,8 @@ export default function EditProduct() {
               אין מחירים עבור מוצר זה. הוסף מחיר חדש כדי להתחיל.
             </p>
           ) : (
-            <div className="space-y-2">
-              <div className="overflow-x-auto rounded-lg border border-border bg-card">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-b border-border">
-                      <TableHead className="font-semibold">ספק</TableHead>
-                      <TableHead className="font-semibold">מחיר עלות</TableHead>
-                      <TableHead className="font-semibold">פעולות</TableHead>
-                      <TableHead className="w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentPrices.map((price: ProductPrice) => {
+            <div className="space-y-3">
+              {currentPrices.map((price: ProductPrice) => {
                       const supplier = suppliers.find(s => s.id === price.supplier_id);
                       const priceId = price.id || `${price.supplier_id}-${price.created_at}`;
                       const isExpanded = expandedPriceId === priceId;
@@ -663,56 +691,61 @@ export default function EditProduct() {
                         : '';
                       
                       return (
-                        <React.Fragment key={priceId}>
-                          <TableRow className="border-b border-border">
-                            <TableCell className="font-semibold">{supplier?.name || 'לא ידוע'}</TableCell>
-                            <TableCell>₪{formatUnitPrice(costAfterDiscount)}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-col items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditPrice(price);
-                                  }}
-                                  className="h-8 w-full"
-                                >
-                                  <Edit className="w-4 h-4 ml-1" />
-                                  ערוך
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPriceToDelete({ supplier_id: price.supplier_id, supplier_name: supplier?.name || 'לא ידוע' });
-                                    setShowDeletePrice(true);
-                                  }}
-                                  className="h-8 w-full"
-                                >
-                                  <Trash2 className="w-4 h-4 ml-1" />
-                                  מחק
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div
-                                className="cursor-pointer hover:bg-muted/50 active:bg-muted touch-manipulation p-1 rounded"
-                                onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
+                        <article key={priceId} className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                          <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+                            <button
+                              type="button"
+                              className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                              onClick={() => setExpandedPriceId(isExpanded ? null : priceId)}
+                              aria-label={isExpanded ? 'סגור פרטים' : 'פתח פרטים'}
+                            >
+                              <ChevronDown
+                                className={`h-5 w-5 transition-transform duration-200 ${
+                                  isExpanded ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </button>
+
+                            <div className="min-w-0 flex-1 text-right">
+                              <p className="truncate text-sm font-semibold">{supplier?.name || 'לא ידוע'}</p>
+                              <p className="text-xs text-muted-foreground">₪{formatUnitPrice(costAfterDiscount)}</p>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditPrice(price);
+                                }}
+                                className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                                aria-label="ערוך מחיר"
+                                title="ערוך"
                               >
-                                <ChevronDown
-                                  className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${
-                                    isExpanded ? 'transform rotate-180' : ''
-                                  }`}
-                                />
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPriceToDelete({ supplier_id: price.supplier_id, supplier_name: supplier?.name || 'לא ידוע' });
+                                  setShowDeletePrice(true);
+                                }}
+                                className="h-8 w-8 rounded-md text-muted-foreground hover:bg-rose-50 hover:text-rose-600"
+                                aria-label="מחק מחיר"
+                                title="מחק"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+
                           {isExpanded && (
-                            <TableRow>
-                              <TableCell colSpan={4} className="p-0 border-b border-border overflow-hidden">
-                                <div className="p-2 sm:p-4 bg-muted/30 space-y-2 sm:space-y-4">
+                            <div className="border-t border-border p-2 sm:p-4 bg-muted/30 space-y-2 sm:space-y-4">
                                   {/* Date - top left, separate line */}
                                   {priceDate && (
                                     <div className="text-left">
@@ -797,15 +830,10 @@ export default function EditProduct() {
                                     </Button>
                                   </div>
                                 </div>
-                              </TableCell>
-                            </TableRow>
                           )}
-                        </React.Fragment>
+                        </article>
                       );
                     })}
-                  </TableBody>
-                </Table>
-              </div>
             </div>
           )}
         </CardContent>
@@ -861,6 +889,50 @@ export default function EditProduct() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Category Dialog */}
+      <Dialog open={showAddCategory} onOpenChange={setShowAddCategory}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>הוסף קטגוריה חדשה</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="newCategoryName">שם קטגוריה *</Label>
+              <Input
+                id="newCategoryName"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="למשל: מזון, שתייה, שתייה מוגזת"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newCategoryMargin">אחוז רווח ברירת מחדל</Label>
+              <Input
+                id="newCategoryMargin"
+                type="number"
+                min="0"
+                max="500"
+                step="0.1"
+                value={newCategoryMargin}
+                onChange={(e) => setNewCategoryMargin(e.target.value)}
+                placeholder="השאר ריק אם אין ברירת מחדל מיוחדת"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddCategory(false)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleAddCategory}
+              disabled={!newCategoryName.trim() || createCategory.isPending}
+            >
+              {createCategory.isPending ? 'יוצר...' : 'צור קטגוריה'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

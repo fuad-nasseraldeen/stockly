@@ -104,6 +104,8 @@ export function createApp() {
     credentials: true
   }));
 
+  // Stripe webhook signature verification requires the raw request body.
+  app.use('/api/subscription/webhook', express.raw({ type: 'application/json' }));
   app.use(express.json());
 
   app.get('/', (req, res) => res.json({ 

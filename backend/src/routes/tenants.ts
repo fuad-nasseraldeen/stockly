@@ -8,6 +8,11 @@ const router = Router();
 
 const createTenantSchema = z.object({
   name: z.string().trim().min(1, 'חובה להזין שם טננט'),
+  initial_plan: z.enum(['trial_free', 'monthly_199', 'annual_49']).optional(),
+});
+
+const renameTenantSchema = z.object({
+  name: z.string().trim().min(2, 'שם החנות חייב להכיל לפחות 2 תווים').max(80, 'שם החנות ארוך מדי'),
 });
 
 const inviteSchema = z.object({
@@ -122,6 +127,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
     const body = createTenantSchema.parse(req.body);
+    const selectedPlan = body.initial_plan || 'trial_free';
 
     // Create tenant
     const { data: tenant, error: tenantError } = await supabase
@@ -184,6 +190,31 @@ router.post('/', requireAuth, async (req, res) => {
 
     if (settingsError) {
       console.error('Failed to create default settings:', settingsError);
+    }
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 30);
+    const trialEndIso = trialEnd.toISOString().slice(0, 10);
+
+    const planName = selectedPlan === 'trial_free' ? 'trial_free' : selectedPlan;
+    const status = selectedPlan === 'trial_free' ? 'trial' : 'past_due';
+    const validUntil = selectedPlan === 'trial_free' ? trialEndIso : todayIso;
+
+    const { error: subError } = await supabase
+      .from('tenant_subscriptions')
+      .upsert({
+        tenant_id: tenant.id,
+        status,
+        plan_name: planName,
+        currency: 'ILS',
+        valid_from: todayIso,
+        valid_until: validUntil,
+        payment_method: selectedPlan === 'trial_free' ? 'free_trial' : 'stripe_pending',
+      }, { onConflict: 'tenant_id' });
+
+    if (subError) {
+      console.error('Failed to create tenant subscription:', subError);
     }
 
     res.status(201).json({ ...tenant, role: 'owner' });
@@ -250,6 +281,35 @@ router.post('/:id/invite', requireAuth, requireTenant, ownerOnly, async (req, re
       return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
     }
     res.status(500).json({ error: 'שגיאת שרת' });
+  }
+});
+
+// Rename current tenant (owner only)
+router.patch('/current/name', requireAuth, requireTenant, ownerOnly, async (req, res) => {
+  try {
+    const tenant = (req as any).tenant as { tenantId: string };
+    const body = renameTenantSchema.parse(req.body);
+
+    const { data, error } = await supabase
+      .from('tenants')
+      .update({ name: body.name })
+      .eq('id', tenant.tenantId)
+      .select('id, name, created_at')
+      .single();
+
+    if (error || !data) {
+      console.error('Rename tenant error:', error);
+      return res.status(500).json({ error: 'לא ניתן לעדכן את שם החנות' });
+    }
+
+    return res.json(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const firstIssue = error.issues?.[0];
+      return res.status(400).json({ error: firstIssue?.message || 'נתונים לא תקינים' });
+    }
+    console.error('Rename tenant server error:', error);
+    return res.status(500).json({ error: 'שגיאת שרת' });
   }
 });
 

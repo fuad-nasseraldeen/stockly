@@ -19,6 +19,15 @@ const deleteAccountSchema = z.object({
   message: z.string().trim().max(500).optional().nullable(),
 });
 
+const updateProfileSchema = z.object({
+  full_name: z.string().trim().min(2, 'שם משתמש חייב להכיל לפחות 2 תווים').max(120, 'שם משתמש ארוך מדי').optional(),
+  first_name: z.string().trim().min(1, 'שם פרטי חובה').max(60).optional(),
+  last_name: z.string().trim().min(1, 'שם משפחה חובה').max(60).optional(),
+}).refine(
+  (v) => Boolean(v.full_name || (v.first_name && v.last_name)),
+  { message: 'יש להזין שם מלא או שם פרטי ושם משפחה' },
+);
+
 const reasonLabels: Record<string, string> = {
   not_satisfied: 'לא מרוצה מהאפליקציה',
   too_expensive: 'יקר לי כרגע',
@@ -115,6 +124,64 @@ router.post('/delete', requireAuth, async (req, res) => {
     }
     console.error('[account] delete failed:', error);
     return res.status(500).json({ error: 'לא הצלחנו למחוק את החשבון כרגע. נסה שוב בעוד כמה דקות.' });
+  }
+});
+
+router.patch('/profile', requireAuth, async (req, res) => {
+  try {
+    const body = updateProfileSchema.parse(req.body);
+    const user = (req as any).user as { id: string } | undefined;
+    if (!user?.id) {
+      return res.status(401).json({ error: 'נדרש להתחבר' });
+    }
+
+    const firstName = body.first_name?.trim() || null;
+    const lastName = body.last_name?.trim() || null;
+    const fullName = (body.full_name?.trim() || `${firstName || ''} ${lastName || ''}`.trim()).trim();
+    const profilePatch = {
+      user_id: user.id,
+      full_name: fullName,
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
+    };
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .upsert(profilePatch, { onConflict: 'user_id' });
+
+    if (profileErr) {
+      console.error('[account] profile upsert failed:', profileErr);
+      return res.status(500).json({ error: 'שגיאה בעדכון שם המשתמש' });
+    }
+
+    // Best-effort sync to auth metadata for screens that read user_metadata.full_name.
+    try {
+      const { data: authUserData } = await supabase.auth.admin.getUserById(user.id);
+      const currentMeta = (authUserData?.user?.user_metadata as Record<string, unknown> | undefined) ?? {};
+      await supabase.auth.admin.updateUserById(user.id, {
+        user_metadata: {
+          ...currentMeta,
+          full_name: fullName,
+          ...(firstName ? { first_name: firstName } : {}),
+          ...(lastName ? { last_name: lastName } : {}),
+        },
+      });
+    } catch (metaErr) {
+      console.warn('[account] auth metadata sync failed (non-blocking):', metaErr);
+    }
+
+    return res.json({
+      ok: true,
+      full_name: fullName,
+      first_name: firstName,
+      last_name: lastName,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issue = error.issues?.[0];
+      return res.status(400).json({ error: issue?.message || 'נתונים לא תקינים' });
+    }
+    console.error('[account] profile update failed:', error);
+    return res.status(500).json({ error: 'לא ניתן לעדכן את שם המשתמש כרגע' });
   }
 });
 

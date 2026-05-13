@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 type MailPayload = {
   subject: string;
   text: string;
+  to?: string;
   replyTo?: string;
 };
 
@@ -39,9 +40,33 @@ export async function sendContactEmail(payload: MailPayload): Promise<void> {
 
   await transporter.sendMail({
     from: cfg.from,
-    to: cfg.to,
+    to: payload.to || cfg.to,
     subject: payload.subject,
     text: payload.text,
     replyTo: payload.replyTo,
+  });
+}
+
+export async function sendTransactionalEmail(payload: { to: string; subject: string; text: string }): Promise<void> {
+  const cfg = getSmtpConfig();
+  if (!cfg) {
+    throw new Error('SMTP config is missing');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.port === 465,
+    auth: {
+      user: cfg.user,
+      pass: cfg.pass,
+    },
+  });
+
+  await transporter.sendMail({
+    from: cfg.from,
+    to: payload.to,
+    subject: payload.subject,
+    text: payload.text,
   });
 }

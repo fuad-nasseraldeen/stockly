@@ -21,6 +21,7 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { tenants, isLoading, refetchTenants } = useTenant();
   const isOnboardingRoute = location.pathname === '/onboarding';
+  const isAdRoute = location.pathname === '/ad';
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isAdminContext = isAdminRoute || isOnboardingRoute;
   // Check super admin both on /admin and on /onboarding (כדי שכפתור ניהול יופיע במסך האונבורדינג)
@@ -191,6 +192,11 @@ export function OnboardingRouter({ children }: { children: React.ReactNode }) {
   }
   if (location.pathname === '/no-access') {
     return withTenantLoader(<NoAccess />);
+  }
+
+  // Allow marketing page even when tenant onboarding is not completed.
+  if (isAdRoute) {
+    return withTenantLoader(<>{children}</>);
   }
 
   // Super admin can access /admin and nested admin routes even without tenants

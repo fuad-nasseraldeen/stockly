@@ -16,7 +16,8 @@ export async function requireSubscriptionWriteAccess(req: Request, res: Response
     const computed = computeSubscriptionStatus(sub);
     if (computed.status === 'expired' || computed.status === 'cancelled') {
       return res.status(403).json({
-        error: 'Subscription expired. Please renew to continue editing.',
+        error: 'תקופת הניסיון הסתיימה. כדי להמשיך לערוך נתונים יש לשדרג מנוי.',
+        code: 'SUBSCRIPTION_EXPIRED',
       });
     }
     return next();

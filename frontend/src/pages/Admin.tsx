@@ -23,7 +23,7 @@ import {
   MessageCircle,
   Smartphone,
 } from 'lucide-react';
-import type { TenantWithUsers } from '../lib/api';
+import type { TenantSubscription, TenantWithUsers } from '../lib/api';
 const SUBSCRIPTION_PLANS = ['basic', 'pro', 'business', 'enterprise'] as const;
 
 function pickStoreEntryUserId(tenant: TenantWithUsers): string | null {
@@ -46,14 +46,37 @@ function smsHref(phone: string | null | undefined): string | null {
 
 type AdminMember = TenantWithUsers['owners'][number] | TenantWithUsers['workers'][number];
 
+function subscriptionPlanLabel(planName: string): string {
+  if (planName === 'monthly_199') return 'חודשי ₪199';
+  if (planName === 'annual_49') return 'שנתי ₪1,788';
+  if (planName === 'trial_free') return 'ניסיון חינם';
+  return planName;
+}
+
+function subscriptionStatusLabel(status: string): string {
+  if (status === 'active') return 'פעיל';
+  if (status === 'trial') return 'ניסיון';
+  if (status === 'past_due') return 'דורש הסדרה';
+  if (status === 'expired') return 'פג תוקף';
+  if (status === 'cancelled') return 'בוטל';
+  return status;
+}
+
 function AdminMemberDetail({
   member,
+  tenantName,
+  subscription,
   formatDate,
 }: {
   member: AdminMember;
+  tenantName: string;
+  subscription?: TenantSubscription;
   formatDate: (date: string) => string;
 }) {
   const waDigits = digitsForWhatsApp(member.phone_e164);
+  const waMessage = subscription
+    ? `שלום ${member.full_name || ''},\nעדכון מנוי לחנות ${tenantName}:\nתוכנית: ${subscriptionPlanLabel(subscription.plan_name)}\nסטטוס: ${subscriptionStatusLabel(subscription.computed_status)}\nתקופה: ${new Date(subscription.valid_from).toLocaleDateString('he-IL')} - ${new Date(subscription.valid_until).toLocaleDateString('he-IL')}\nנותרו ${Math.max(subscription.daysRemaining, 0)} ימים.\nצוות STOCKLY`
+    : `שלום ${member.full_name || ''},\nנשמח לעדכן אותך בנושא המנוי בחנות ${tenantName}.\nצוות STOCKLY`;
   const smsLink = smsHref(member.phone_e164);
   return (
     <>
@@ -73,12 +96,36 @@ function AdminMemberDetail({
             ? formatDate(member.last_content_activity_at)
             : 'אין רישום (למשל הוספת מוצר / מחיר / ספק)'}
         </div>
+        {subscription ? (
+          <>
+            <div>
+              <span className="font-medium text-foreground/80">סוג מנוי: </span>
+              {subscriptionPlanLabel(subscription.plan_name)}
+            </div>
+            <div>
+              <span className="font-medium text-foreground/80">סטטוס מנוי: </span>
+              {subscriptionStatusLabel(subscription.computed_status)}
+            </div>
+            <div>
+              <span className="font-medium text-foreground/80">תחילת תקופה: </span>
+              {new Date(subscription.valid_from).toLocaleDateString('he-IL')}
+            </div>
+            <div>
+              <span className="font-medium text-foreground/80">סיום תקופה: </span>
+              {new Date(subscription.valid_until).toLocaleDateString('he-IL')}
+            </div>
+            <div>
+              <span className="font-medium text-foreground/80">ימים שנותרו: </span>
+              {Math.max(subscription.daysRemaining, 0)}
+            </div>
+          </>
+        ) : null}
       </div>
       {(waDigits || smsLink) && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {waDigits && (
             <Button variant="outline" size="sm" className="h-7 text-xs" asChild>
-              <a href={`https://wa.me/${waDigits}`} target="_blank" rel="noopener noreferrer">
+              <a href={`https://wa.me/${waDigits}?text=${encodeURIComponent(waMessage)}`} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="w-3 h-3 ml-1" />
                 וואטסאפ
               </a>
@@ -259,6 +306,7 @@ export default function Admin() {
     };
     return labels[action] || action;
   };
+  const subscriptionByTenantId = new Map(subscriptions.map((sub) => [sub.tenant_id, sub]));
 
   const openEditSubscription = (sub: { tenant_id: string; tenants?: { name: string } | null; plan_name: string; valid_until: string }) => {
     setSelectedSubscription({
@@ -497,7 +545,12 @@ export default function Admin() {
                                 <span className="hidden sm:inline">•</span>
                                 <span>הצטרף ב-{formatDate(owner.joined_at)}</span>
                               </div>
-                              <AdminMemberDetail member={owner} formatDate={formatDate} />
+                              <AdminMemberDetail
+                                member={owner}
+                                tenantName={tenant.name}
+                                subscription={subscriptionByTenantId.get(tenant.id)}
+                                formatDate={formatDate}
+                              />
                             </div>
                             <Button
                               variant="outline"
@@ -544,7 +597,12 @@ export default function Admin() {
                                 <span className="hidden sm:inline">•</span>
                                 <span>הצטרף ב-{formatDate(worker.joined_at)}</span>
                               </div>
-                              <AdminMemberDetail member={worker} formatDate={formatDate} />
+                              <AdminMemberDetail
+                                member={worker}
+                                tenantName={tenant.name}
+                                subscription={subscriptionByTenantId.get(tenant.id)}
+                                formatDate={formatDate}
+                              />
                             </div>
                             <div className="flex gap-2 flex-wrap">
                               <Button

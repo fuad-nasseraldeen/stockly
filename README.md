@@ -61,6 +61,15 @@ SUPPORT_UPLOADS_BUCKET=<s3_bucket_name_for_support_files>
 # SMTP_PASS=<smtp_password_or_app_password>
 # CONTACT_FROM_EMAIL=<from_email>
 # CONTACT_RECEIVER_EMAIL=<your_personal_email>
+# Stripe
+# STRIPE_SECRET_KEY=sk_test_or_live_xxx
+# STRIPE_PRICE_MONTHLY_199=price_xxx
+# STRIPE_PRICE_ANNUAL_149=price_xxx
+# Optional legacy alias:
+# STRIPE_PRICE_ANNUAL_49=price_xxx
+# STRIPE_WEBHOOK_SECRET=whsec_xxx
+# Optional explicit app URL (fallback to FRONTEND_URL):
+# APP_URL=https://your-frontend-domain
 # Turnstile (Contact form anti-bot)
 # TURNSTILE_SECRET_KEY=<server_secret_key>
 ```
@@ -131,8 +140,38 @@ npm run test:integration
   - `POST /api/admin/subscriptions/:tenantId/send-reminder`
 - Tenant status API:
   - `GET /api/subscription/status`
+  - `POST /api/subscription/checkout-session`
+  - `POST /api/subscription/confirm-checkout`
+  - `POST /api/subscription/cancel`
+  - `POST /api/subscription/webhook` (Stripe webhook, raw-body signature verified)
 - אכיפת חסימת כתיבה כשמנוי פג תוקף נשלטת ע"י:
   - `SUBSCRIPTION_ENFORCEMENT_ENABLED=true|false`
+
+### Stripe local testing (test mode)
+
+1. Set test keys in `backend/.env`:
+`STRIPE_SECRET_KEY`, `STRIPE_PRICE_MONTHLY_199`, `STRIPE_PRICE_ANNUAL_149`, `STRIPE_WEBHOOK_SECRET`.
+2. Run backend/frontend locally.
+3. Forward Stripe webhooks with Stripe CLI:
+
+```bash
+stripe listen --forward-to http://localhost:3001/api/subscription/webhook
+```
+
+4. Trigger/test relevant events:
+- `checkout.session.completed`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+
+Example trigger:
+
+```bash
+stripe trigger checkout.session.completed
+stripe trigger invoice.paid
+stripe trigger invoice.payment_failed
+```
 
 ## תיעוד מפורט
 

@@ -15,6 +15,7 @@ import {
   MessageCircleMore,
   Settings,
   BellRing,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { TenantSwitcher } from '../TenantSwitcher';
@@ -32,13 +33,14 @@ type AppHeaderProps = {
 };
 
 const BASE_NAV: Array<{ path: string; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { path: '/dashboard', label: 'דשבורד', icon: LayoutDashboard },
+  { path: '/dashboard', label: 'בית', icon: LayoutDashboard },
   { path: '/products', label: 'מוצרים', icon: Package },
   { path: '/suppliers', label: 'ספקים', icon: Truck },
   { path: '/categories', label: 'קטגוריות', icon: Boxes },
   { path: '/compare', label: 'השוואת מחירים', icon: BarChart3 },
   { path: '/import-export', label: 'ייבוא', icon: Upload },
   { path: '/support', label: 'תמיכה', icon: MessageCircleMore },
+  { path: '/subscription', label: 'מנוי וחיובים', icon: CreditCard },
   { path: '/settings', label: 'הגדרות', icon: Settings },
 ];
 
@@ -129,7 +131,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
           onClick={() => setMobileMenuOpen(false)}
         />
         <div
-          className={`fixed right-0 top-0 h-full w-[86vw] max-w-sm border-l border-border bg-background shadow-xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          className={`fixed right-0 top-2 h-[calc(100%-8px)] w-[82vw] max-w-[340px] border-l border-border bg-background shadow-xl transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         >

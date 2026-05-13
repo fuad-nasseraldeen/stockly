@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { computeSubscriptionStatus, ensureTenantSubscription, shouldEnforceSubscriptionWrites } from '../lib/subscription.js';
 
 const router = Router();
 
@@ -26,6 +27,18 @@ router.get('/', requireAuth, async (req, res) => {
     const user = (req as any).user;
     const tenantId = req.headers['x-tenant-id'] as string | undefined;
     const hasTenant = !!tenantId;
+
+    if (hasTenant && tenantId && shouldEnforceSubscriptionWrites()) {
+      const sub = await ensureTenantSubscription(tenantId);
+      const computed = computeSubscriptionStatus(sub);
+      if (computed.status === 'expired' || computed.status === 'cancelled') {
+        return res.status(403).json({
+          error: 'תקופת הניסיון הסתיימה. כדי להמשיך להשתמש במערכת יש לשדרג מנוי.',
+          code: 'SUBSCRIPTION_EXPIRED',
+          daysRemaining: computed.daysRemaining,
+        });
+      }
+    }
 
     // Always fetch tenants (no tenant required)
     const tenantsPromise = (async () => {

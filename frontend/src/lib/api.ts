@@ -415,7 +415,8 @@ export const authApi = {
   signupWithOtp: (payload: {
     email: string;
     password: string;
-    fullName: string;
+    firstName: string;
+    lastName: string;
     phone: string;
     code: string;
   }): Promise<{
@@ -803,9 +804,24 @@ export const tenantApi = {
     apiRequest('/api/tenants/invites/' + id, {
       method: 'DELETE',
     }),
+  renameCurrentTenant: (name: string): Promise<Tenant> =>
+    apiRequest<Tenant>('/api/tenants/current/name', {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
 };
 
 export const accountApi = {
+  updateProfile: (payload: { full_name?: string; first_name?: string; last_name?: string }): Promise<{
+    ok: boolean;
+    full_name: string;
+    first_name?: string | null;
+    last_name?: string | null;
+  }> =>
+    apiRequest('/api/account/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   delete: (payload: {
     confirmation: 'מחק';
     reason:
@@ -828,7 +844,7 @@ export const accountApi = {
 export const tenantsApi = {
   list: (): Promise<Tenant[]> => apiRequest<Tenant[]>('/api/tenants', { skipTenantHeader: true }),
   
-  create: (data: { name: string }): Promise<Tenant> =>
+  create: (data: { name: string; initial_plan?: 'trial_free' | 'monthly_199' | 'annual_49' }): Promise<Tenant> =>
     apiRequest<Tenant>('/api/tenants', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -973,6 +989,22 @@ export type TenantSubscription = {
   tenants?: { id: string; name: string; created_at?: string } | null;
 };
 
+export type BillingHistoryItem = {
+  id: string;
+  amount_paid: number;
+  currency: string;
+  status: string;
+  hosted_invoice_url: string | null;
+  invoice_pdf: string | null;
+  created_at: string;
+  period_start: string;
+  period_end: string;
+};
+
+export type SubscriptionCancelResponse = TenantSubscription & {
+  cancel_message?: string;
+};
+
 export const adminApi = {
   getTenants: (): Promise<TenantWithUsers[]> =>
     apiRequest<TenantWithUsers[]>('/api/admin/tenants', { skipTenantHeader: true }),
@@ -1077,6 +1109,26 @@ export const adminApi = {
 
 export const subscriptionApi = {
   getStatus: (): Promise<TenantSubscription> => apiRequest<TenantSubscription>('/api/subscription/status'),
+  createCheckoutSession: (plan: 'monthly_199' | 'annual_49'): Promise<{ url: string }> =>
+    apiRequest<{ url: string }>('/api/subscription/checkout-session', {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
+  confirmCheckout: (sessionId: string): Promise<TenantSubscription> =>
+    apiRequest<TenantSubscription>('/api/subscription/confirm-checkout', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    }),
+  cancel: (): Promise<SubscriptionCancelResponse> =>
+    apiRequest<SubscriptionCancelResponse>('/api/subscription/cancel', {
+      method: 'POST',
+    }),
+  billingHistory: (): Promise<{ items: BillingHistoryItem[] }> =>
+    apiRequest<{ items: BillingHistoryItem[] }>('/api/subscription/billing-history'),
+  billingPortal: (): Promise<{ url: string }> =>
+    apiRequest<{ url: string }>('/api/subscription/billing-portal', {
+      method: 'POST',
+    }),
 };
 
 export type ImportMapping = Record<string, number | null>;

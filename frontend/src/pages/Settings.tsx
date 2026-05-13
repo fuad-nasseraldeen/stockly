@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
+import { useTenantSubscriptionStatus } from '../hooks/useAdmin';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Eye, EyeOff, Send, Users, Loader2, HelpCircle, ChevronUp, ChevronDown } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
-import { accountApi, authApi, tenantsApi, tenantApi, settingsApi, setTenantIdForApi, type TenantMember, type TenantInvite } from '../lib/api';
+import { accountApi, authApi, tenantsApi, tenantApi, settingsApi, setTenantIdForApi, subscriptionApi, type TenantMember, type TenantInvite } from '../lib/api';
 import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { useTableLayout } from '../hooks/useTableLayout';
 import { getTableLayoutProductsKey } from '../lib/table-layout-keys';
@@ -23,9 +24,11 @@ import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
 export default function Settings() {
   const { openHelp, showWelcome, supportButtonHidden, showSupportButton } = useHelpCenter();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: settings, isLoading } = useSettings();
+  const { data: subscriptionStatus } = useTenantSubscriptionStatus();
   const updateSettings = useUpdateSettings();
-  const { currentTenant } = useTenant();
+  const { currentTenant, setCurrentTenant, refetchTenants } = useTenant();
   const queryClient = useQueryClient();
 
   const [vat, setVat] = useState<string>(() =>
@@ -41,6 +44,7 @@ export default function Settings() {
   );
 
   const [userEmail, setUserEmail] = useState<string>('');
+  const [storeName, setStoreName] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
 
@@ -74,6 +78,7 @@ export default function Settings() {
   const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [dangerActionMessage, setDangerActionMessage] = useState<string | null>(null);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
 
   const removeMember = useMutation({
     mutationFn: (userId: string) => tenantApi.removeMember(userId),
@@ -90,17 +95,34 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user?.email) {
         setUserEmail(user.email);
       }
-      const metaFullName =
-        (user?.user_metadata as any)?.full_name ?? '';
-      if (metaFullName && typeof metaFullName === 'string') {
+      if (!user?.id) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const dbFullName = (profile?.full_name || '').trim();
+      if (dbFullName) {
+        setFullName(dbFullName);
+        return;
+      }
+
+      const metaFullName = ((user?.user_metadata as any)?.full_name ?? '').trim();
+      if (metaFullName) {
         setFullName(metaFullName);
       }
     });
   }, []);
+
+  useEffect(() => {
+    setStoreName(currentTenant?.name ?? '');
+  }, [currentTenant?.name]);
 
   useEffect(() => {
     if (!settings) return;
@@ -123,6 +145,8 @@ export default function Settings() {
   const [recalcLoading, setRecalcLoading] = useState(false);
   const [recalcMessage, setRecalcMessage] = useState<string | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [storeMessage, setStoreMessage] = useState<string | null>(null);
+  const [storeSaving, setStoreSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [savingFieldLayout, setSavingFieldLayout] = useState(false);
   const [explainPopup, setExplainPopup] = useState<'margin' | 'decimal' | null>(null);
@@ -288,24 +312,24 @@ export default function Settings() {
   const handleUpdateProfile = async (): Promise<void> => {
     try {
       setProfileMessage(null);
-      const updates: { password?: string; data?: { full_name?: string } } = {};
+      const nextFullName = fullName.trim();
+      const nextPassword = password.trim();
 
-      if (password.trim()) {
-        updates.password = password.trim();
-      }
-      if (fullName.trim()) {
-        updates.data = { full_name: fullName.trim() };
-      }
-
-      if (!updates.password && !updates.data) {
+      if (!nextPassword && !nextFullName) {
         setProfileMessage('אין מה לעדכן');
         return;
       }
 
-      const { error } = await supabase.auth.updateUser(updates);
-      if (error) {
-        setProfileMessage(error.message);
-        return;
+      if (nextFullName) {
+        await accountApi.updateProfile({ full_name: nextFullName });
+      }
+
+      if (nextPassword) {
+        const { error } = await supabase.auth.updateUser({ password: nextPassword });
+        if (error) {
+          setProfileMessage(error.message);
+          return;
+        }
       }
 
       setProfileMessage('הפרופיל עודכן בהצלחה');
@@ -314,6 +338,33 @@ export default function Settings() {
     } catch (error) {
       console.error('Error updating profile:', error);
       setProfileMessage('שגיאה בעדכון פרופיל');
+    }
+  };
+
+  const handleSaveStoreName = async (): Promise<void> => {
+    const nextName = storeName.trim();
+    if (nextName.length < 2) {
+      setStoreMessage('שם חנות חייב להכיל לפחות 2 תווים');
+      return;
+    }
+    try {
+      setStoreSaving(true);
+      setStoreMessage(null);
+      const updated = await tenantApi.renameCurrentTenant(nextName);
+      setCurrentTenant({
+        id: updated.id,
+        name: updated.name,
+        role: currentTenant?.role ?? 'owner',
+        created_at: updated.created_at,
+      });
+      await refetchTenants();
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      setStoreMessage('שם החנות עודכן בהצלחה');
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'שגיאה בעדכון שם החנות';
+      setStoreMessage(msg);
+    } finally {
+      setStoreSaving(false);
     }
   };
 
@@ -340,6 +391,32 @@ export default function Settings() {
   useEffect(() => {
     void loadPhoneStatus();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const billingStatus = params.get('billing');
+    const sessionId = params.get('session_id');
+    if (billingStatus !== 'success' || !sessionId) return;
+
+    let cancelled = false;
+    const confirm = async () => {
+      try {
+        await subscriptionApi.confirmCheckout(sessionId);
+        if (cancelled) return;
+        setBillingMessage('המנוי הופעל בהצלחה. תודה רבה!');
+        await queryClient.invalidateQueries({ queryKey: ['tenant', 'subscription-status'] });
+        navigate('/settings', { replace: true });
+      } catch (error) {
+        if (cancelled) return;
+        const msg = error instanceof Error ? error.message : 'לא הצלחנו לאשר את המנוי';
+        setBillingMessage(msg);
+      }
+    };
+    void confirm();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.search, navigate, queryClient]);
 
   const startPhoneChange = (): void => {
     setProfilePhoneStep('phone');
@@ -481,6 +558,27 @@ export default function Settings() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">הגדרות</h1>
         <p className="text-sm text-muted-foreground mt-1.5">שליטה בהגדרות מערכת ופרופיל משתמש</p>
       </div>
+      {subscriptionStatus ? (
+        <Card className="shadow-md border-2">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold">מנוי וחיובים</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p>
+              סטטוס נוכחי: <strong>{subscriptionStatus.computed_status}</strong>
+              {' '}• מסלול: <strong>{subscriptionStatus.plan_name}</strong>
+            </p>
+            <Button type="button" onClick={() => navigate('/subscription')}>
+              מעבר לעמוד מנוי וחיובים
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+      {billingMessage ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
+          {billingMessage}
+        </div>
+      ) : null}
 
       {/* VAT & Margin settings */}
       <Card className="shadow-md border-2">
@@ -1043,6 +1141,32 @@ export default function Settings() {
           <CardTitle className="text-lg font-bold">הגדרות פרופיל</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <Label htmlFor="storeName">שם חנות</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="storeName"
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                placeholder="שם החנות"
+                disabled={currentTenant?.role !== 'owner'}
+              />
+              <Button
+                type="button"
+                onClick={handleSaveStoreName}
+                disabled={currentTenant?.role !== 'owner' || storeSaving || storeName.trim().length < 2}
+              >
+                {storeSaving ? 'שומר...' : 'שמור'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {currentTenant?.role === 'owner'
+                ? 'השם יוצג בכל המערכת לכל משתמשי החנות.'
+                : 'רק בעלים יכול לעדכן את שם החנות.'}
+            </p>
+            {storeMessage ? <p className="text-xs text-muted-foreground">{storeMessage}</p> : null}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="userEmail">אימייל</Label>

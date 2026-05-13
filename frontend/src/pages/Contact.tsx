@@ -1,13 +1,11 @@
-import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
+import { Mail, Linkedin, MapPin, Send } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { publicApi } from '../lib/api';
-import { FlatPageLayout } from '../components/layout/FlatPageLayout';
-
-const WHATSAPP_LINK = 'https://wa.me/972503955900?text=Hi%20Stockly%2C%20I%20have%20a%20question';
+import { PublicTopNav } from '../components/layout/PublicTopNav';
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim();
 
 export default function Contact() {
@@ -45,13 +43,23 @@ export default function Contact() {
   };
 
   return (
-    <FlatPageLayout
-      title="צור קשר"
-      description="יש שאלות על הקמה, תמחור או תמיכה? אפשר לפנות אלינו ישירות."
-      maxWidthClass="max-w-xl"
-    >
-      <div className="space-y-4 rounded-xl border border-border bg-card/60 p-4">
-          <form onSubmit={handleSubmit} className="rounded-lg border p-4 bg-background/60 space-y-3">
+    <div className="min-h-screen w-full bg-[#f5f5f7] text-[#0f172a]" dir="rtl">
+      <PublicTopNav />
+      <header className="border-b border-slate-200 bg-[#e8edf6]">
+        <div className="mx-auto max-w-6xl px-6 py-14 text-center">
+          <span className="inline-flex rounded-full bg-[#dbe7fb] px-4 py-1 text-sm font-semibold text-[#2f66e0]">
+            דברו איתנו
+          </span>
+          <h1 className="mt-5 text-6xl font-extrabold tracking-tight text-[#0b1f4b]">צור קשר</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-2xl text-slate-700">
+            שאלה? הצעה? רוצה לדעת עוד? אנחנו כאן בשבילך.
+          </p>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-12">
+        <div className="grid gap-8 md:grid-cols-2">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
                 {error}
@@ -63,13 +71,14 @@ export default function Contact() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="contact-name">שם</Label>
+              <Label htmlFor="contact-name">שם מלא</Label>
               <Input
                 id="contact-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                placeholder="השם שלך"
+                placeholder="ישראל ישראלי"
+                className="h-11 rounded-xl border border-slate-300 bg-white shadow-none hover:shadow-none focus-visible:ring-1 focus-visible:ring-[#2f66e0] focus-visible:ring-offset-0"
               />
             </div>
             <div className="space-y-2">
@@ -80,7 +89,8 @@ export default function Contact() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="you@example.com"
+                placeholder="israel@example.com"
+                className="h-11 rounded-xl border border-slate-300 bg-white shadow-none hover:shadow-none focus-visible:ring-1 focus-visible:ring-[#2f66e0] focus-visible:ring-offset-0"
               />
             </div>
             <div className="space-y-2">
@@ -91,8 +101,8 @@ export default function Contact() {
                 onChange={(e) => setMessage(e.target.value)}
                 required
                 minLength={10}
-                className="w-full min-h-28 rounded-md border bg-background px-3 py-2 text-sm"
-                placeholder="כתוב כאן את הפנייה שלך..."
+                className="min-h-40 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-none outline-none focus:ring-1 focus:ring-[#2f66e0]"
+                placeholder="כתוב את ההודעה שלך כאן..."
               />
             </div>
             <div className="hidden" aria-hidden>
@@ -105,10 +115,10 @@ export default function Contact() {
                 autoComplete="off"
               />
             </div>
-            <div className="">
+            <div>
               {TURNSTILE_SITE_KEY ? (
                 <div
-                  className="w-[109%] overflow-hidden origin-top-right"
+                  className="w-[109%] origin-top-right overflow-hidden"
                   style={{ transform: 'scale(0.92)' }}
                 >
                   <Turnstile
@@ -128,43 +138,56 @@ export default function Contact() {
                 <p className="text-sm text-destructive">חסר VITE_TURNSTILE_SITE_KEY בהגדרות ה-frontend.</p>
               )}
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'שולח...' : 'שליחת פנייה'}
+            <Button type="submit" className="h-11 w-full rounded-xl bg-[#2f66e0] text-base font-bold hover:bg-[#2558c9]" disabled={loading}>
+              <span className="inline-flex items-center gap-2">
+                <Send className="h-4 w-4" />
+                {loading ? 'שולח...' : 'שלח הודעה'}
+              </span>
             </Button>
           </form>
 
-          <div className="rounded-lg border p-4 bg-background/60 space-y-2">
-            <p className="text-sm">
-              <span className="font-medium">אימייל:</span>{' '}
-              <a className="text-primary hover:underline" href="mailto:auth@stockly-il.com">
-                auth@stockly-il.com
-              </a>
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">וואטסאפ:</span> זמין להודעות תמיכה.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              תמיכה טלפונית זמינה לפי בקשה.
-            </p>
-          </div>
+          <aside className="space-y-6 pt-2">
+            <h2 className="text-4xl font-extrabold text-[#0b1f4b]">פרטי יצירת קשר</h2>
 
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <a href={WHATSAPP_LINK} target="_blank" rel="noreferrer">
-                שליחה בוואטסאפ
-              </a>
-            </Button>
-            <Button asChild variant="outline">
-              <a href="mailto:auth@stockly-il.com">שליחת אימייל</a>
-            </Button>
-          </div>
+            <div className="space-y-5">
+              <div className="flex items-center justify-between rounded-xl p-2">
+                <div>
+                  <p className="text-lg font-bold">אימייל</p>
+                  <a className="text-sm text-[#1d4ed8] hover:underline" href="mailto:auth@stockly-il.com">auth@stockly-il.com</a>
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#dbe7fb] text-[#2f66e0]">
+                  <Mail className="h-4 w-4" />
+                </span>
+              </div>
 
-          <div className="text-sm text-muted-foreground flex flex-wrap gap-4">
-            <Link className="hover:underline" to="/">חזרה לעמוד הבית</Link>
-            <Link className="hover:underline" to="/privacy">מדיניות פרטיות</Link>
-            <Link className="hover:underline" to="/terms">תנאי שימוש</Link>
-          </div>
-      </div>
-    </FlatPageLayout>
+              <div className="flex items-center justify-between rounded-xl p-2">
+                <div>
+                  <p className="text-lg font-bold">LinkedIn</p>
+                  <p className="text-sm text-[#1d4ed8]">fuad-nasseraldeen</p>
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#dbe7fb] text-[#2f66e0]">
+                  <Linkedin className="h-4 w-4" />
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl p-2">
+                <div>
+                  <p className="text-lg font-bold">מיקום</p>
+                  <p className="text-sm text-slate-600">ישראל</p>
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#dbe7fb] text-[#2f66e0]">
+                  <MapPin className="h-4 w-4" />
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#c8d9fa] bg-[#e8f0ff] px-6 py-5">
+              <p className="text-2xl font-bold text-[#0b1f4b]">זמן תגובה</p>
+              <p className="mt-2 text-sm text-slate-700">אנחנו מגיבים בכל פנייה תוך 24 שעות בימי עסקים.</p>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
   );
 }

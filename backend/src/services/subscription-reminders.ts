@@ -6,17 +6,31 @@ type SubscriptionWithTenant = TenantSubscriptionRow & {
   tenants?: { id: string; name: string } | null;
 };
 
-const REMINDER_DAYS = new Set([7, 3, 0]);
-export function shouldSendReminderForDays(daysRemaining: number, lastReminderAt: string | null, now: Date = new Date()): boolean {
-  if (!REMINDER_DAYS.has(daysRemaining)) return false;
+const PAID_REMINDER_DAYS = new Set([7, 3, 1, 0]);
+export function shouldSendReminderForDays(
+  daysRemaining: number,
+  lastReminderAt: string | null,
+  planName: string,
+  now: Date = new Date(),
+): boolean {
+  if (planName === 'trial_free') {
+    if (daysRemaining < 0 || daysRemaining > 29) return false;
+    return shouldSendReminder(lastReminderAt, now);
+  }
+  if (!PAID_REMINDER_DAYS.has(daysRemaining)) return false;
   return shouldSendReminder(lastReminderAt, now);
 }
 
-function buildReminderMessage(tenantName: string, days: number, validUntil: string): string {
+function buildReminderMessage(tenantName: string, days: number, validUntil: string, planName: string): string {
+  const isTrial = planName === 'trial_free';
   if (days <= 0) {
-    return `Stockly: המנוי של ${tenantName} פג היום (${validUntil}). יש להסדיר תשלום כדי למנוע השבתה.`;
+    return isTrial
+      ? `Stockly: תקופת הניסיון של ${tenantName} הסתיימה היום (${validUntil}). כדי להמשיך לעבוד יש לבחור מנוי.`
+      : `Stockly: המנוי של ${tenantName} פג היום (${validUntil}). יש להסדיר תשלום כדי למנוע השבתה.`;
   }
-  return `Stockly: המנוי של ${tenantName} מסתיים בעוד ${days} ימים (עד ${validUntil}).`;
+  return isTrial
+    ? `Stockly: נותרו ${days} ימים לניסיון החינם של ${tenantName} (עד ${validUntil}).`
+    : `Stockly: המנוי של ${tenantName} מסתיים בעוד ${days} ימים (עד ${validUntil}).`;
 }
 
 async function getTenantPhones(tenantId: string): Promise<string[]> {
@@ -56,10 +70,10 @@ export async function runDailySubscriptionReminders(now: Date = new Date()): Pro
     const computed = computeSubscriptionStatus(row, now);
     const days = computed.daysRemaining;
 
-    if (!shouldSendReminderForDays(days, row.last_reminder_sent_at, now)) continue;
+    if (!shouldSendReminderForDays(days, row.last_reminder_sent_at, row.plan_name, now)) continue;
 
     const tenantName = row.tenants?.name || row.tenant_id;
-    const msg = buildReminderMessage(tenantName, days, row.valid_until);
+    const msg = buildReminderMessage(tenantName, days, row.valid_until, row.plan_name);
 
     const targets = new Set<string>();
     if (supportPhone) targets.add(supportPhone);
@@ -99,7 +113,7 @@ export async function sendSubscriptionReminderForTenant(tenantId: string, now: D
   const row = data as SubscriptionWithTenant;
   const computed = computeSubscriptionStatus(row, now);
   const tenantName = row.tenants?.name || row.tenant_id;
-  const msg = buildReminderMessage(tenantName, Math.max(computed.daysRemaining, 0), row.valid_until);
+  const msg = buildReminderMessage(tenantName, Math.max(computed.daysRemaining, 0), row.valid_until, row.plan_name);
 
   let sent = 0;
   const targets = new Set<string>();

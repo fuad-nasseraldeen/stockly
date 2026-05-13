@@ -23,6 +23,7 @@ import NewProduct from './pages/NewProduct';
 import Categories from './pages/Categories';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
+import Subscription from './pages/Subscription';
 import EditProduct from './pages/EditProduct';
 import StockAlerts from './pages/StockAlerts';
 import ImportExport from './pages/ImportExport';
@@ -36,13 +37,14 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
+import Ad from './pages/Ad';
 import { OnboardingRouter } from './components/OnboardingRouter';
 import { SplashScreen } from './components/SplashScreen';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from './components/ui/dialog';
 import { Label } from './components/ui/label';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
-import { authApi } from './lib/api';
+import { accountApi, authApi } from './lib/api';
 import { RouteScrollToTop } from './components/RouteScrollToTop';
 import { HelpCenterProvider, useHelpCenter } from './contexts/HelpCenterContext';
 import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
@@ -58,6 +60,7 @@ import { NetworkActivityBar } from './components/NetworkActivityBar';
 import { loadAccessibilityPreferences, applyAccessibilityToDocument } from './lib/accessibility';
 import { AlertTriangle, CalendarClock, ShieldCheck } from 'lucide-react';
 const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
+const APP_MANAGER_EMAIL = 'fuadnasiraldin@gmail.com';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -166,6 +169,12 @@ function AppContent({
   const [phoneFlowError, setPhoneFlowError] = useState('');
   const [resendIn, setResendIn] = useState(0);
   const [phoneVerificationPending, setPhoneVerificationPending] = useState(false);
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [nameFlowLoading, setNameFlowLoading] = useState(false);
+  const [nameFlowError, setNameFlowError] = useState('');
+  const isAppManagerUser = user?.email?.toLowerCase() === APP_MANAGER_EMAIL;
 
   const toPhoneFlowErrorMessage = (err: unknown): string => {
     const message = err instanceof Error ? err.message : '';
@@ -182,24 +191,55 @@ function AppContent({
     if (!user) {
       setPhoneDialogOpen(false);
       setPhoneVerificationPending(false);
+      setNameDialogOpen(false);
       return;
     }
 
     let isMounted = true;
     const checkPhone = async () => {
       try {
-        const status = await authApi.phoneStatus();
-        const reminderKey = `${PHONE_REMINDER_SESSION_KEY_PREFIX}${user.id}`;
-        const alreadyShownThisSession = sessionStorage.getItem(reminderKey) === '1';
+        if (isAppManagerUser) {
+          if (isMounted) {
+            setPhoneDialogOpen(false);
+            setPhoneVerificationPending(false);
+          }
+        } else {
+          const status = await authApi.phoneStatus();
+          const reminderKey = `${PHONE_REMINDER_SESSION_KEY_PREFIX}${user.id}`;
+          const alreadyShownThisSession = sessionStorage.getItem(reminderKey) === '1';
 
-        if (isMounted) {
-          // Keep the top reminder banner visible whenever verification is required.
-          setPhoneVerificationPending(status.phoneRequired);
+          if (isMounted) {
+            // Keep the top reminder banner visible whenever verification is required.
+            setPhoneVerificationPending(status.phoneRequired);
+          }
+
+          if (isMounted && status.phoneRequired && !alreadyShownThisSession) {
+            setPhoneDialogOpen(true);
+            sessionStorage.setItem(reminderKey, '1');
+          }
         }
 
-        if (isMounted && status.phoneRequired && !alreadyShownThisSession) {
-          setPhoneDialogOpen(true);
-          sessionStorage.setItem(reminderKey, '1');
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name,last_name,full_name')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        const meta = (user.user_metadata as { first_name?: string; last_name?: string; full_name?: string } | null) ?? null;
+        const profileFirst = String(profile?.first_name || '').trim();
+        const profileLast = String(profile?.last_name || '').trim();
+        const fullName = String(profile?.full_name || meta?.full_name || '').trim();
+        const fullParts = fullName.split(/\s+/).filter(Boolean);
+        const derivedFirst = profileFirst || (fullParts.length > 0 ? fullParts[0] : '');
+        const derivedLast = profileLast || (fullParts.length > 1 ? fullParts.slice(1).join(' ') : '');
+
+        if (isMounted) {
+          setFirstName(derivedFirst);
+          setLastName(derivedLast);
+          // Enforce explicit first/last name persistence in profiles (important for Google signups).
+          const missingNameParts = !profileFirst || !profileLast;
+          if (missingNameParts) {
+            setNameDialogOpen(true);
+          }
         }
       } catch {
         // Keep app usable if phone status endpoint is temporarily unavailable.
@@ -210,7 +250,7 @@ function AppContent({
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user, isAppManagerUser]);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -252,6 +292,33 @@ function AppContent({
     }
   };
 
+  const saveNameParts = async () => {
+    setNameFlowError('');
+    const f = firstName.trim();
+    const l = lastName.trim();
+    if (!f) {
+      setNameFlowError('נא להזין שם פרטי');
+      return;
+    }
+    if (!l) {
+      setNameFlowError('נא להזין שם משפחה');
+      return;
+    }
+    setNameFlowLoading(true);
+    try {
+      await accountApi.updateProfile({
+        first_name: f,
+        last_name: l,
+        full_name: `${f} ${l}`.trim(),
+      });
+      setNameDialogOpen(false);
+    } catch (err: unknown) {
+      setNameFlowError(err instanceof Error ? err.message : 'לא הצלחנו לשמור את הפרופיל כרגע');
+    } finally {
+      setNameFlowLoading(false);
+    }
+  };
+
   // Fetch bootstrap data once user is logged in
   // Bootstrap will automatically use current tenant if selected (via x-tenant-id header)
   // This seeds React Query cache so existing hooks can use cached data instantly
@@ -262,9 +329,10 @@ function AppContent({
   }
 
   if (!user) {
+    const isAdPage = location.pathname === '/ad';
     return (
       <div className="min-h-screen flex flex-col bg-background">
-        <div className="flex-1 flex items-center justify-center">
+        <div className={`flex-1 flex ${isAdPage ? 'items-stretch justify-stretch' : 'items-center justify-center'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key="auth-shell"
@@ -272,9 +340,10 @@ function AppContent({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.45, ease: 'easeOut' }}
-              className="w-full max-w-md px-4"
+              className={`w-full ${isAdPage ? 'min-h-0 px-0' : 'min-h-screen px-0'}`}
             >
               <Routes>
+                <Route path="/ad" element={<Ad />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -316,7 +385,14 @@ function AppContent({
         </HelpCenterProvider>
       </OnboardingRouter>
 
-      <Dialog open={phoneDialogOpen} onOpenChange={setPhoneDialogOpen}>
+      <Dialog
+        open={phoneDialogOpen}
+        onOpenChange={(open) => {
+          // Enforce phone verification when it's required for this account.
+          if (!open && phoneVerificationPending) return;
+          setPhoneDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>אימות מספר טלפון נדרש</DialogTitle>
@@ -365,15 +441,6 @@ function AppContent({
                 <Button onClick={requestPhoneOtp} disabled={phoneFlowLoading || phoneValue.trim().length === 0}>
                   {phoneFlowLoading ? 'שולח קוד...' : 'שלח קוד אימות'}
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setPhoneDialogOpen(false);
-                  }}
-                  disabled={phoneFlowLoading}
-                >
-                  תזכיר לי מאוחר יותר
-                </Button>
               </>
             ) : (
               <>
@@ -398,17 +465,55 @@ function AppContent({
                 >
                   שינוי מספר
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setPhoneDialogOpen(false);
-                  }}
-                  disabled={phoneFlowLoading}
-                >
-                 תזכיר לי מאוחר יותר
-                </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={nameDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) return;
+          setNameDialogOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>השלמת פרטי חשבון</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              כדי להשלים הרשמה יש להזין שם פרטי ושם משפחה.
+            </p>
+            {nameFlowError ? (
+              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                {nameFlowError}
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="profile-first-name">שם פרטי</Label>
+              <Input
+                id="profile-first-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="ישראל"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="profile-last-name">שם משפחה</Label>
+              <Input
+                id="profile-last-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="ישראלי"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-col sm:items-stretch">
+            <Button onClick={saveNameParts} disabled={nameFlowLoading}>
+              {nameFlowLoading ? 'שומר...' : 'שמור והמשך'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -513,10 +618,11 @@ function AppWithNavigation({
   const { data: subscription } = useTenantSubscriptionStatus();
   const location = useLocation();
   const isAdminPage = location.pathname.startsWith('/admin');
+  const isAdPage = location.pathname === '/ad';
   const adminOnlyMode = isAdminPage && isSuperAdmin === true;
  
   // Super admin can access /admin without a tenant
-  const canAccess = isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
+  const canAccess = isAdPage || isAdminPage || currentTenant || (isSuperAdmin === true && isAdminPage);
   
   // Only show navigation if we have a tenant or if super admin accessing admin page
   if (!canAccess) {
@@ -559,7 +665,11 @@ function AppWithNavigation({
             )}
             <span>
               {subscription.computed_status === 'expired' || subscription.computed_status === 'cancelled'
-                ? 'תוקף המנוי פג. יש להסדיר תשלום להמשך שימוש.'
+                ? subscription.plan_name === 'trial_free'
+                  ? 'תקופת הניסיון הסתיימה. כדי להמשיך ליהנות מהמערכת יש לבחור מנוי.'
+                  : 'תוקף המנוי פג. יש להסדיר תשלום להמשך שימוש.'
+                : subscription.plan_name === 'trial_free'
+                ? `ניסיון חינם פעיל • נותרו ${Math.max(subscription.daysRemaining, 0)} ימים`
                 : subscription.isExpiringSoon
                 ? `מנוי מסתיים בעוד ${Math.max(subscription.daysRemaining, 0)} ימים`
                 : `מנוי פעיל עד ${new Date(subscription.valid_until).toLocaleDateString('he-IL')}`}
@@ -603,9 +713,11 @@ function AppWithNavigation({
               }
             />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/subscription" element={<Subscription />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/about" element={<About />} />
+            <Route path="/ad" element={<Ad />} />
             <Route path="/" element={<Navigate to="/dashboard" />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

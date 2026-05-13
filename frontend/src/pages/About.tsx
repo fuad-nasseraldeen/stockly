@@ -1,181 +1,96 @@
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FlatPageLayout } from '../components/layout/FlatPageLayout';
-import { Button } from '../components/ui/button';
+import { Eye, Target, Users, Shield } from 'lucide-react';
+import { PublicTopNav } from '../components/layout/PublicTopNav';
 
-const coreItems = [
-  'ניהול מוצרים, ספקים וקטגוריות במקום אחד',
-  'עדכוני מחירים מהירים עם היסטוריית מחירים',
-  'תמיכה באריזות, כמות ליחידה ותמחור מדויק',
-  'סידור דינמי של שדות בטבלת מוצרים עם drag & drop',
-  'התאמות טננט: מע"מ, רווח גלובלי ודיוק עשרוני',
-];
-
-const importExportItems = [
-  'ייבוא Excel מכל הגיליונות יחד',
-  'ייבוא PDF – חילוץ טבלאות מקבצי PDF',
-  'ייבוא CSV עם תבנית בעברית',
-  'ייצוא Excel ו-PDF עם בחירת עמודות',
-  'מצב Merge – שומר מידע קיים ומוסיף חדש',
-  'שמירת מיפויים לייבוא חוזר',
-];
-
-const teamItems = [
-  'הזמנת עובדים באימייל או בטלפון',
-  'תפקידים: בעלים או עובד',
-  'מעבר בין חנויות (Multi-tenant)',
-];
-
-const supportItems = [
-  'צ׳אט תמיכה מובנה בתוך המערכת',
-  'צירוף קבצים ותמונות לצ׳אט',
-  'מרכז עזרה עם מדריכים וחיפוש',
-];
-
-const extraItems = [
-  'התחברות בטלפון עם קוד SMS',
-  'מצב לילה (Dark mode)',
-  'ממשק מלא בעברית RTL',
+const values = [
+  {
+    title: 'שקיפות',
+    description: 'אין מחירים נסתרים, אין הפתעות. מה שרואים זה מה שמקבלים.',
+    icon: Eye,
+  },
+  {
+    title: 'פשטות',
+    description: 'אנחנו מאמינים שתוכנה טובה לא צריכה הסבר ארוך. Stockly נבנתה כך שכל אחד יוכל להשתמש בה מהיום הראשון.',
+    icon: Target,
+  },
+  {
+    title: 'קהילה',
+    description: 'אנחנו בונים את Stockly יחד עם הלקוחות שלנו - הפידבק שלכם מניע כל פיצ׳ר חדש.',
+    icon: Users,
+  },
+  {
+    title: 'אמינות',
+    description: 'המידע שלך תמיד זמין, מגובה ומאובטח. אנחנו כאן בשבילך.',
+    icon: Shield,
+  },
 ];
 
 export default function About() {
   return (
-    <FlatPageLayout
-      title="למה Stockly"
-      description="מה האפליקציה שלנו עושה? הרבה מאוד - ובעיקר חוסכת זמן וכאב ראש בניהול היומיומי."
-      maxWidthClass="max-w-5xl"
-    >
-      <div className="space-y-8">
-        <motion.section
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, ease: 'easeOut' }}
-          className="rounded-2xl border bg-card/60 p-5"
-        >
-          <h2 className="text-xl font-semibold">מה Stockly נותנת לך בפועל?</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            במקום לעבוד עם קבצים מפוזרים, טעויות ידניות ומעקב קשה אחרי מחירים – הכל מנוהל במקום אחד,
-            עם זרימה מהירה ונוחה שמתאימה לעבודה יומיומית בחנות אמיתית.
+    <div className="min-h-screen w-full bg-[#f5f5f7] text-[#0f172a]" dir="rtl">
+      <PublicTopNav />
+      <header className="border-b border-slate-200 bg-[#e8edf6]">
+        <div className="mx-auto max-w-6xl px-6 py-14 text-center">
+          <span className="inline-flex rounded-full bg-[#dbe7fb] px-4 py-1 text-sm font-semibold text-[#2f66e0]">
+            מי אנחנו
+          </span>
+          <h1 className="mt-5 text-5xl font-extrabold tracking-tight text-[#0b1f4b]">
+            הסיפור מאחורי <span className="text-[#2f66e0]">Stockly</span>
+          </h1>
+          <p className="mx-auto mt-4 max-w-3xl text-xl leading-8 text-slate-700">
+            נולדנו מתוך ההבנה שבעלי עסקים קטנים בישראל מגיעים לעבוד בבוקר - ולא להתעסק עם גיליונות אקסל.
           </p>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.05, ease: 'easeOut' }}
-        >
-          <h3 className="mb-3 text-lg font-semibold">ליבת המערכת</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {coreItems.map((text) => (
-              <article
-                key={text}
-                className="rounded-xl border bg-background/70 p-4 shadow-sm transition-all hover:shadow-md"
-              >
-                <p className="text-sm leading-6">{text}</p>
-              </article>
-            ))}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1, ease: 'easeOut' }}
-        >
-          <h3 className="mb-3 text-lg font-semibold">ייבוא וייצוא</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {importExportItems.map((text) => (
-              <article
-                key={text}
-                className="rounded-xl border bg-background/70 p-4 shadow-sm transition-all hover:shadow-md"
-              >
-                <p className="text-sm leading-6">{text}</p>
-              </article>
-            ))}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.15, ease: 'easeOut' }}
-        >
-          <h3 className="mb-3 text-lg font-semibold">צוות וחנות</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {teamItems.map((text) => (
-              <article
-                key={text}
-                className="rounded-xl border bg-background/70 p-4 shadow-sm transition-all hover:shadow-md"
-              >
-                <p className="text-sm leading-6">{text}</p>
-              </article>
-            ))}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.2, ease: 'easeOut' }}
-        >
-          <h3 className="mb-3 text-lg font-semibold">תמיכה ועזרה</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {supportItems.map((text) => (
-              <article
-                key={text}
-                className="rounded-xl border bg-background/70 p-4 shadow-sm transition-all hover:shadow-md"
-              >
-                <p className="text-sm leading-6">{text}</p>
-              </article>
-            ))}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.25, ease: 'easeOut' }}
-        >
-          <h3 className="mb-3 text-lg font-semibold">ועוד</h3>
-          <div className="flex flex-wrap gap-2">
-            {extraItems.map((text) => (
-              <span
-                key={text}
-                className="rounded-lg border bg-muted/50 px-3 py-1.5 text-sm"
-              >
-                {text}
-              </span>
-            ))}
-          </div>
-        </motion.section>
-
-        <motion.section
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4, delay: 0.3, ease: 'easeOut' }}
-          className="rounded-2xl border bg-primary/5 p-5"
-        >
-          <h3 className="text-lg font-semibold">דוגמאות למה אנשים אוהבים ב-Stockly</h3>
-          <ul className="mt-3 list-disc space-y-1 pr-5 text-sm text-muted-foreground">
-            <li>ייצוא דוח רק לפי מה שמעניין אותך באותו רגע</li>
-            <li>עריכת מחירים בכמה קליקים במקום שעות של עבודה ידנית</li>
-            <li>שליטה בנראות שדות המוצרים לפי סגנון העבודה שלך</li>
-            <li>ייבוא מחירים מספק ב-PDF בלי להקליד ידנית</li>
-          </ul>
-        </motion.section>
-
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link to="/login">התחל עכשיו</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/contact">דבר איתנו</Link>
-          </Button>
-          <Button asChild variant="ghost">
-            <Link to="/">חזרה לדף הבית</Link>
-          </Button>
         </div>
-      </div>
-    </FlatPageLayout>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-12">
+        <section className="text-center">
+          <h2 className="text-4xl font-extrabold text-[#0b1f4b]">הסיפור שלנו</h2>
+          <div className="mx-auto mt-6 max-w-4xl space-y-4 text-lg leading-8 text-slate-700">
+            <p>
+              Stockly נוסדה על ידי פואד נאסראלדין, יזם ופותר בעיות מישראל, שזיהה שעסקים קטנים - חנויות מכולת, ועסקי
+              מזון - מתמודדים יום-יום עם ניהול מלאי כאוטי: שעות ידניות, טעויות במלאי, ואיבוד שליטה על מה יש במחסן.
+            </p>
+            <p>
+              הפתרונות הקיימים היו יקרים מדי, מסובכים מדי, ולא מותאמים לשוק הישראלי. אז בנינו את Stockly - מערכת
+              חכמה, בעברית, שמתחילים להשתמש בה ביום הראשון.
+            </p>
+            <p>
+              היום Stockly משרתת מאות עסקים ברחבי ישראל, ואנחנו ממשיכים לבנות, לשפר, ולהקשיב ללקוחות שלנו כל יום.
+            </p>
+          </div>
+        </section>
+
+        <section className="mt-16 border-t border-slate-200 pt-12">
+          <h2 className="text-center text-5xl font-extrabold text-[#0b1f4b]">הערכים שמנחים אותנו</h2>
+          <div className="mt-10 grid gap-5 md:grid-cols-2">
+            {values.map(({ title, description, icon: Icon }) => (
+              <article key={title} className="rounded-2xl border border-slate-200 bg-white p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-3xl font-extrabold text-[#0b1f4b]">{title}</h3>
+                    <p className="mt-3 text-base leading-7 text-slate-600">{description}</p>
+                  </div>
+                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#dbe7fb] text-[#2f66e0]">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      <section className="bg-[#2f66e0] py-10 text-center text-white sm:py-12">
+        <h2 className="text-3xl font-extrabold sm:text-4xl">מוכן להצטרף?</h2>
+        <p className="mt-3 text-lg text-blue-100 sm:text-xl">התחל לנהל את המלאי שלך בחכמה - היום</p>
+        <Link
+          to="/signup"
+          className="mt-6 inline-flex items-center justify-center rounded-xl bg-white px-6 py-2.5 text-base font-bold text-[#2f66e0] transition hover:bg-slate-100 sm:mt-7 sm:px-8 sm:py-3 sm:text-lg"
+        >
+          פתח חשבון חינם
+        </Link>
+      </section>
+    </div>
   );
 }

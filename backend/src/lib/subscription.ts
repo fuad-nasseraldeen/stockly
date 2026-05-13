@@ -52,15 +52,16 @@ export function computeSubscriptionStatus(
   }
 
   const isExpiringSoon = daysRemaining <= 7;
-  if (isExpiringSoon) {
-    return { status: 'past_due', daysRemaining, isExpiringSoon: true };
-  }
 
   if (row.status === 'trial') {
-    return { status: 'trial', daysRemaining, isExpiringSoon: false };
+    return { status: 'trial', daysRemaining, isExpiringSoon };
   }
 
-  return { status: 'active', daysRemaining, isExpiringSoon: false };
+  if (row.status === 'past_due') {
+    return { status: 'past_due', daysRemaining, isExpiringSoon };
+  }
+
+  return { status: 'active', daysRemaining, isExpiringSoon };
 }
 
 export async function getTenantSubscription(tenantId: string): Promise<TenantSubscriptionRow | null> {
@@ -88,7 +89,7 @@ export async function ensureTenantSubscription(tenantId: string): Promise<Tenant
     .insert({
       tenant_id: tenantId,
       status: 'trial',
-      plan_name: 'basic',
+      plan_name: 'trial_free',
       currency: 'ILS',
       valid_from: validFrom.toISOString().slice(0, 10),
       valid_until: validUntil.toISOString().slice(0, 10),
@@ -108,5 +109,18 @@ export function shouldSendReminder(lastReminderAt: string | null, now: Date = ne
 }
 
 export function shouldEnforceSubscriptionWrites(): boolean {
-  return String(process.env.SUBSCRIPTION_ENFORCEMENT_ENABLED ?? 'false').toLowerCase() === 'true';
+  return String(process.env.SUBSCRIPTION_ENFORCEMENT_ENABLED ?? 'true').toLowerCase() === 'true';
+}
+
+/**
+ * Backend entitlement helper: paid access is active only for paid plans with active computed status.
+ * Source of truth is Stripe-synced DB state in tenant_subscriptions.
+ */
+export function hasActivePaidSubscription(
+  row: Pick<TenantSubscriptionRow, 'plan_name' | 'status' | 'valid_until'>,
+  now: Date = new Date(),
+): boolean {
+  if (row.plan_name === 'trial_free') return false;
+  const computed = computeSubscriptionStatus(row, now);
+  return computed.status === 'active';
 }
