@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { sendContactEmail } from '../lib/mailer.js';
 import { consumePublicRateLimit } from '../lib/public-rate-limit.js';
-import { verifyTurnstileToken } from '../lib/turnstile.js';
 
 const router = Router();
 
@@ -11,7 +10,6 @@ const contactSchema = z.object({
   email: z.string().trim().email('אימייל לא תקין'),
   message: z.string().trim().min(10, 'נא לרשום הודעה מפורטת יותר').max(2000),
   website: z.string().optional().default(''),
-  turnstileToken: z.string().min(1, 'אימות אבטחה נכשל'),
 });
 
 function getClientIp(req: { headers: Record<string, unknown>; socket?: { remoteAddress?: string } }): string | null {
@@ -45,11 +43,6 @@ router.post('/contact', async (req, res) => {
     if (body.website && body.website.trim().length > 0) {
       // Honeypot field: silently accept to avoid signaling bots.
       return res.json({ ok: true });
-    }
-
-    const turnstileOk = await verifyTurnstileToken(body.turnstileToken, ipAddress);
-    if (!turnstileOk) {
-      return res.status(400).json({ error: 'אימות אבטחה נכשל. נסה שוב.' });
     }
 
     const subject = `Stockly contact form - ${body.name}`;

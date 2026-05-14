@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { StocklyMark } from './layout/StocklyMark';
 
 type SplashScreenProps = {
   onDone?: () => void;
@@ -57,9 +58,7 @@ export function SplashScreen({ onDone }: SplashScreenProps) {
           transformOrigin: 'center center',
         }}
       >
-        <div className="h-20 w-20 rounded-3xl bg-primary flex items-center justify-center shadow-xl">
-          <span className="text-primary-foreground font-extrabold text-4xl">S</span>
-        </div>
+        <StocklyMark size={80} className="rounded-3xl shadow-xl shadow-[#2f66e0]/30" />
 
         <div className="text-center space-y-1 mt-2">
           <p className="text-[11px] uppercase tracking-[0.35em] text-muted-foreground">

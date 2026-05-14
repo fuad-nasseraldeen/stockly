@@ -1,14 +1,12 @@
 import { Link } from 'react-router-dom';
-import { Package } from 'lucide-react';
+import { StocklyMark } from './StocklyMark';
 
 export function PublicTopNav() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2f66e0] text-white">
-            <Package className="h-6 w-6" />
-          </div>
+          <StocklyMark size={40} className="rounded-sm shadow-none" />
           <span className="text-2xl font-extrabold text-[#2f66e0]">Stockly</span>
         </Link>
         <div className="flex items-center gap-2">
@@ -23,4 +21,3 @@ export function PublicTopNav() {
     </header>
   );
 }
-

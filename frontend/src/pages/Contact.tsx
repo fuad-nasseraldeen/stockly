@@ -1,19 +1,16 @@
 import { useState } from 'react';
-import { Turnstile } from '@marsidev/react-turnstile';
 import { Mail, Linkedin, MapPin, Send } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { publicApi } from '../lib/api';
 import { PublicTopNav } from '../components/layout/PublicTopNav';
-const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '').trim();
 
 export default function Contact() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [website, setWebsite] = useState(''); // honeypot field
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState('');
@@ -24,16 +21,12 @@ export default function Contact() {
     setStatusMessage('');
     setLoading(true);
     try {
-      if (!turnstileToken) {
-        throw new Error('נא להשלים אימות אבטחה לפני שליחה');
-      }
-      await publicApi.contact({ name, email, message, website, turnstileToken });
+      await publicApi.contact({ name, email, message, website });
       setStatusMessage('הפנייה נשלחה בהצלחה. נחזור אליך בהקדם.');
       setName('');
       setEmail('');
       setMessage('');
       setWebsite('');
-      setTurnstileToken(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'לא הצלחנו לשלוח כרגע, נסה שוב.';
       setError(message);
@@ -114,29 +107,6 @@ export default function Contact() {
                 tabIndex={-1}
                 autoComplete="off"
               />
-            </div>
-            <div>
-              {TURNSTILE_SITE_KEY ? (
-                <div
-                  className="w-[109%] origin-top-right overflow-hidden"
-                  style={{ transform: 'scale(0.92)' }}
-                >
-                  <Turnstile
-                    siteKey={TURNSTILE_SITE_KEY}
-                    onSuccess={(token) => setTurnstileToken(token)}
-                    onExpire={() => setTurnstileToken(null)}
-                    onError={() => setTurnstileToken(null)}
-                    options={{
-                      language: 'he',
-                      theme: 'light',
-                      size: 'flexible',
-                      appearance: 'interaction-only',
-                    }}
-                  />
-                </div>
-              ) : (
-                <p className="text-sm text-destructive">חסר VITE_TURNSTILE_SITE_KEY בהגדרות ה-frontend.</p>
-              )}
             </div>
             <Button type="submit" className="h-11 w-full rounded-xl bg-[#2f66e0] text-base font-bold hover:bg-[#2558c9]" disabled={loading}>
               <span className="inline-flex items-center gap-2">

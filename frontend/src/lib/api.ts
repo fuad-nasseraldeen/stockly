@@ -457,7 +457,7 @@ export const authApi = {
 };
 
 export const publicApi = {
-  contact: (payload: { name: string; email: string; message: string; website?: string; turnstileToken: string }): Promise<{ ok: boolean }> =>
+  contact: (payload: { name: string; email: string; message: string; website?: string }): Promise<{ ok: boolean }> =>
     apiRequest<{ ok: boolean }>('/api/public/contact', {
       method: 'POST',
       body: JSON.stringify(payload),

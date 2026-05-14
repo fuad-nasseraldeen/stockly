@@ -63,7 +63,9 @@ const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 const APP_MANAGER_EMAIL = 'fuadnasiraldin@gmail.com';
 
 function App() {
-  const isAdEntryRoute = window.location.pathname.toLowerCase() === '/ad';
+  const entryPath = window.location.pathname.toLowerCase();
+  const skipBootScreensRoutes = new Set(['/ad', '/login', '/signup']);
+  const shouldSkipBootScreens = skipBootScreensRoutes.has(entryPath);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInitialSplash, setShowInitialSplash] = useState(true);
@@ -120,11 +122,11 @@ function App() {
   // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
 
   // Splash פתיחה – לפני שמגיעים בכלל למסכי לוגאין/רישום
-  if (!isAdEntryRoute && showInitialSplash && !user) {
+  if (!shouldSkipBootScreens && showInitialSplash && !user) {
     return <SplashScreen onDone={() => setShowInitialSplash(false)} />;
   }
 
-  if (!isAdEntryRoute && loading) {
+  if (!shouldSkipBootScreens && loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-2">

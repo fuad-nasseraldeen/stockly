@@ -22,6 +22,7 @@ import { TenantSwitcher } from '../TenantSwitcher';
 import { useTenant } from '../../hooks/useTenant';
 import { useSettings } from '../../hooks/useSettings';
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext';
+import { StocklyMark } from './StocklyMark';
 
 type AppHeaderProps = {
   user: User;
@@ -92,9 +93,7 @@ export function AppHeader({ user, onLogout, isSuperAdmin, isDark, onToggleTheme,
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-primary text-primary-foreground">
-                <Package className="h-6 w-6" />
-              </div>
+              <StocklyMark size={40} className="rounded-sm shadow-none" />
               <div>
                 <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">
                   {currentTenant?.name || 'Stockly'}
