@@ -272,7 +272,7 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     
     // RPC call timing
     const rpcStart = performance.now();
-    const { data: pageData, error: rpcError } = await supabase.rpc('products_list_page', {
+    const { data: rpcPageData, error: rpcError } = await supabase.rpc('products_list_page', {
       tenant_uuid: tenant.tenantId,
       search_text: searchNormalized,
       supplier_uuid: supplierId || null,
@@ -284,27 +284,95 @@ router.get('/', requireAuth, requireTenant, async (req, res) => {
     const rpcTime = performance.now() - rpcStart;
     perfState.supabaseMs += rpcTime;
     perfLog(requestId, 'after_supabase_call:rpc(products_list_page)', rpcTime, {
-      resultCount: pageData?.length || 0,
+      resultCount: rpcPageData?.length || 0,
       error: rpcError ? 'yes' : 'no',
     });
 
+    let pageData = rpcPageData as any[] | null;
     if (rpcError) {
-      console.error('RPC products_list_page error:', rpcError);
-      console.error('Error details:', JSON.stringify(rpcError, null, 2));
-      // If RPC function doesn't exist (42883), fall back to old method
-      if (rpcError.code === '42883' || rpcError.message?.includes('does not exist')) {
-        console.warn('RPC function not found, falling back to old search method');
-        // Fall back to old method - but this should not happen if migration ran
-        return res.status(500).json({ 
-          error: 'פונקציית חיפוש לא נמצאה. יש להריץ את migration 0018',
-          details: rpcError.message 
+      console.warn('RPC products_list_page failed, falling back to legacy query:', {
+        code: rpcError.code,
+        message: rpcError.message,
+      });
+
+      // Legacy fallback (keeps app/export working even if RPC migration is missing in prod)
+      let supplierProductIds: string[] | null = null;
+      if (supplierId) {
+        const supplierIdsStart = performance.now();
+        const { data: supplierRows, error: supplierRowsErr } = await supabase
+          .from('product_supplier_current_price')
+          .select('product_id')
+          .eq('tenant_id', tenant.tenantId)
+          .eq('supplier_id', supplierId);
+        const supplierIdsMs = performance.now() - supplierIdsStart;
+        perfState.supabaseMs += supplierIdsMs;
+        if (supplierRowsErr) {
+          return res.status(500).json({ error: 'שגיאה בסינון לפי ספק' });
+        }
+        supplierProductIds = Array.from(new Set((supplierRows || []).map((r: any) => String(r.product_id))));
+        if (supplierProductIds.length === 0) {
+          perfState.rowsCount = 0;
+          perfState.totalCount = 0;
+          return res.json({ products: [], total: 0, page, totalPages: 0 });
+        }
+      }
+
+      let legacyQ = supabase
+        .from('products')
+        .select('id,name,sku,updated_at,created_at', { count: 'exact' })
+        .eq('tenant_id', tenant.tenantId)
+        .eq('is_active', true);
+
+      if (categoryId) legacyQ = legacyQ.eq('category_id', categoryId);
+      if (supplierProductIds) legacyQ = legacyQ.in('id', supplierProductIds);
+      if (search && search.trim()) {
+        const term = search.trim().replace(/[%]/g, '\\%').replace(/[,]/g, ' ');
+        legacyQ = legacyQ.or(`name.ilike.%${term}%,sku.ilike.%${term}%`);
+      }
+
+      switch (sort) {
+        case 'name_asc':
+          legacyQ = legacyQ.order('name', { ascending: true });
+          break;
+        case 'name_desc':
+          legacyQ = legacyQ.order('name', { ascending: false });
+          break;
+        case 'created_asc':
+          legacyQ = legacyQ.order('created_at', { ascending: true });
+          break;
+        case 'created_desc':
+          legacyQ = legacyQ.order('created_at', { ascending: false });
+          break;
+        case 'updated_asc':
+          legacyQ = legacyQ.order('updated_at', { ascending: true });
+          break;
+        case 'updated_desc':
+        default:
+          legacyQ = legacyQ.order('updated_at', { ascending: false });
+          break;
+      }
+
+      const legacyStart = performance.now();
+      const { data: legacyRows, error: legacyErr, count: legacyCount } = await legacyQ.range(offset, offset + pageSize - 1);
+      const legacyMs = performance.now() - legacyStart;
+      perfState.supabaseMs += legacyMs;
+      perfLog(requestId, 'after_supabase_call:legacy_products_page', legacyMs, {
+        resultCount: legacyRows?.length || 0,
+        totalCount: legacyCount ?? 0,
+      });
+
+      if (legacyErr) {
+        return res.status(500).json({
+          error: 'שגיאה בחיפוש מוצרים',
+          details: legacyErr.message,
+          code: legacyErr.code,
         });
       }
-      return res.status(500).json({ 
-        error: 'שגיאה בחיפוש מוצרים', 
-        details: rpcError.message,
-        code: rpcError.code 
-      });
+
+      pageData = (legacyRows || []).map((r: any) => ({
+        product_id: r.id,
+        total_count: legacyCount ?? 0,
+      }));
     }
 
     if (!pageData || pageData.length === 0) {
