@@ -322,7 +322,7 @@ export default function ImportExport() {
     startScrollTop: 0,
   });
   const [isPreviewDragging, setIsPreviewDragging] = useState(false);
-  const isImportLockedForTrial = subscription?.plan_name === 'trial_free';
+  const isImportLockedForSubscription = subscription?.computed_status === 'expired' || subscription?.computed_status === 'cancelled';
 
   useEffect(() => {
     if (!loading) {
@@ -580,8 +580,8 @@ export default function ImportExport() {
   };
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-    if (isImportLockedForTrial) {
-      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+    if (isImportLockedForSubscription) {
+      setError('המנוי אינו פעיל לייבוא. כדי להמשיך יש לחדש או לשדרג מנוי.');
       return;
     }
     const selectedFile = e.target.files?.[0];
@@ -604,7 +604,7 @@ export default function ImportExport() {
   };
 
   const refreshPreview = async () => {
-    if (isImportLockedForTrial) return;
+    if (isImportLockedForSubscription) return;
     if (!file) return;
     await startPreview(file, {
       sourceType,
@@ -658,8 +658,8 @@ export default function ImportExport() {
   };
 
   const handleValidate = async () => {
-    if (isImportLockedForTrial) {
-      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+    if (isImportLockedForSubscription) {
+      setError('המנוי אינו פעיל לייבוא. כדי להמשיך יש לחדש או לשדרג מנוי.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -726,8 +726,8 @@ export default function ImportExport() {
   };
 
   const handleApply = async () => {
-    if (isImportLockedForTrial) {
-      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+    if (isImportLockedForSubscription) {
+      setError('המנוי אינו פעיל לייבוא. כדי להמשיך יש לחדש או לשדרג מנוי.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -1023,7 +1023,7 @@ export default function ImportExport() {
 
   return (
     <div className="relative">
-      <div className={`space-y-6 transition ${isImportLockedForTrial ? 'pointer-events-none select-none blur-[5px]' : ''}`}>
+      <div className={`space-y-6 transition ${isImportLockedForSubscription ? 'pointer-events-none select-none blur-[5px]' : ''}`}>
       <div>
         <h1 className="text-2xl font-bold">ייבוא נתונים (Wizard)</h1>
         <p className="text-sm text-muted-foreground">
@@ -1876,12 +1876,12 @@ export default function ImportExport() {
         <div className="text-xs text-muted-foreground">נדרש tenant פעיל כדי לייבא.</div>
       ) : null}
       </div>
-      {isImportLockedForTrial ? (
+      {isImportLockedForSubscription ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
           <div className="w-full max-w-xl rounded-2xl border border-primary/30 bg-background/95 p-6 text-center shadow-2xl backdrop-blur-sm">
-            <div className="text-xl font-bold">ייבוא חסום במסלול חודש חינם</div>
+            <div className="text-xl font-bold">ייבוא חסום בגלל סטטוס מנוי</div>
             <p className="mt-3 text-sm text-muted-foreground">
-              בחודש החינם לא ניתן לבצע Import.
+              כדי להמשיך לייבוא מוצרים, יש לחדש מנוי פעיל.
               רוצה את ההטבה הזו? תהפוך למנוי שלנו ופתח ייבוא מלא בלחיצה אחת.
             </p>
             <div className="mt-5 flex justify-center">
