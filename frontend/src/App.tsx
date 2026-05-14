@@ -63,6 +63,7 @@ const PHONE_REMINDER_SESSION_KEY_PREFIX = 'stockly:phone-reminder-shown:';
 const APP_MANAGER_EMAIL = 'fuadnasiraldin@gmail.com';
 
 function App() {
+  const isAdEntryRoute = window.location.pathname.toLowerCase() === '/ad';
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showInitialSplash, setShowInitialSplash] = useState(true);
@@ -119,11 +120,11 @@ function App() {
   // הספלאש יקרא ל-onDone כשהאנימציה מסתיימת - אין צורך ב-timeout נפרד
 
   // Splash פתיחה – לפני שמגיעים בכלל למסכי לוגאין/רישום
-  if (showInitialSplash && !user) {
+  if (!isAdEntryRoute && showInitialSplash && !user) {
     return <SplashScreen onDone={() => setShowInitialSplash(false)} />;
   }
 
-  if (loading) {
+  if (!isAdEntryRoute && loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-2">
@@ -161,6 +162,7 @@ function AppContent({
   onToggleTheme: () => void;
 }) {
   const location = useLocation();
+  const isAdPage = location.pathname.toLowerCase() === '/ad';
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
   const [phoneValue, setPhoneValue] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -324,12 +326,16 @@ function AppContent({
   // This seeds React Query cache so existing hooks can use cached data instantly
   useBootstrap(!!user);
 
+  // Marketing ad page should open immediately, independent of auth/onboarding state.
+  if (isAdPage) {
+    return <Ad />;
+  }
+
   if (location.pathname === '/reset-password') {
     return <ResetPassword />;
   }
 
   if (!user) {
-    const isAdPage = location.pathname === '/ad';
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <div className={`flex-1 flex ${isAdPage ? 'items-stretch justify-stretch' : 'items-center justify-center'}`}>

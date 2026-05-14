@@ -232,13 +232,9 @@ export default function Ad() {
                 whileHover={{ y: -6, scale: 1.01, boxShadow: '0 24px 45px -24px rgba(15,23,42,0.35)' }}
                 className="group rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm transition-shadow duration-300"
               >
-                <motion.div
-                  className="relative mx-auto inline-flex rounded-lg bg-[#e8f0ff] p-2 text-[#2f66e0]"
-                  whileHover={{ rotate: 360 }}
-                  transition={{ duration: 0.8, ease: 'easeInOut' }}
-                >
+                <div className="relative mx-auto inline-flex rounded-lg bg-[#e8f0ff] p-2 text-[#2f66e0] transition-transform duration-700 ease-in-out group-hover:rotate-[360deg]">
                   <Icon className="h-5 w-5" />
-                </motion.div>
+                </div>
                 <h4 className="mt-4 text-2xl font-bold">{title}</h4>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
               </motion.article>

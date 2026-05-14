@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTenant } from '../hooks/useTenant';
 import { useCategories } from '../hooks/useCategories';
 import { useSuppliers } from '../hooks/useSuppliers';
+import { useTenantSubscriptionStatus } from '../hooks/useAdmin';
 import {
   Select,
   SelectContent,
@@ -272,8 +274,10 @@ function formatElapsed(seconds: number): string {
 }
 
 export default function ImportExport() {
+  const navigate = useNavigate();
   const { openHelp } = useHelpCenter();
   const { currentTenant } = useTenant();
+  const { data: subscription } = useTenantSubscriptionStatus();
   const queryClient = useQueryClient();
   const { data: categories = [] } = useCategories();
   const { data: suppliers = [] } = useSuppliers();
@@ -318,6 +322,7 @@ export default function ImportExport() {
     startScrollTop: 0,
   });
   const [isPreviewDragging, setIsPreviewDragging] = useState(false);
+  const isImportLockedForTrial = subscription?.plan_name === 'trial_free';
 
   useEffect(() => {
     if (!loading) {
@@ -575,6 +580,10 @@ export default function ImportExport() {
   };
 
   const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (isImportLockedForTrial) {
+      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+      return;
+    }
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
     const detectedType = detectImportSourceType(selectedFile);
@@ -595,6 +604,7 @@ export default function ImportExport() {
   };
 
   const refreshPreview = async () => {
+    if (isImportLockedForTrial) return;
     if (!file) return;
     await startPreview(file, {
       sourceType,
@@ -648,6 +658,11 @@ export default function ImportExport() {
   };
 
   const handleValidate = async () => {
+    if (isImportLockedForTrial) {
+      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!file || !preview) {
       setError('חסר קובץ או תצוגה מקדימה. העלה את הקובץ מחדש ורענן תצוגה.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -711,6 +726,11 @@ export default function ImportExport() {
   };
 
   const handleApply = async () => {
+    if (isImportLockedForTrial) {
+      setError('ייבוא חסום במסלול חודש חינם. כדי לפתוח ייבוא יש לשדרג למנוי.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!file) return;
     const hasSupplierFromMappingApply = Object.entries(mapping).some(
       ([key, value]) => (key === 'supplier' || /^supplier_\d+$/.test(key)) && typeof value === 'number',
@@ -1002,7 +1022,8 @@ export default function ImportExport() {
   }, [loadingElapsedMs, loadingPhase, sourceType, pdfLoadingTips]);
 
   return (
-    <div className="space-y-6">
+    <div className="relative">
+      <div className={`space-y-6 transition ${isImportLockedForTrial ? 'pointer-events-none select-none blur-[5px]' : ''}`}>
       <div>
         <h1 className="text-2xl font-bold">ייבוא נתונים (Wizard)</h1>
         <p className="text-sm text-muted-foreground">
@@ -1853,6 +1874,23 @@ export default function ImportExport() {
 
       {!currentTenant ? (
         <div className="text-xs text-muted-foreground">נדרש tenant פעיל כדי לייבא.</div>
+      ) : null}
+      </div>
+      {isImportLockedForTrial ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-primary/30 bg-background/95 p-6 text-center shadow-2xl backdrop-blur-sm">
+            <div className="text-xl font-bold">ייבוא חסום במסלול חודש חינם</div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              בחודש החינם לא ניתן לבצע Import.
+              רוצה את ההטבה הזו? תהפוך למנוי שלנו ופתח ייבוא מלא בלחיצה אחת.
+            </p>
+            <div className="mt-5 flex justify-center">
+              <Button type="button" onClick={() => navigate('/subscription')}>
+                מעבר לעמוד מנוי
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
