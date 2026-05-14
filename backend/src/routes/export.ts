@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { requireAuth, requireTenant } from '../middleware/auth.js';
 import { normalizeName } from '../lib/normalize.js';
+import { randomUUID } from 'crypto';
 
 const router = Router();
 
@@ -25,7 +26,6 @@ router.get('/current.csv', requireAuth, requireTenant, async (req, res) => {
         products!inner(
           name,
           sku,
-          package_quantity,
           categories(name)
         ),
         suppliers!inner(name)
@@ -47,7 +47,7 @@ router.get('/current.csv', requireAuth, requireTenant, async (req, res) => {
       const category = product.categories as any;
       const productName = (product.name || '').replace(/"/g, '""');
       const sku = (product.sku || '').replace(/"/g, '""');
-      const packageQuantity = product.package_quantity || '';
+      const packageQuantity = (price as any).package_quantity || '';
       const supplierName = (supplier.name || '').replace(/"/g, '""');
       const categoryName = (category?.name || 'כללי').replace(/"/g, '""');
       const costPrice = price.cost_price || '';
@@ -83,11 +83,11 @@ router.get('/history.csv', requireAuth, requireTenant, async (req, res) => {
         cost_price_after_discount,
         margin_percent,
         sell_price,
+        package_quantity,
         created_at,
         products!inner(
           name,
           sku,
-          package_quantity,
           categories(name)
         ),
         suppliers!inner(name)
@@ -109,7 +109,7 @@ router.get('/history.csv', requireAuth, requireTenant, async (req, res) => {
       const category = product.categories as any;
       const productName = (product.name || '').replace(/"/g, '""');
       const sku = (product.sku || '').replace(/"/g, '""');
-      const packageQuantity = product.package_quantity || '';
+      const packageQuantity = (entry as any).package_quantity || '';
       const supplierName = (supplier.name || '').replace(/"/g, '""');
       const categoryName = (category?.name || 'כללי').replace(/"/g, '""');
       const costPrice = entry.cost_price || '';
@@ -133,9 +133,18 @@ router.get('/history.csv', requireAuth, requireTenant, async (req, res) => {
 
 // Export filtered products (based on current view/filters)
 router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
+  const requestId = ((req.headers['x-request-id'] as string) || randomUUID()).toString();
+  res.setHeader('x-request-id', requestId);
   try {
     const tenant = (req as any).tenant;
     const { search, supplier_id, category_id, sort = 'updated_desc' } = req.query;
+    console.log(`[export.filtered ${requestId}] start`, {
+      tenantId: tenant?.tenantId,
+      search,
+      supplier_id,
+      category_id,
+      sort,
+    });
 
     // Build query similar to products endpoint
     let productIds: string[] | null = null;
@@ -155,7 +164,12 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
         .limit(10000); // High limit to get all matching products
 
       if (searchError) {
-        console.error('Export filtered - search error:', searchError);
+        console.error(`[export.filtered ${requestId}] search error:`, {
+          code: (searchError as any)?.code,
+          message: (searchError as any)?.message,
+          details: (searchError as any)?.details,
+          hint: (searchError as any)?.hint,
+        });
         // Continue without search filter if search fails
       } else if (searchResults && searchResults.length > 0) {
         productIds = searchResults.map(p => p.id);
@@ -172,7 +186,7 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
     // Build base query for products - NO LIMIT for export (we want all products)
     let productsQuery = supabase
       .from('products')
-      .select('id, name, sku, package_quantity, category_id, categories(id, name)')
+      .select('id, name, sku, category_id, categories(id, name)')
       .eq('tenant_id', tenant.tenantId)
       .eq('is_active', true)
       .limit(10000); // High limit to get all products
@@ -201,7 +215,12 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
     const { data: products, error: productsError } = await productsQuery;
 
     if (productsError) {
-      console.error('Export filtered - products query error:', productsError);
+      console.error(`[export.filtered ${requestId}] products query error:`, {
+        code: (productsError as any)?.code,
+        message: (productsError as any)?.message,
+        details: (productsError as any)?.details,
+        hint: (productsError as any)?.hint,
+      });
       return res.status(500).json({ error: 'שגיאה בטעינת מוצרים', details: productsError.message });
     }
 
@@ -214,9 +233,11 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
     }
 
     const productIdList = products.map(p => p.id);
+    const productIdSet = new Set(productIdList);
 
-    // Get current prices for these products - NO LIMIT for export (we want all prices)
-    let pricesQuery = supabase
+    // Get current prices for these products - keep query flat (no nested joins)
+    // Nested joins on this view can fail with 400 on some PostgREST versions/configs.
+    const basePricesQuery = supabase
       .from('product_supplier_current_price')
       .select(`
         product_id,
@@ -226,41 +247,133 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
         cost_price_after_discount,
         margin_percent,
         sell_price,
-        created_at,
-        products!inner(
-          name,
-          sku,
-          package_quantity,
-          categories(name)
-        ),
-        suppliers!inner(name)
+        package_quantity,
+        created_at
       `)
       .eq('tenant_id', tenant.tenantId)
-      .in('product_id', productIdList)
       .limit(50000); // High limit to get all prices
 
-    if (supplier_id && typeof supplier_id === 'string') {
-      pricesQuery = pricesQuery.eq('supplier_id', supplier_id);
-    }
+    const pricesQuery: any =
+      supplier_id && typeof supplier_id === 'string'
+        ? basePricesQuery.eq('supplier_id', supplier_id)
+        : basePricesQuery;
 
-    const { data: prices, error: pricesError } = await pricesQuery.order('products(name)', { ascending: true });
+    let { data: prices, error: pricesError } = await pricesQuery.order('created_at', { ascending: false });
+    if (!pricesError && prices) {
+      prices = prices.filter((row: any) => productIdSet.has(String(row.product_id)));
+    }
+    if (pricesError) {
+      // Backward compatibility: older DB/view may not have package_quantity
+      const fallbackBaseQuery = supabase
+        .from('product_supplier_current_price')
+        .select(`
+          product_id,
+          supplier_id,
+          cost_price,
+          discount_percent,
+          cost_price_after_discount,
+          margin_percent,
+          sell_price,
+          created_at
+        `)
+        .eq('tenant_id', tenant.tenantId)
+        .limit(50000);
+      const fallbackQuery: any =
+        supplier_id && typeof supplier_id === 'string'
+          ? fallbackBaseQuery.eq('supplier_id', supplier_id)
+          : fallbackBaseQuery;
+
+      const fallbackRes = await fallbackQuery.order('created_at', { ascending: false });
+      prices = (fallbackRes.data || []).map((row: any) => ({
+        ...row,
+        package_quantity: null,
+      })).filter((row: any) => productIdSet.has(String(row.product_id))) as any[];
+      pricesError = fallbackRes.error as any;
+    }
 
     if (pricesError) {
-      return res.status(500).json({ error: 'שגיאה בטעינת מחירים' });
+      console.error(`[export.filtered ${requestId}] prices query error:`, {
+        code: (pricesError as any)?.code,
+        message: (pricesError as any)?.message,
+        details: (pricesError as any)?.details,
+        hint: (pricesError as any)?.hint,
+      });
+      // Final fallback: derive current prices from price_entries (latest per product+supplier)
+      const entriesBaseQuery = supabase
+        .from('price_entries')
+        .select(`
+          product_id,
+          supplier_id,
+          cost_price,
+          discount_percent,
+          cost_price_after_discount,
+          margin_percent,
+          sell_price,
+          package_quantity,
+          created_at
+        `)
+        .eq('tenant_id', tenant.tenantId)
+        .order('created_at', { ascending: false })
+        .limit(100000);
+      const entriesQuery: any =
+        supplier_id && typeof supplier_id === 'string'
+          ? entriesBaseQuery.eq('supplier_id', supplier_id)
+          : entriesBaseQuery;
+      const { data: entries, error: entriesError } = await entriesQuery;
+      if (entriesError) {
+        console.error(`[export.filtered ${requestId}] entries fallback error:`, {
+          code: (entriesError as any)?.code,
+          message: (entriesError as any)?.message,
+          details: (entriesError as any)?.details,
+          hint: (entriesError as any)?.hint,
+        });
+        return res.status(500).json({ error: 'שגיאה בטעינת מחירים' });
+      }
+
+      const latestByPair = new Map<string, any>();
+      for (const row of entries || []) {
+        if (!productIdSet.has(String(row.product_id))) continue;
+        const key = `${row.product_id}::${row.supplier_id}`;
+        if (!latestByPair.has(key)) latestByPair.set(key, row);
+      }
+      prices = Array.from(latestByPair.values());
+      pricesError = null as any;
     }
+
+    // Supplier names map
+    const supplierIds = Array.from(new Set((prices || []).map((r: any) => r.supplier_id).filter(Boolean)));
+    const { data: supplierRows, error: supplierRowsError } =
+      supplierIds.length > 0
+        ? await supabase
+            .from('suppliers')
+            .select('id,name')
+            .eq('tenant_id', tenant.tenantId)
+            .in('id', supplierIds)
+        : { data: [] as any[], error: null as any };
+    if (supplierRowsError) {
+      console.error(`[export.filtered ${requestId}] suppliers query error:`, {
+        code: (supplierRowsError as any)?.code,
+        message: (supplierRowsError as any)?.message,
+        details: (supplierRowsError as any)?.details,
+        hint: (supplierRowsError as any)?.hint,
+      });
+      return res.status(500).json({ error: 'שגיאה בטעינת ספקים' });
+    }
+    const supplierNameById = new Map((supplierRows || []).map((s: any) => [s.id, s.name]));
+    const productById = new Map((products || []).map((p: any) => [p.id, p]));
 
     // Format CSV with UTF-8 BOM for Excel Hebrew support
     const BOM = '\uFEFF';
     let csv = BOM + 'שם מוצר,מק"ט,מחיר עלות,כמות בקרטון,ספק,אחוז הנחה,מחיר אחרי הנחה,אחוז רווח,מחיר מכירה,קטגוריה,עודכן לאחרונה\n';
 
     for (const price of prices || []) {
-      const product = price.products as any;
-      const supplier = price.suppliers as any;
+      const product = productById.get((price as any).product_id) as any;
+      if (!product) continue;
       const category = product.categories as any;
       const productName = (product.name || '').replace(/"/g, '""');
       const sku = (product.sku || '').replace(/"/g, '""');
-      const packageQuantity = product.package_quantity || '';
-      const supplierName = (supplier.name || '').replace(/"/g, '""');
+      const packageQuantity = (price as any).package_quantity || '';
+      const supplierName = String(supplierNameById.get((price as any).supplier_id) || '').replace(/"/g, '""');
       const categoryName = (category?.name || 'כללי').replace(/"/g, '""');
       const costPrice = price.cost_price || '';
       const discountPercent = price.discount_percent || 0;
@@ -274,9 +387,13 @@ router.get('/filtered.csv', requireAuth, requireTenant, async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="products_export.csv"');
+    console.log(`[export.filtered ${requestId}] success`, {
+      productsCount: products.length,
+      pricesCount: prices?.length || 0,
+    });
     res.send(csv);
   } catch (error) {
-    console.error('Export filtered error:', error);
+    console.error(`[export.filtered ${requestId}] unexpected error:`, error);
     res.status(500).json({ error: 'שגיאת שרת' });
   }
 });

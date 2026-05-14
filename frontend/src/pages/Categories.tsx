@@ -28,11 +28,16 @@ export default function Categories() {
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
 
+  const visibleCategories = categories.filter((c) => {
+    const name = String(c?.name ?? '').trim();
+    return !!name && name.toLowerCase() !== 'null';
+  });
+
   const filteredCategories =
-    categories.filter((c) =>
-      c.name.toLowerCase().includes(search.toLowerCase())
+    visibleCategories.filter((c) =>
+      String(c.name).toLowerCase().includes(search.toLowerCase())
     );
-  const totalCategories = categories.length;
+  const totalCategories = visibleCategories.length;
 
   const resetForm = () => {
     setForm({ id: undefined, name: '', default_margin_percent: '' });

@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Search, Edit, Trash2, DollarSign, Calendar, Download, FileText, ChevronDown, Filter, SlidersHorizontal } from 'lucide-react';
 import { Tooltip } from '../components/ui/tooltip';
 import { InfoTooltip } from '../components/help/InfoTooltip';
-import { productsApi, stockApi, type Product, type ProductSupplierStockRow } from '../lib/api';
+import { exportApi, productsApi, stockApi, type Product, type ProductSupplierStockRow } from '../lib/api';
 import { getAvailableColumns, type Settings as SettingsType } from '../lib/column-resolver';
 import { downloadTablePdf } from '../lib/pdf-service';
 import { getPriceTableExportLayout, priceRowToExportValues } from '../lib/pdf-price-table';
@@ -573,10 +573,21 @@ export default function Products() {
         setExcelProgress(75);
       } else {
         setExcelProgress(10);
-        const response = await productsApi.list({ ...filterParams, all: true });
-        allProducts = response.products || [];
-        queryClient.setQueryData(allProductsCacheKey, { products: allProducts, total: response.total });
-        setExcelProgress(75);
+        try {
+          const response = await productsApi.list({ ...filterParams, all: true });
+          allProducts = response.products || [];
+          queryClient.setQueryData(allProductsCacheKey, { products: allProducts, total: response.total });
+          setExcelProgress(75);
+        } catch (fetchAllError) {
+          console.warn('[Export CSV] products list failed, falling back to backend CSV export', fetchAllError);
+          if (generatingIntervalId !== undefined) {
+            window.clearInterval(generatingIntervalId);
+          }
+          setExcelStage('downloading');
+          setExcelProgress(100);
+          await exportApi.downloadFiltered(filterParams);
+          return;
+        }
       }
 
       if (!allProducts || allProducts.length === 0) {
@@ -694,21 +705,52 @@ export default function Products() {
           // Need to fetch all products - single API call with all=true
           console.log('[PDF] Fetching all products from API...');
           setPdfProgress(10);
-          
-          const response = await productsApi.list({
-            ...filterParams,
-            all: true, // Fetch all products in one request
-          });
 
-          allProducts = response.products || [];
-          
-          // Cache the result for future use
-          queryClient.setQueryData(allProductsCacheKey, {
-            products: allProducts,
-            total: response.total,
-          });
-          
-          setPdfProgress(75);
+          try {
+            const response = await productsApi.list({
+              ...filterParams,
+              all: true, // Fast path (single request)
+            });
+
+            allProducts = response.products || [];
+
+            // Cache the result for future use
+            queryClient.setQueryData(allProductsCacheKey, {
+              products: allProducts,
+              total: response.total,
+            });
+
+            setPdfProgress(75);
+          } catch (fetchAllError) {
+            // Fallback: fetch by regular pagination (stable even when all=true endpoint fails)
+            console.warn('[PDF] all=true failed, falling back to paginated fetch', fetchAllError);
+
+            const firstPage = await productsApi.list({
+              ...filterParams,
+              page: 1,
+              pageSize: 100,
+            });
+            const totalPages = Math.max(1, Number(firstPage.totalPages || 1));
+            allProducts = [...(firstPage.products || [])];
+
+            for (let pageNum = 2; pageNum <= totalPages; pageNum += 1) {
+              const pageRes = await productsApi.list({
+                ...filterParams,
+                page: pageNum,
+                pageSize: 100,
+              });
+              allProducts.push(...(pageRes.products || []));
+              const phaseProgress = 10 + Math.floor((pageNum / totalPages) * 60); // up to ~70
+              setPdfProgress(Math.min(70, phaseProgress));
+            }
+
+            queryClient.setQueryData(allProductsCacheKey, {
+              products: allProducts,
+              total: firstPage.total,
+            });
+
+            setPdfProgress(75);
+          }
         }
       }
 
