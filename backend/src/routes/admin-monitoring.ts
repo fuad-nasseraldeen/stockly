@@ -50,9 +50,15 @@ function requireMonitoringSecret(req: any, res: any, next: any) {
 
 router.post('/report', requireMonitoringSecret, async (req, res) => {
   try {
+    console.info('[monitoring] ingest hit', {
+      method: req.method,
+      path: req.originalUrl,
+      hasSecretHeader: Boolean(req.header('x-monitoring-secret')),
+      userAgent: req.header('user-agent') || null,
+    });
     const parsed = reportSchema.parse(req.body);
-    const saved = await saveMonitoringReport(parsed);
-    return res.status(201).json(saved);
+    await saveMonitoringReport(parsed);
+    return res.status(201).json({ ok: true });
   } catch (error) {
     if (error instanceof z.ZodError) {
       const firstIssue = error.issues?.[0];
