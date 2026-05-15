@@ -30,6 +30,7 @@ import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
 import SupportChat from './pages/SupportChat';
 import AdminSupportInbox from './pages/AdminSupportInbox';
+import AdminMonitoring from './pages/AdminMonitoring';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import PublicLanding from './pages/PublicLanding';
@@ -717,6 +718,14 @@ function AppWithNavigation({
               element={
                 <AdminRouteGuard>
                   <AdminSupportInbox />
+                </AdminRouteGuard>
+              }
+            />
+            <Route
+              path="/admin/monitoring"
+              element={
+                <AdminRouteGuard>
+                  <AdminMonitoring />
                 </AdminRouteGuard>
               }
             />

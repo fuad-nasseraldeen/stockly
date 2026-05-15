@@ -130,3 +130,19 @@ export function useTenantSubscriptionStatus() {
     enabled: !!tenantId,
   });
 }
+
+export function useAdminMonitoringLatest() {
+  return useQuery({
+    queryKey: ['admin', 'monitoring', 'latest'],
+    queryFn: () => adminApi.getMonitoringLatest(),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useAdminMonitoringHistory(limit = 30) {
+  return useQuery({
+    queryKey: ['admin', 'monitoring', 'history', limit],
+    queryFn: () => adminApi.getMonitoringHistory({ limit }),
+    refetchInterval: 60_000,
+  });
+}

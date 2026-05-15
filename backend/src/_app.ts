@@ -13,6 +13,7 @@ import importRouter from './routes/import.js';
 import exportRouter from './routes/export.js';
 import resetRouter from './routes/reset.js';
 import adminRouter from './routes/admin.js';
+import adminMonitoringRouter from './routes/admin-monitoring.js';
 import bootstrapRouter from './routes/bootstrap.js';
 import authRouter from './routes/auth.js';
 import publicRouter from './routes/public.js';
@@ -133,6 +134,7 @@ export function createApp() {
   app.use('/api/import', importRouter);
   app.use('/api/export', exportRouter);
   app.use('/api/tenant/reset', resetRouter);
+  app.use('/api/admin/monitoring', adminMonitoringRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/bootstrap', bootstrapRouter);
   app.use('/api/auth', authRouter);

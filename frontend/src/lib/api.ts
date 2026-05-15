@@ -989,6 +989,32 @@ export type TenantSubscription = {
   tenants?: { id: string; name: string; created_at?: string } | null;
 };
 
+export type MonitoringStatus = 'OK' | 'WARNING' | 'FAILED';
+
+export type MonitoringReport = {
+  id: string;
+  overall_status: MonitoringStatus;
+  total_checks: number;
+  passed_checks: number;
+  failed_checks: number;
+  avg_response_time_ms: number;
+  run_at: string;
+  source: string | null;
+  report_meta: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type MonitoringCheckItem = {
+  id: string;
+  report_id: string;
+  check_name: string;
+  check_status: MonitoringStatus;
+  response_time_ms: number | null;
+  error_message: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type BillingHistoryItem = {
   id: string;
   amount_paid: number;
@@ -1105,6 +1131,20 @@ export const adminApi = {
       method: 'POST',
       skipTenantHeader: true,
     }),
+
+  getMonitoringLatest: (): Promise<{ report: MonitoringReport | null; checks: MonitoringCheckItem[] }> =>
+    apiRequest<{ report: MonitoringReport | null; checks: MonitoringCheckItem[] }>('/api/admin/monitoring/latest', {
+      skipTenantHeader: true,
+    }),
+
+  getMonitoringHistory: (params?: { limit?: number }): Promise<{ reports: MonitoringReport[] }> => {
+    const qp = new URLSearchParams();
+    if (typeof params?.limit === 'number') qp.append('limit', String(params.limit));
+    const suffix = qp.toString() ? `?${qp.toString()}` : '';
+    return apiRequest<{ reports: MonitoringReport[] }>(`/api/admin/monitoring/history${suffix}`, {
+      skipTenantHeader: true,
+    });
+  },
 };
 
 export const subscriptionApi = {

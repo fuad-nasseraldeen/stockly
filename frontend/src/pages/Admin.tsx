@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant, useAdminImpersonate, useAdminSubscriptions, useUpdateAdminSubscription, useExtendAdminSubscription, useSendAdminSubscriptionReminder } from '../hooks/useAdmin';
+import { useAdminTenants, useAuditLogs, useBlockUser, useUnblockUser, useRemoveUser, useResetTenantData, useDeleteTenant, useAdminImpersonate, useAdminSubscriptions, useUpdateAdminSubscription, useExtendAdminSubscription, useSendAdminSubscriptionReminder, useAdminMonitoringLatest } from '../hooks/useAdmin';
 import { useSuperAdmin } from '../hooks/useSuperAdmin';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
@@ -152,6 +152,7 @@ export default function Admin() {
   const { data: tenants = [], isLoading: tenantsLoading, error: tenantsError } = useAdminTenants();
   const { data: auditLogs = [], isLoading: logsLoading } = useAuditLogs({ limit: 50 });
   const { data: subscriptions = [], isLoading: subscriptionsLoading } = useAdminSubscriptions();
+  const { data: monitoringLatest, isLoading: monitoringLoading } = useAdminMonitoringLatest();
 
   console.log('🔍 Admin: After hooks:', {
     checkingAdmin,
@@ -307,6 +308,21 @@ export default function Admin() {
     return labels[action] || action;
   };
   const subscriptionByTenantId = new Map(subscriptions.map((sub) => [sub.tenant_id, sub]));
+  const latestMonitoringReport = monitoringLatest?.report ?? null;
+
+  const monitoringStatusLabel = (status?: string | null) => {
+    if (status === 'OK') return 'תקין';
+    if (status === 'WARNING') return 'אזהרה';
+    if (status === 'FAILED') return 'נכשל';
+    return 'לא זמין';
+  };
+
+  const monitoringStatusVariant = (status?: string | null): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    if (status === 'OK') return 'default';
+    if (status === 'WARNING') return 'secondary';
+    if (status === 'FAILED') return 'destructive';
+    return 'outline';
+  };
 
   const openEditSubscription = (sub: { tenant_id: string; tenants?: { name: string } | null; plan_name: string; valid_until: string }) => {
     setSelectedSubscription({
@@ -426,11 +442,62 @@ export default function Admin() {
           צפה בכל החנויות, המשתמשים והפעילות • ניהול חסימות
         </p>
         <div className="mt-3">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/admin/support">Inbox תמיכה</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/admin/support">Inbox תמיכה</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/admin/monitoring">Monitoring</Link>
+            </Button>
+          </div>
         </div>
       </div>
+
+      <Card className="shadow-md border-2">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-lg sm:text-xl font-bold flex items-center justify-between gap-2">
+            <span>ניטור מערכת (Monitoring)</span>
+            <Badge variant={monitoringStatusVariant(latestMonitoringReport?.overall_status)}>
+              {monitoringStatusLabel(latestMonitoringReport?.overall_status)}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 sm:p-6">
+          {monitoringLoading ? (
+            <div className="text-sm text-muted-foreground">טוען נתוני ניטור...</div>
+          ) : latestMonitoringReport ? (
+            <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <span className="font-medium">ריצה אחרונה: </span>
+                {formatDate(latestMonitoringReport.run_at)}
+              </div>
+              <div>
+                <span className="font-medium">סה"כ בדיקות: </span>
+                {latestMonitoringReport.total_checks}
+              </div>
+              <div>
+                <span className="font-medium">עברו: </span>
+                {latestMonitoringReport.passed_checks}
+              </div>
+              <div>
+                <span className="font-medium">נכשלו: </span>
+                {latestMonitoringReport.failed_checks}
+              </div>
+              <div>
+                <span className="font-medium">ממוצע תגובה: </span>
+                {Number(latestMonitoringReport.avg_response_time_ms).toFixed(1)} ms
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">עדיין לא התקבל דוח Monitoring.</div>
+          )}
+          <div className="mt-4">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/admin/monitoring">לצפייה בדשבורד המלא</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tenants & Users Overview */}
       <Card className="shadow-md border-2">
