@@ -135,6 +135,8 @@ export function createApp() {
   app.use('/api/export', exportRouter);
   app.use('/api/tenant/reset', resetRouter);
   app.use('/api/admin/monitoring', adminMonitoringRouter);
+  // External monitoring integrations (e.g., GitHub Actions) may call without /api prefix.
+  app.use('/admin/monitoring', adminMonitoringRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/bootstrap', bootstrapRouter);
   app.use('/api/auth', authRouter);
