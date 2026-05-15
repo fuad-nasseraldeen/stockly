@@ -3,7 +3,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { useAdminMonitoringHistory, useAdminMonitoringLatest } from '../hooks/useAdmin';
+import { useAdminMonitoringHistory, useAdminMonitoringLatest, useRunAdminMonitoringNow } from '../hooks/useAdmin';
 
 function statusLabel(status: string): string {
   if (status === 'OK') return 'תקין';
@@ -32,6 +32,7 @@ function formatMs(value: number | null | undefined): string {
 export default function AdminMonitoring() {
   const { data: latestData, isLoading: latestLoading, error: latestError } = useAdminMonitoringLatest();
   const { data: historyData, isLoading: historyLoading, error: historyError } = useAdminMonitoringHistory(30);
+  const runNowMut = useRunAdminMonitoringNow();
 
   const latest = latestData?.report ?? null;
   const checks = latestData?.checks ?? [];
@@ -41,10 +42,27 @@ export default function AdminMonitoring() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Monitoring Dashboard</h1>
-        <Button asChild variant="outline">
-          <Link to="/admin">חזרה לניהול</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            onClick={() => runNowMut.mutate()}
+            disabled={runNowMut.isPending}
+          >
+            {runNowMut.isPending ? 'מריץ בדיקה...' : 'הרץ בדיקה עכשיו'}
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/admin">חזרה לניהול</Link>
+          </Button>
+        </div>
       </div>
+
+      {runNowMut.error ? (
+        <Card>
+          <CardContent className="pt-6 text-destructive">
+            {runNowMut.error instanceof Error ? runNowMut.error.message : 'הרצת הבדיקה נכשלה'}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {latestError ? (
         <Card>

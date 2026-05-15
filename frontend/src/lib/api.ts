@@ -1145,6 +1145,12 @@ export const adminApi = {
       skipTenantHeader: true,
     });
   },
+
+  runMonitoringNow: (): Promise<{ ok: boolean; report_id: string; created_at: string }> =>
+    apiRequest<{ ok: boolean; report_id: string; created_at: string }>('/api/admin/monitoring/run-now', {
+      method: 'POST',
+      skipTenantHeader: true,
+    }),
 };
 
 export const subscriptionApi = {

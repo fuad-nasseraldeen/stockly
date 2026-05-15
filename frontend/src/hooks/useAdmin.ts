@@ -146,3 +146,14 @@ export function useAdminMonitoringHistory(limit = 30) {
     refetchInterval: 60_000,
   });
 }
+
+export function useRunAdminMonitoringNow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => adminApi.runMonitoringNow(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'monitoring', 'latest'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'monitoring', 'history'] });
+    },
+  });
+}
