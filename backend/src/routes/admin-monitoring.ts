@@ -69,6 +69,13 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
   }
 });
 
+// Keep /report public-but-secret-protected only for POST.
+// If someone opens this URL in browser (GET), return method error here
+// and do not fall through to admin auth middleware.
+router.all('/report', (req, res) => {
+  return res.status(405).json({ error: 'Method not allowed. Use POST with x-monitoring-secret.' });
+});
+
 async function saveMonitoringReport(parsed: ParsedMonitoringReport): Promise<{ ok: boolean; report_id: string; created_at: string }> {
   const { data: reportRow, error: reportError } = await supabase
     .from('monitoring_reports')
