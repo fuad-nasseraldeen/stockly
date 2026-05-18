@@ -28,6 +28,57 @@ const reportSchema = z.object({
 });
 type ParsedMonitoringReport = z.infer<typeof reportSchema>;
 
+// External monitor payload format (GitHub Action)
+const externalCheckItemSchema = z.object({
+  name: z.string().trim().min(1).max(300),
+  type: z.string().trim().max(120).optional(),
+  status: monitoringStatusSchema,
+  response_time_ms: z.number().finite().min(0).max(10_000_000).optional(),
+  responseTimeMs: z.number().finite().min(0).max(10_000_000).optional(),
+  error_message: z.string().trim().max(4000).optional(),
+  error: z.string().trim().max(4000).optional(),
+  details: z.unknown().optional(),
+});
+
+const externalReportSchema = z.object({
+  generatedAt: z.string().datetime().optional(),
+  environment: z.string().trim().max(120).optional(),
+  status: monitoringStatusSchema,
+  checks: z.array(externalCheckItemSchema).max(1000),
+});
+
+function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReportSchema>): ParsedMonitoringReport {
+  const checks = input.checks.map((item) => ({
+    name: item.name,
+    status: item.status,
+    response_time_ms: item.response_time_ms ?? item.responseTimeMs,
+    error_message: item.error_message ?? item.error,
+    details: item.details ?? (item.type ? { type: item.type } : undefined),
+  }));
+
+  const total_checks = checks.length;
+  const passed_checks = checks.filter((c) => c.status === 'OK').length;
+  const failed_checks = checks.filter((c) => c.status === 'FAILED').length;
+  const avg_response_time_ms =
+    checks.reduce((sum, c) => sum + (c.response_time_ms ?? 0), 0) / Math.max(total_checks, 1);
+
+  return {
+    overall_status: input.status,
+    total_checks,
+    passed_checks,
+    failed_checks,
+    avg_response_time_ms,
+    run_at: input.generatedAt || new Date().toISOString(),
+    source: input.environment || 'external_monitor',
+    meta: {
+      environment: input.environment ?? null,
+      generatedAt: input.generatedAt ?? null,
+      payloadFormat: 'external_v1',
+    },
+    checks,
+  };
+}
+
 function getMonitoringSecret(): string {
   return String(process.env.MONITORING_INGEST_SECRET || '').trim();
 }
@@ -56,14 +107,30 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
       hasSecretHeader: Boolean(req.header('x-monitoring-secret')),
       userAgent: req.header('user-agent') || null,
     });
-    const parsed = reportSchema.parse(req.body);
+    // Accept both legacy internal payload and new external monitor payload.
+    let parsed: ParsedMonitoringReport;
+    const externalParsed = externalReportSchema.safeParse(req.body);
+    if (externalParsed.success) {
+      parsed = normalizeExternalPayloadToInternal(externalParsed.data);
+    } else {
+      const internalParsed = reportSchema.safeParse(req.body);
+      if (!internalParsed.success) {
+        const firstIssue = internalParsed.error.issues?.[0] ?? externalParsed.error.issues?.[0];
+        console.error('[monitoring] payload validation failed', {
+          field: firstIssue?.path?.join('.') || '(unknown)',
+          code: firstIssue?.code || '(unknown)',
+          expected: (firstIssue as any)?.options || null,
+          received: (firstIssue as any)?.received || null,
+          message: firstIssue?.message || 'Invalid monitoring payload',
+        });
+        return res.status(400).json({ error: firstIssue?.message || 'Invalid monitoring payload' });
+      }
+      parsed = internalParsed.data;
+    }
+
     await saveMonitoringReport(parsed);
     return res.status(201).json({ ok: true });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const firstIssue = error.issues?.[0];
-      return res.status(400).json({ error: firstIssue?.message || 'Invalid monitoring payload' });
-    }
     console.error('[monitoring] report ingest failed', error);
     return res.status(500).json({ error: 'Monitoring ingest failed' });
   }
