@@ -6,6 +6,7 @@ import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 const router = Router();
 
 const monitoringStatusSchema = z.enum(['OK', 'WARNING', 'FAILED']);
+const monitoringCheckTypeSchema = z.enum(['API', 'DATA', 'AUTH']);
 
 const checkItemSchema = z.object({
   name: z.string().trim().min(1).max(300),
@@ -31,7 +32,7 @@ type ParsedMonitoringReport = z.infer<typeof reportSchema>;
 // External monitor payload format (GitHub Action)
 const externalCheckItemSchema = z.object({
   name: z.string().trim().min(1).max(300),
-  type: z.string().trim().max(120).optional(),
+  type: monitoringCheckTypeSchema.optional(),
   status: monitoringStatusSchema,
   response_time_ms: z.number().finite().min(0).max(10_000_000).optional(),
   responseTimeMs: z.number().finite().min(0).max(10_000_000).optional(),
@@ -45,6 +46,14 @@ const externalReportSchema = z.object({
   environment: z.string().trim().max(120).optional(),
   status: monitoringStatusSchema,
   checks: z.array(externalCheckItemSchema).max(1000),
+  totals: z
+    .object({
+      total: z.number().int().min(0),
+      passed: z.number().int().min(0),
+      warning: z.number().int().min(0),
+      failed: z.number().int().min(0),
+    })
+    .optional(),
 });
 
 function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReportSchema>): ParsedMonitoringReport {
@@ -73,9 +82,30 @@ function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReport
     meta: {
       environment: input.environment ?? null,
       generatedAt: input.generatedAt ?? null,
+      totals: input.totals ?? null,
       payloadFormat: 'external_v1',
     },
     checks,
+  };
+}
+
+function getValueByPath(payload: unknown, path: Array<string | number>): unknown {
+  let current: any = payload;
+  for (const key of path) {
+    if (current === null || current === undefined) return undefined;
+    current = current[key as any];
+  }
+  return current;
+}
+
+function formatIssueForResponse(payload: unknown, issue: z.ZodIssue | undefined): { error: string; field: string; receivedValue: unknown } {
+  const issuePath = (issue?.path || []).filter((p): p is string | number => typeof p === 'string' || typeof p === 'number');
+  const field = issuePath.length ? issuePath.join('.') : '(root)';
+  const receivedValue = issue ? getValueByPath(payload, issuePath) : undefined;
+  return {
+    error: issue?.message || 'Invalid monitoring payload',
+    field,
+    receivedValue: receivedValue === undefined ? null : receivedValue,
   };
 }
 
@@ -150,17 +180,20 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
     } else {
       const internalParsed = reportSchema.safeParse(req.body);
       if (!internalParsed.success) {
-        const firstIssue = internalParsed.error.issues?.[0] ?? externalParsed.error.issues?.[0];
+        const firstIssue = externalParsed.error.issues?.[0] ?? internalParsed.error.issues?.[0];
+        const responsePayload = formatIssueForResponse(req.body, firstIssue);
         console.error('[monitoring] payload validation failed', {
           reqId,
-          field: firstIssue?.path?.join('.') || '(unknown)',
+          field: responsePayload.field,
           code: firstIssue?.code || '(unknown)',
           expected: (firstIssue as any)?.options || null,
-          received: (firstIssue as any)?.received || null,
-          message: firstIssue?.message || 'Invalid monitoring payload',
+          receivedValue: responsePayload.receivedValue,
+          message: responsePayload.error,
           elapsedMs: elapsedMs(reqStartedAt),
+          externalIssues: externalParsed.error.issues.map((i) => ({ path: i.path.join('.'), code: i.code, message: i.message })),
+          internalIssues: internalParsed.error.issues.map((i) => ({ path: i.path.join('.'), code: i.code, message: i.message })),
         });
-        return res.status(400).json({ error: firstIssue?.message || 'Invalid monitoring payload' });
+        return res.status(400).json(responsePayload);
       }
       parsed = internalParsed.data;
     }
@@ -169,6 +202,11 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
       elapsedMs: elapsedMs(reqStartedAt),
       checks: parsed.checks.length,
       overallStatus: parsed.overall_status,
+    });
+    console.info('[monitoring] payload parsed before db insert', {
+      reqId,
+      elapsedMs: elapsedMs(reqStartedAt),
+      parsed,
     });
 
     console.info('[monitoring] db insert started', { reqId, elapsedMs: elapsedMs(reqStartedAt) });
