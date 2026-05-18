@@ -83,6 +83,20 @@ function getMonitoringSecret(): string {
   return String(process.env.MONITORING_INGEST_SECRET || '').trim();
 }
 
+function nowMs(): number {
+  return Date.now();
+}
+
+function elapsedMs(startMs: number): number {
+  return nowMs() - startMs;
+}
+
+function ingestTimeoutMs(): number {
+  const raw = Number(process.env.MONITORING_INGEST_MAX_MS || 7000);
+  if (!Number.isFinite(raw) || raw < 1000) return 7000;
+  return Math.floor(raw);
+}
+
 function requireMonitoringSecret(req: any, res: any, next: any) {
   const configured = getMonitoringSecret();
   const incoming = String(req.header('x-monitoring-secret') || '').trim();
@@ -100,13 +114,34 @@ function requireMonitoringSecret(req: any, res: any, next: any) {
 }
 
 router.post('/report', requireMonitoringSecret, async (req, res) => {
+  const reqStartedAt = nowMs();
+  const reqId = `ing-${reqStartedAt}-${Math.floor(Math.random() * 1_000_000)}`;
+  const timeoutMs = ingestTimeoutMs();
+  let responded = false;
+  let responseSentAt = 0;
+  const safeSendOk = () => {
+    if (responded) return;
+    responded = true;
+    responseSentAt = nowMs();
+    console.info('[monitoring] response sent', {
+      reqId,
+      totalMs: elapsedMs(reqStartedAt),
+      timeoutMs,
+    });
+    res.status(201).json({ ok: true });
+  };
+
   try {
     console.info('[monitoring] ingest hit', {
+      reqId,
       method: req.method,
       path: req.originalUrl,
       hasSecretHeader: Boolean(req.header('x-monitoring-secret')),
       userAgent: req.header('user-agent') || null,
+      t0: 0,
     });
+    console.info('[monitoring] secret validated', { reqId, elapsedMs: elapsedMs(reqStartedAt) });
+
     // Accept both legacy internal payload and new external monitor payload.
     let parsed: ParsedMonitoringReport;
     const externalParsed = externalReportSchema.safeParse(req.body);
@@ -117,22 +152,77 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
       if (!internalParsed.success) {
         const firstIssue = internalParsed.error.issues?.[0] ?? externalParsed.error.issues?.[0];
         console.error('[monitoring] payload validation failed', {
+          reqId,
           field: firstIssue?.path?.join('.') || '(unknown)',
           code: firstIssue?.code || '(unknown)',
           expected: (firstIssue as any)?.options || null,
           received: (firstIssue as any)?.received || null,
           message: firstIssue?.message || 'Invalid monitoring payload',
+          elapsedMs: elapsedMs(reqStartedAt),
         });
         return res.status(400).json({ error: firstIssue?.message || 'Invalid monitoring payload' });
       }
       parsed = internalParsed.data;
     }
+    console.info('[monitoring] payload validated', {
+      reqId,
+      elapsedMs: elapsedMs(reqStartedAt),
+      checks: parsed.checks.length,
+      overallStatus: parsed.overall_status,
+    });
 
-    await saveMonitoringReport(parsed);
-    return res.status(201).json({ ok: true });
+    console.info('[monitoring] db insert started', { reqId, elapsedMs: elapsedMs(reqStartedAt) });
+    const dbWritePromise = (async () => {
+      try {
+        await saveMonitoringReport(parsed);
+        console.info('[monitoring] db insert completed', {
+          reqId,
+          elapsedMs: elapsedMs(reqStartedAt),
+        });
+        safeSendOk();
+      } catch (dbError) {
+        console.error('[monitoring] db insert failed', {
+          reqId,
+          elapsedMs: elapsedMs(reqStartedAt),
+          error:
+            dbError instanceof Error
+              ? { name: dbError.name, message: dbError.message, stack: dbError.stack }
+              : dbError,
+        });
+        if (!responded) {
+          return res.status(500).json({ error: 'Monitoring ingest failed' });
+        }
+      }
+    })();
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        if (!responded) {
+          console.error('[monitoring] ingest timeout fallback', {
+            reqId,
+            elapsedMs: elapsedMs(reqStartedAt),
+            timeoutMs,
+          });
+          // Timeout-safe behavior: return quickly to caller.
+          safeSendOk();
+        }
+        resolve();
+      }, timeoutMs);
+    });
+
+    await Promise.race([dbWritePromise, timeoutPromise]);
+    return;
   } catch (error) {
     console.error('[monitoring] report ingest failed', error);
-    return res.status(500).json({ error: 'Monitoring ingest failed' });
+    if (!responded) {
+      return res.status(500).json({ error: 'Monitoring ingest failed' });
+    }
+    console.error('[monitoring] report ingest failed after response', {
+      reqId,
+      elapsedMs: elapsedMs(reqStartedAt),
+      responseSentAtOffsetMs: responseSentAt ? responseSentAt - reqStartedAt : null,
+    });
+    return;
   }
 });
 
@@ -144,47 +234,54 @@ router.all('/report', (req, res) => {
 });
 
 async function saveMonitoringReport(parsed: ParsedMonitoringReport): Promise<{ ok: boolean; report_id: string; created_at: string }> {
-  const { data: reportRow, error: reportError } = await supabase
-    .from('monitoring_reports')
-    .insert({
-      overall_status: parsed.overall_status,
-      total_checks: parsed.total_checks,
-      passed_checks: parsed.passed_checks,
-      failed_checks: parsed.failed_checks,
-      avg_response_time_ms: parsed.avg_response_time_ms,
-      run_at: parsed.run_at || new Date().toISOString(),
-      source: parsed.source || null,
-      report_meta: parsed.meta || null,
-    })
-    .select('id, created_at')
-    .single();
+  try {
+    const { data: reportRow, error: reportError } = await supabase
+      .from('monitoring_reports')
+      .insert({
+        overall_status: parsed.overall_status,
+        total_checks: parsed.total_checks,
+        passed_checks: parsed.passed_checks,
+        failed_checks: parsed.failed_checks,
+        avg_response_time_ms: parsed.avg_response_time_ms,
+        run_at: parsed.run_at || new Date().toISOString(),
+        source: parsed.source || null,
+        report_meta: parsed.meta || null,
+      })
+      .select('id, created_at')
+      .single();
 
-  if (reportError || !reportRow) {
-    console.error('[monitoring] failed to insert report', reportError);
-    throw new Error('Failed to save monitoring report');
-  }
-
-  const itemRows = parsed.checks.map((item) => ({
-    report_id: reportRow.id,
-    check_name: item.name,
-    check_status: item.status,
-    response_time_ms: item.response_time_ms ?? null,
-    error_message: item.error_message || null,
-    details: item.details ?? null,
-  }));
-
-  if (itemRows.length > 0) {
-    const { error: itemsError } = await supabase
-      .from('monitoring_check_items')
-      .insert(itemRows);
-
-    if (itemsError) {
-      console.error('[monitoring] failed to insert check items', itemsError);
-      throw new Error('Failed to save monitoring check items');
+    if (reportError || !reportRow) {
+      console.error('[monitoring] failed to insert report', reportError);
+      throw new Error('Failed to save monitoring report');
     }
-  }
 
-  return { ok: true, report_id: reportRow.id, created_at: reportRow.created_at };
+    const itemRows = parsed.checks.map((item) => ({
+      report_id: reportRow.id,
+      check_name: item.name,
+      check_status: item.status,
+      response_time_ms: item.response_time_ms ?? null,
+      error_message: item.error_message || null,
+      details: item.details ?? null,
+    }));
+
+    if (itemRows.length > 0) {
+      const { error: itemsError } = await supabase
+        .from('monitoring_check_items')
+        .insert(itemRows);
+
+      if (itemsError) {
+        console.error('[monitoring] failed to insert check items', itemsError);
+        throw new Error('Failed to save monitoring check items');
+      }
+    }
+
+    return { ok: true, report_id: reportRow.id, created_at: reportRow.created_at };
+  } catch (error) {
+    console.error('[monitoring] saveMonitoringReport unexpected error', {
+      error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
+    });
+    throw error;
+  }
 }
 
 router.use(requireAuth, requireSuperAdmin);
