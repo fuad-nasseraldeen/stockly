@@ -278,6 +278,46 @@ router.all('/report', (req, res) => {
   return res.status(405).json({ error: 'Method not allowed. Use POST with x-monitoring-secret.' });
 });
 
+async function getTableCount(table: 'products' | 'suppliers' | 'categories'): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true });
+  if (error) {
+    throw error;
+  }
+  return Number(count || 0);
+}
+
+router.get('/health/products', requireMonitoringSecret, async (_req, res) => {
+  try {
+    const count = await getTableCount('products');
+    return res.status(200).json({ ok: true, count });
+  } catch (error) {
+    console.error('[monitoring] health/products failed', error);
+    return res.status(500).json({ error: 'Monitoring health check failed' });
+  }
+});
+
+router.get('/health/suppliers', requireMonitoringSecret, async (_req, res) => {
+  try {
+    const count = await getTableCount('suppliers');
+    return res.status(200).json({ ok: true, count });
+  } catch (error) {
+    console.error('[monitoring] health/suppliers failed', error);
+    return res.status(500).json({ error: 'Monitoring health check failed' });
+  }
+});
+
+router.get('/health/categories', requireMonitoringSecret, async (_req, res) => {
+  try {
+    const count = await getTableCount('categories');
+    return res.status(200).json({ ok: true, count });
+  } catch (error) {
+    console.error('[monitoring] health/categories failed', error);
+    return res.status(500).json({ error: 'Monitoring health check failed' });
+  }
+});
+
 async function saveMonitoringReport(parsed: ParsedMonitoringReport): Promise<{ ok: boolean; report_id: string; created_at: string }> {
   try {
     const { data: reportRow, error: reportError } = await supabase
