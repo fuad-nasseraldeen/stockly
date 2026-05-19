@@ -32,10 +32,11 @@ type ParsedMonitoringReport = z.infer<typeof reportSchema>;
 // External monitor payload format (GitHub Action)
 const externalCheckItemSchema = z.object({
   name: z.string().trim().min(1).max(300),
-  type: monitoringCheckTypeSchema.optional(),
+  type: monitoringCheckTypeSchema,
   status: monitoringStatusSchema,
   response_time_ms: z.number().finite().min(0).max(10_000_000).optional(),
   responseTimeMs: z.number().finite().min(0).max(10_000_000).optional(),
+  message: z.string().trim().max(4000).optional(),
   error_message: z.string().trim().max(4000).optional(),
   error: z.string().trim().max(4000).optional(),
   details: z.unknown().optional(),
@@ -46,14 +47,12 @@ const externalReportSchema = z.object({
   environment: z.string().trim().max(120).optional(),
   status: monitoringStatusSchema,
   checks: z.array(externalCheckItemSchema).max(1000),
-  totals: z
-    .object({
-      total: z.number().int().min(0),
-      passed: z.number().int().min(0),
-      warning: z.number().int().min(0),
-      failed: z.number().int().min(0),
-    })
-    .optional(),
+  totals: z.object({
+    total: z.number().int().min(0),
+    passed: z.number().int().min(0),
+    warning: z.number().int().min(0),
+    failed: z.number().int().min(0),
+  }),
 });
 
 function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReportSchema>): ParsedMonitoringReport {
@@ -61,15 +60,18 @@ function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReport
     name: item.name,
     status: item.status,
     response_time_ms: item.response_time_ms ?? item.responseTimeMs,
-    error_message: item.error_message ?? item.error,
-    details: item.details ?? (item.type ? { type: item.type } : undefined),
+    error_message: item.message ?? item.error_message ?? item.error,
+    details:
+      item.details && typeof item.details === 'object' && !Array.isArray(item.details)
+        ? { ...(item.details as Record<string, unknown>), type: item.type }
+        : { type: item.type, details: item.details ?? null },
   }));
 
-  const total_checks = checks.length;
-  const passed_checks = checks.filter((c) => c.status === 'OK').length;
-  const failed_checks = checks.filter((c) => c.status === 'FAILED').length;
+  const total_checks = input.totals.total;
+  const passed_checks = input.totals.passed;
+  const failed_checks = input.totals.failed;
   const avg_response_time_ms =
-    checks.reduce((sum, c) => sum + (c.response_time_ms ?? 0), 0) / Math.max(total_checks, 1);
+    checks.reduce((sum, c) => sum + (c.response_time_ms ?? 0), 0) / Math.max(checks.length, 1);
 
   return {
     overall_status: input.status,
@@ -78,11 +80,11 @@ function normalizeExternalPayloadToInternal(input: z.infer<typeof externalReport
     failed_checks,
     avg_response_time_ms,
     run_at: input.generatedAt || new Date().toISOString(),
-    source: input.environment || 'external_monitor',
+    source: 'github_actions',
     meta: {
-      environment: input.environment ?? null,
-      generatedAt: input.generatedAt ?? null,
-      totals: input.totals ?? null,
+      environment: input.environment || null,
+      generatedAt: input.generatedAt || null,
+      totals: input.totals,
       payloadFormat: 'external_v1',
     },
     checks,
@@ -98,14 +100,19 @@ function getValueByPath(payload: unknown, path: Array<string | number>): unknown
   return current;
 }
 
-function formatIssueForResponse(payload: unknown, issue: z.ZodIssue | undefined): { error: string; field: string; receivedValue: unknown } {
+function formatIssueForResponse(
+  payload: unknown,
+  issue: z.ZodIssue | undefined,
+): { error: string; field: string; receivedValue: unknown; expectedValues: unknown } {
   const issuePath = (issue?.path || []).filter((p): p is string | number => typeof p === 'string' || typeof p === 'number');
   const field = issuePath.length ? issuePath.join('.') : '(root)';
   const receivedValue = issue ? getValueByPath(payload, issuePath) : undefined;
+  const expectedValues = (issue as any)?.options ?? null;
   return {
     error: issue?.message || 'Invalid monitoring payload',
     field,
     receivedValue: receivedValue === undefined ? null : receivedValue,
+    expectedValues,
   };
 }
 
@@ -158,7 +165,7 @@ router.post('/report', requireMonitoringSecret, async (req, res) => {
       totalMs: elapsedMs(reqStartedAt),
       timeoutMs,
     });
-    res.status(201).json({ ok: true });
+    res.status(200).json({ ok: true });
   };
 
   try {
