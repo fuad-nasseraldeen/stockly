@@ -4,7 +4,7 @@
 
 ## רשימת מיגרציות קיימות
 
-נכון לעכשיו קיימות מיגרציות עד `0028`.
+נכון לעכשיו קיימות מיגרציות עד `0042`.
 
 מיגרציות חדשות רלוונטיות לייבוא ומטא-דאטה מחירים:
 
@@ -15,6 +15,7 @@
 - `0026_add_safe_package_metadata_to_price_entries.sql`
 - `0027_add_roll_to_package_type_enum.sql`
 - `0028_refresh_current_price_view_with_package_metadata.sql`
+- `0047_external_inventory.sql` — מלאי חיצוני עצמאי, ללא השפעה על מלאי ספקים או מחירים.
 
 ## חובה לפני הרצה
 

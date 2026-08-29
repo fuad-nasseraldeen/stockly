@@ -15,6 +15,7 @@ import {
   MessageCircleMore,
   Settings,
   BellRing,
+  Warehouse,
   CreditCard,
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -40,6 +41,7 @@ const BASE_NAV: Array<{ path: string; label: string; icon: React.ComponentType<{
   { path: '/categories', label: 'קטגוריות', icon: Boxes },
   { path: '/compare', label: 'השוואת מחירים', icon: BarChart3 },
   { path: '/import-export', label: 'ייבוא', icon: Upload },
+  { path: '/external-inventory', label: 'ניהול מלאי חיצוני', icon: Warehouse },
   { path: '/support', label: 'תמיכה', icon: MessageCircleMore },
   { path: '/subscription', label: 'מנוי וחיובים', icon: CreditCard },
   { path: '/settings', label: 'הגדרות', icon: Settings },

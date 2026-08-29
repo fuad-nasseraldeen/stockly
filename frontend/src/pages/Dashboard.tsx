@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Boxes, MoonStar, Sun, TrendingDown, TrendingUp, Truck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeftRight, Boxes, MoonStar, Sun, TrendingDown, TrendingUp, Truck, Warehouse } from 'lucide-react';
 import { Card, CardContent } from '../components/ui/card';
 import { useProducts } from '../hooks/useProducts';
 import { useSuppliers } from '../hooks/useSuppliers';
 import { supabase } from '../lib/supabase';
+import { externalInventoryApi } from '../lib/api';
 
 type RecentRow = {
   id: string;
@@ -33,6 +35,10 @@ export default function Dashboard() {
     pageSize: 100,
   });
   const { data: suppliers = [] } = useSuppliers();
+  const { data: externalSummary } = useQuery({
+    queryKey: ['external-inventory', 'summary'],
+    queryFn: externalInventoryApi.summary,
+  });
 
   const products = productsData?.products ?? [];
   const allPriceRows = products
@@ -126,7 +132,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="surface-elevated">
           <CardContent className="flex items-center justify-between p-4">
             <div className="rounded-xl bg-sky-500 p-3 text-white"><Truck className="h-5 w-5" /></div>
@@ -163,6 +169,18 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+        <Link to="/external-inventory" className="block">
+          <Card className="surface-elevated h-full transition-colors hover:border-primary/50 hover:bg-muted/20">
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="rounded-xl bg-violet-500 p-3 text-white"><Warehouse className="h-5 w-5" /></div>
+              <div className="w-32 text-center">
+                <p className="text-xs text-muted-foreground">מלאי חיצוני</p>
+                <p className="text-xl font-bold tabular-nums leading-none">{externalSummary?.productCount ?? 0} / {totalProducts}</p>
+                <p className="mt-1 text-[11px] text-primary">לניהול מלאי</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <Card className="data-card">

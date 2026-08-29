@@ -8,6 +8,7 @@ export function useProducts(params?: {
   sort?: 'price_asc' | 'price_desc' | 'updated_desc' | 'updated_asc';
   page?: number;
   pageSize?: number;
+  all?: boolean;
 }) {
   return useQuery({
     queryKey: ['products', params],

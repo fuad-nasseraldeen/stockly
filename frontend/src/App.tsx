@@ -26,6 +26,7 @@ import Settings from './pages/Settings';
 import Subscription from './pages/Subscription';
 import EditProduct from './pages/EditProduct';
 import StockAlerts from './pages/StockAlerts';
+import ExternalInventory from './pages/ExternalInventory';
 import ImportExport from './pages/ImportExport';
 import Admin from './pages/Admin';
 import SupportChat from './pages/SupportChat';
@@ -704,6 +705,7 @@ function AppWithNavigation({
             <Route path="/compare" element={<ComparePrices />} />
             <Route path="/import-export" element={<ImportExport />} />
             <Route path="/stock-alerts" element={<StockAlerts />} />
+            <Route path="/external-inventory" element={<ExternalInventory />} />
             <Route path="/support" element={<SupportChat />} />
             <Route 
               path="/admin" 

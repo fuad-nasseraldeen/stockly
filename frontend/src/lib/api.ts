@@ -132,6 +132,14 @@ export type ProductSupplierStockRow = {
   updated_at: string;
 };
 
+export type ExternalInventoryItem = {
+  product_id: string;
+  product_name: string;
+  unit: Product['unit'];
+  quantity: number;
+  updated_at: string;
+};
+
 export type LowStockItem = {
   id: string;
   product_id: string;
@@ -785,6 +793,18 @@ export const stockApi = {
       body: JSON.stringify(body),
     });
   },
+};
+
+export const externalInventoryApi = {
+  list: (): Promise<{ items: ExternalInventoryItem[] }> =>
+    apiRequest('/api/external-inventory'),
+  summary: (): Promise<{ productCount: number }> =>
+    apiRequest('/api/external-inventory/summary'),
+  adjust: (productId: string, delta: number): Promise<{ product_id: string; quantity: number; removed: boolean }> =>
+    apiRequest(`/api/external-inventory/product/${productId}/adjust`, {
+      method: 'POST',
+      body: JSON.stringify({ delta }),
+    }),
 };
 
 // Tenant maintenance API
